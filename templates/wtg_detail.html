@@ -1,0 +1,307 @@
+{% extends 'base.html' %}
+{% block title %}{{ wtg.name }} – King Rocks QA{% endblock %}
+{% block page_title %}{{ wtg.name }}{% endblock %}
+{% block page_sub %}Geotechnical QA Tracker · {{ wtg.completion_pct }}% Complete{% endblock %}
+
+{% block head %}
+<style>
+  /* Hardstand interactive map */
+  .area-zone { cursor: pointer; transition: opacity 0.2s; }
+  .area-zone:hover { opacity: 0.85; filter: brightness(1.05); }
+  .area-zone.selected { stroke-width: 3; stroke: #1e3a5f; filter: drop-shadow(0 0 8px rgba(0,0,0,0.3)); }
+  .test-row { transition: background 0.15s; }
+  .test-row:hover { background: #f8fafc; }
+  .check-icon { color: #22c55e; }
+  .cross-icon { color: #e2e8f0; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="flex items-center gap-3 mb-6">
+  <a href="{{ url_for('dashboard') }}" class="text-slate-400 hover:text-slate-700 text-sm">
+    <i class="fa-solid fa-arrow-left mr-1"></i> All WTGs
+  </a>
+  <span class="text-slate-300">/</span>
+  <span class="text-slate-700 font-semibold">{{ wtg.name }}</span>
+  <span class="ml-auto
+    {% if wtg.completion_pct == 100 %}badge-green
+    {% elif wtg.completion_pct > 0 %}badge-yellow
+    {% else %}badge-red{% endif %}">
+    {{ wtg.completion_pct }}% Complete
+  </span>
+</div>
+
+<div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+
+  <!-- ── LEFT: Interactive Hardstand Map ──────────────────────────── -->
+  <div class="card">
+    <h2 class="font-bold text-slate-800 mb-1">Hardstand Layout</h2>
+    <p class="text-xs text-slate-400 mb-4">Click an area to view its QA tests</p>
+
+    <!-- Color Legend -->
+    <div class="flex flex-wrap gap-4 mb-4 text-xs font-medium">
+      <span class="flex items-center gap-1.5">
+        <svg width="22" height="14"><polygon points="0,14 0,7 5,0 17,0 22,5 22,14" fill="#fca5a5" stroke="#ef4444" stroke-width="1.5"/></svg>
+        Hardstand
+      </span>
+      <span class="flex items-center gap-1.5">
+        <span class="w-5 h-3 rounded inline-block border border-green-400" style="background:#86efac"></span>
+        Crane Pad
+      </span>
+      <span class="flex items-center gap-1.5">
+        <span class="w-3 h-3 rounded inline-block border border-yellow-500" style="background:#fde047"></span>
+        Boom Pad
+      </span>
+      <span class="flex items-center gap-1.5">
+        <span class="w-2 h-4 rounded inline-block border border-blue-400" style="background:#93c5fd"></span>
+        Blade Fingers ×2
+      </span>
+    </div>
+
+    <!-- SVG Map — layout matches site drawing exactly -->
+    <svg id="hardstand-map" viewBox="0 0 820 445"
+         class="w-full rounded-xl border border-slate-200 bg-white"
+         style="max-height:320px">
+
+      <!-- ═══════════════════════════════════════════════
+           HARDSTAND  — large polygon, chamfered top-left
+           and top-right corners, square bottom corners
+           ═══════════════════════════════════════════════ -->
+      <polygon id="zone-hardstand"
+        points="391,265  391,175  463,62  747,62  790,108  790,265"
+        fill="#fca5a5" fill-opacity="0.55" stroke="#ef4444" stroke-width="2.5"
+        class="area-zone" data-area="hardstand" data-label="Hardstand"/>
+
+      <!-- WTG centre marker -->
+      <circle cx="588" cy="164" r="16" fill="white" stroke="#ef4444" stroke-width="2" pointer-events="none"/>
+      <text x="588" y="168" font-size="9" text-anchor="middle" fill="#ef4444" font-weight="800" pointer-events="none">{{ wtg.name[-2:] }}</text>
+
+      <!-- Hardstand label + % -->
+      <text x="490" y="185" font-size="12" fill="#b91c1c" font-weight="700" pointer-events="none">HARDSTAND</text>
+      <text x="490" y="202" font-size="10" fill="#b91c1c" font-weight="600" pointer-events="none">
+        {{ areas.get('hardstand').completion_pct if areas.get('hardstand') else 0 }}%
+      </text>
+
+      <!-- ═══════════════════════════════════════════════
+           CRANE PAD  — separate horizontal rectangle
+           far to the left, same vertical band as lower
+           half of hardstand
+           ═══════════════════════════════════════════════ -->
+      <rect id="zone-crane_pad"
+        x="30" y="216" width="108" height="46" rx="6"
+        fill="#86efac" fill-opacity="0.75" stroke="#22c55e" stroke-width="2"
+        class="area-zone" data-area="crane_pad" data-label="Crane Pad"/>
+      <text x="84" y="234" font-size="9" text-anchor="middle" fill="#15803d" font-weight="700" pointer-events="none">CRANE PAD</text>
+      <text x="84" y="250" font-size="8" text-anchor="middle" fill="#15803d" font-weight="600" pointer-events="none">
+        {{ areas.get('crane_pad').completion_pct if areas.get('crane_pad') else 0 }}%
+      </text>
+
+      <!-- ═══════════════════════════════════════════════
+           BOOM PAD  — small square between crane pad
+           and hardstand, slightly higher than crane pad
+           ═══════════════════════════════════════════════ -->
+      <rect id="zone-boom_pad"
+        x="188" y="188" width="52" height="46" rx="6"
+        fill="#fde047" fill-opacity="0.80" stroke="#ca8a04" stroke-width="2"
+        class="area-zone" data-area="boom_pad" data-label="Boom Pad"/>
+      <text x="214" y="206" font-size="8" text-anchor="middle" fill="#854d0e" font-weight="700" pointer-events="none">BOOM</text>
+      <text x="214" y="217" font-size="8" text-anchor="middle" fill="#854d0e" font-weight="700" pointer-events="none">PAD</text>
+      <text x="214" y="228" font-size="7" text-anchor="middle" fill="#854d0e" pointer-events="none">
+        {{ areas.get('boom_pad').completion_pct if areas.get('boom_pad') else 0 }}%
+      </text>
+
+      <!-- ═══════════════════════════════════════════════
+           BLADE FINGER — LEFT
+           Narrow tall rectangle below the left portion
+           of the hardstand, slight clockwise lean
+           ═══════════════════════════════════════════════ -->
+      <rect id="zone-blade_fingers"
+        x="458" y="278" width="34" height="126" rx="4"
+        fill="#93c5fd" fill-opacity="0.75" stroke="#3b82f6" stroke-width="2"
+        class="area-zone" data-area="blade_fingers" data-label="Blade Fingers"
+        transform="rotate(3,475,341)"/>
+      <!-- Vertical label -->
+      <text font-size="8" fill="#1d4ed8" font-weight="700" pointer-events="none"
+            transform="translate(479,341) rotate(-87)">BLADE FINGER</text>
+      <!-- % below -->
+      <text x="475" y="418" font-size="8" text-anchor="middle" fill="#1d4ed8" font-weight="600" pointer-events="none">
+        {{ areas.get('blade_fingers').completion_pct if areas.get('blade_fingers') else 0 }}%
+      </text>
+
+      <!-- ═══════════════════════════════════════════════
+           BLADE FINGER — RIGHT
+           Same area, second visual shape below the right
+           portion of the hardstand
+           ═══════════════════════════════════════════════ -->
+      <rect x="752" y="278" width="34" height="126" rx="4"
+        fill="#93c5fd" fill-opacity="0.75" stroke="#3b82f6" stroke-width="2"
+        class="area-zone" data-area="blade_fingers" data-label="Blade Fingers"
+        transform="rotate(4,769,341)"/>
+      <text font-size="8" fill="#1d4ed8" font-weight="700" pointer-events="none"
+            transform="translate(773,341) rotate(-86)">BLADE FINGER</text>
+
+      <!-- ═══════════════════════════════════════════════
+           Compass rose  (top-right corner of SVG)
+           ═══════════════════════════════════════════════ -->
+      <g transform="translate(795,38)">
+        <circle r="15" fill="white" stroke="#d1d5db" stroke-width="1.5"/>
+        <text x="0" y="-5" text-anchor="middle" font-size="8" fill="#374151" font-weight="800">N</text>
+        <path d="M0,-4 L2.5,3.5 L0,1.5 L-2.5,3.5 Z" fill="#374151"/>
+      </g>
+
+    </svg>
+
+    <p class="text-center text-xs text-slate-400 mt-2">
+      <i class="fa-solid fa-hand-pointer mr-1"></i>Click a coloured area to view tests
+    </p>
+  </div>
+
+  <!-- ── RIGHT: Test Panel ─────────────────────────────────────────── -->
+  <div>
+    <!-- Area tabs -->
+    <div class="flex gap-2 mb-4 flex-wrap">
+      {% for area_type, area in areas.items() %}
+      <button onclick="selectArea('{{ area_type }}')"
+        id="tab-{{ area_type }}"
+        class="area-tab px-4 py-2 rounded-xl text-xs font-semibold border transition-all
+          {% if loop.first %}
+            {% if area_type == 'hardstand' %}border-red-400 bg-red-50 text-red-700
+            {% elif area_type == 'crane_pad' %}border-green-400 bg-green-50 text-green-700
+            {% elif area_type == 'boom_pad' %}border-yellow-400 bg-yellow-50 text-yellow-700
+            {% else %}border-blue-400 bg-blue-50 text-blue-700{% endif %}
+          {% else %}border-slate-200 bg-white text-slate-500 hover:bg-slate-50{% endif %}">
+        {% if area_type == 'hardstand' %}🔴{% elif area_type == 'crane_pad' %}🟢{% elif area_type == 'boom_pad' %}🟡{% else %}🔵{% endif %}
+        {{ area.label }}
+        <span class="ml-1 font-bold">{{ area.completion_pct }}%</span>
+      </button>
+      {% endfor %}
+    </div>
+
+    <!-- Test lists per area -->
+    {% for area_type, area in areas.items() %}
+    <div id="panel-{{ area_type }}" class="area-panel {% if not loop.first %}hidden{% endif %}">
+      <div class="card">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h3 class="font-bold text-slate-800">{{ area.label }} Tests</h3>
+            <p class="text-xs text-slate-400">{{ area.required_tests | selectattr('is_complete') | list | length }} / {{ area.required_tests | length }} complete</p>
+          </div>
+          <div class="w-16 h-16 relative">
+            <svg viewBox="0 0 36 36" class="w-16 h-16 -rotate-90">
+              <circle cx="18" cy="18" r="15.9" fill="none" stroke="#f1f5f9" stroke-width="3"/>
+              <circle cx="18" cy="18" r="15.9" fill="none"
+                stroke="{% if area.completion_pct==100 %}#22c55e{% elif area.completion_pct>0 %}#f59e0b{% else %}#fca5a5{% endif %}"
+                stroke-width="3"
+                stroke-dasharray="{{ area.completion_pct }}, 100"
+                stroke-linecap="round"/>
+            </svg>
+            <div class="absolute inset-0 flex items-center justify-center">
+              <span class="text-xs font-bold text-slate-700">{{ area.completion_pct }}%</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="space-y-2">
+          {% for test in area.required_tests %}
+          <div class="test-row flex items-center gap-3 px-3 py-3 rounded-xl border border-slate-100">
+            <!-- Status icon -->
+            <div class="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center
+              {% if test.is_complete %}bg-green-100{% else %}bg-slate-100{% endif %}">
+              {% if test.is_complete %}
+              <i class="fa-solid fa-check text-xs text-green-600"></i>
+              {% else %}
+              <i class="fa-solid fa-clock text-xs text-slate-400"></i>
+              {% endif %}
+            </div>
+
+            <!-- Test name -->
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-medium text-slate-700">{{ test.display_name }}</p>
+              {% if test.is_complete and test.completed_at %}
+              <p class="text-xs text-green-600">
+                <i class="fa-solid fa-circle-check mr-1"></i>
+                Completed {{ test.completed_at.strftime('%d %b %Y') }}
+              </p>
+              {% else %}
+              <p class="text-xs text-slate-400">Pending</p>
+              {% endif %}
+            </div>
+
+            <!-- Action buttons -->
+            {% if current_user.can_enter_data() and not test.is_complete %}
+            <div class="flex gap-1.5">
+              {% if test.test_type.startswith('proof_roll') %}
+              <a href="{{ url_for('proof_roll_form', test_id=test.id) }}"
+                class="px-2.5 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 transition font-medium whitespace-nowrap">
+                <i class="fa-solid fa-file-pen mr-1"></i>Proof Roll
+              </a>
+              {% else %}
+              <a href="{{ url_for('test_record', test_id=test.id) }}"
+                class="px-2.5 py-1.5 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700 transition font-medium whitespace-nowrap">
+                <i class="fa-solid fa-plus mr-1"></i>Record
+              </a>
+              {% endif %}
+            </div>
+            {% elif test.is_complete %}
+            <div class="flex gap-1.5">
+              {% if test.proof_rolls %}
+              <a href="{{ url_for('view_proof_roll', pr_id=test.proof_rolls[-1].id) }}"
+                class="px-2.5 py-1.5 bg-slate-100 text-slate-600 text-xs rounded-lg hover:bg-slate-200 transition font-medium">
+                <i class="fa-solid fa-eye mr-1"></i>View
+              </a>
+              {% endif %}
+            </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const AREA_COLORS = {
+  hardstand:    { tab:'border-red-400 bg-red-50 text-red-700',     zone:'#ef4444' },
+  crane_pad:    { tab:'border-green-400 bg-green-50 text-green-700', zone:'#22c55e' },
+  boom_pad:     { tab:'border-yellow-400 bg-yellow-50 text-yellow-700', zone:'#ca8a04' },
+  blade_fingers:{ tab:'border-blue-400 bg-blue-50 text-blue-700',  zone:'#3b82f6' },
+};
+
+function selectArea(areaType) {
+  // Hide all panels
+  document.querySelectorAll('.area-panel').forEach(p => p.classList.add('hidden'));
+  // Show selected
+  const panel = document.getElementById('panel-' + areaType);
+  if (panel) panel.classList.remove('hidden');
+
+  // Reset all tabs
+  document.querySelectorAll('.area-tab').forEach(t => {
+    t.className = 'area-tab px-4 py-2 rounded-xl text-xs font-semibold border transition-all border-slate-200 bg-white text-slate-500 hover:bg-slate-50';
+  });
+  // Activate selected tab
+  const tab = document.getElementById('tab-' + areaType);
+  if (tab && AREA_COLORS[areaType]) {
+    tab.className = 'area-tab px-4 py-2 rounded-xl text-xs font-semibold border transition-all ' + AREA_COLORS[areaType].tab;
+  }
+
+  // Highlight SVG zone
+  document.querySelectorAll('.area-zone').forEach(z => z.classList.remove('selected'));
+  const zone = document.getElementById('zone-' + areaType);
+  if (zone) zone.classList.add('selected');
+}
+
+// Wire up SVG clicks
+document.querySelectorAll('.area-zone').forEach(zone => {
+  zone.addEventListener('click', () => {
+    selectArea(zone.dataset.area);
+  });
+});
+
+// Select first area on load
+selectArea('hardstand');
+</script>
+{% endblock %}

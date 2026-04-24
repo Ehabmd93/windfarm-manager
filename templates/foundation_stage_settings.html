@@ -1,0 +1,206 @@
+{% extends 'base.html' %}
+{% block title %}Stage Settings – King Rocks QA{% endblock %}
+{% block page_title %}Foundation Stage Settings{% endblock %}
+{% block page_sub %}Edit the global stage list — changes apply to all {{ templates|length }} stages across every WTG{% endblock %}
+
+{% block head %}
+<style>
+  .stage-row { display:flex;align-items:center;gap:12px;padding:14px 16px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;transition:box-shadow .15s; }
+  .stage-row:hover { box-shadow:0 2px 12px rgba(0,0,0,0.06); }
+  .drag-handle { color:#cbd5e1;cursor:grab;font-size:16px;user-select:none; }
+  .drag-handle:active { cursor:grabbing; }
+  .stage-num { width:28px;height:28px;background:#f1f5f9;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#64748b;flex-shrink:0; }
+  .inline-edit { border:none;outline:none;font-size:14px;font-weight:600;color:#1e293b;background:transparent;width:100%;padding:2px 4px;border-radius:6px; }
+  .inline-edit:focus { background:#f8fafc;outline:1px solid #3b82f6; }
+  .stage-key-badge { font-size:10px;color:#94a3b8;font-family:monospace;background:#f1f5f9;padding:2px 8px;border-radius:4px;white-space:nowrap; }
+  .btn-icon { width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:8px;cursor:pointer;transition:all .15s;border:none;flex-shrink:0; }
+  .btn-save  { background:#dbeafe;color:#1d4ed8; }
+  .btn-save:hover  { background:#3b82f6;color:#fff; }
+  .btn-del   { background:#fee2e2;color:#dc2626; }
+  .btn-del:hover   { background:#ef4444;color:#fff; }
+  .add-bar { display:flex;gap:10px;margin-top:20px; }
+  .add-input { flex:1;padding:12px 16px;border:1px solid #e2e8f0;border-radius:12px;font-size:14px;outline:none; }
+  .add-input:focus { border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.1); }
+  .add-btn { padding:12px 24px;background:#0ea5e9;color:#fff;border-radius:12px;font-weight:700;font-size:14px;border:none;cursor:pointer;white-space:nowrap; }
+  .add-btn:hover { background:#0284c7; }
+  .saved-flash { font-size:11px;color:#16a34a;font-weight:600;opacity:0;transition:opacity .3s; }
+  .saved-flash.show { opacity:1; }
+  #stage-list { display:flex;flex-direction:column;gap:10px; }
+  .stage-row.dragging { opacity:0.4;border-style:dashed; }
+  .stage-row.drag-over-top    { border-top:2px solid #3b82f6; }
+  .stage-row.drag-over-bottom { border-bottom:2px solid #3b82f6; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Info banner -->
+<div style="background:linear-gradient(135deg,#fb923c15,#fb923c08);border:1px solid #fb923c40;border-radius:14px;padding:16px 20px;margin-bottom:24px;display:flex;align-items:center;gap:14px;">
+  <div style="width:40px;height:40px;background:#fb923c;border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+    <i class="fa-solid fa-list-check" style="color:#fff;font-size:18px;"></i>
+  </div>
+  <div>
+    <p style="font-weight:700;color:#9a3412;font-size:14px;">Global Stage Template</p>
+    <p style="color:#c2410c;font-size:13px;">Any stage you add, rename, or remove here automatically applies to <strong>all {{ templates|length }} WTGs</strong>. Existing data is never deleted when you rename a stage.</p>
+  </div>
+</div>
+
+<!-- Back link -->
+<div class="mb-4">
+  <a href="{{ url_for('foundation_index') }}" class="text-slate-400 hover:text-slate-700 text-sm">
+    <i class="fa-solid fa-arrow-left mr-1"></i> Back to Foundation Tracker
+  </a>
+</div>
+
+<!-- Stage list -->
+<div class="card p-5">
+  <div class="flex items-center justify-between mb-4">
+    <h3 class="font-bold text-slate-800 text-base">Stage Order &amp; Labels</h3>
+    <span class="text-xs text-slate-400"><i class="fa-solid fa-grip-lines mr-1"></i>Drag rows to reorder</span>
+  </div>
+
+  <div id="stage-list">
+    {% for t in templates %}
+    <div class="stage-row" data-id="{{ t.id }}" draggable="true"
+         ondragstart="dragStart(event,{{ t.id }})"
+         ondragover="dragOver(event)"
+         ondrop="dropOn(event,{{ t.id }})"
+         ondragend="dragEnd()">
+      <span class="drag-handle">⠿</span>
+      <div class="stage-num">{{ loop.index }}</div>
+      <input class="inline-edit" id="label-{{ t.id }}" value="{{ t.stage_label }}"
+             onblur="saveLabel({{ t.id }})" onkeydown="if(event.key==='Enter'){saveLabel({{ t.id }});this.blur();}"/>
+      <span class="stage-key-badge">{{ t.stage_key }}</span>
+      <span class="saved-flash" id="flash-{{ t.id }}">Saved</span>
+      <button class="btn-icon btn-del ml-auto" onclick="deleteStage({{ t.id }})" title="Delete stage">
+        <i class="fa-solid fa-trash fa-xs"></i>
+      </button>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Add new stage -->
+  <div class="add-bar">
+    <input class="add-input" id="new-stage-label" placeholder="New stage name, e.g. Waterproofing"
+           onkeydown="if(event.key==='Enter') addStage()"/>
+    <button class="add-btn" onclick="addStage()">
+      <i class="fa-solid fa-plus mr-1"></i> Add Stage
+    </button>
+  </div>
+</div>
+
+<!-- Legend -->
+<div class="card mt-4 p-4" style="background:#f8fafc;">
+  <p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Tips</p>
+  <ul class="text-xs text-slate-500 space-y-1">
+    <li><i class="fa-solid fa-pencil text-blue-400 mr-1"></i> Click any stage name to edit it inline — press Enter or click away to save</li>
+    <li><i class="fa-solid fa-grip-lines text-slate-400 mr-1"></i> Drag the ⠿ handle to reorder stages</li>
+    <li><i class="fa-solid fa-trash text-red-400 mr-1"></i> Deleting a stage removes it from the template — existing WTG data for that stage is kept in the database</li>
+    <li><i class="fa-solid fa-plus text-green-500 mr-1"></i> New stages are automatically created for every WTG</li>
+  </ul>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ─── Save label ──────────────────────────────────────────────
+async function saveLabel(id) {
+  const label = document.getElementById('label-' + id).value.trim();
+  if (!label) return;
+  await fetch(`/api/foundation/stages/${id}/update`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({stage_label: label})
+  });
+  const fl = document.getElementById('flash-' + id);
+  fl.classList.add('show');
+  setTimeout(() => fl.classList.remove('show'), 2000);
+}
+
+// ─── Add stage ───────────────────────────────────────────────
+async function addStage() {
+  const inp = document.getElementById('new-stage-label');
+  const label = inp.value.trim();
+  if (!label) { inp.focus(); return; }
+  const res  = await fetch('/api/foundation/stages/add', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({stage_label: label})
+  });
+  if (res.ok) {
+    inp.value = '';
+    location.reload();
+  } else {
+    alert('Could not add stage. Please try again.');
+  }
+}
+
+// ─── Delete stage ─────────────────────────────────────────────
+async function deleteStage(id) {
+  const label = document.getElementById('label-' + id).value;
+  if (!confirm(`Delete stage "${label}"?\n\nThe template entry will be removed. Existing WTG data for this stage is kept in the database.`)) return;
+  const res = await fetch(`/api/foundation/stages/${id}/delete`, { method: 'POST' });
+  if (res.ok) {
+    document.querySelector(`[data-id="${id}"]`)?.remove();
+    renumberRows();
+  }
+}
+
+// ─── Renumber row indicators ──────────────────────────────────
+function renumberRows() {
+  document.querySelectorAll('#stage-list .stage-num').forEach((el, i) => {
+    el.textContent = i + 1;
+  });
+}
+
+// ─── Drag-to-reorder ─────────────────────────────────────────
+let dragId = null;
+
+function dragStart(e, id) {
+  dragId = id;
+  e.currentTarget.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+}
+
+function dragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  document.querySelectorAll('.stage-row').forEach(r => {
+    r.classList.remove('drag-over-top','drag-over-bottom');
+  });
+  const row = e.currentTarget;
+  const rect = row.getBoundingClientRect();
+  const mid  = rect.top + rect.height / 2;
+  row.classList.add(e.clientY < mid ? 'drag-over-top' : 'drag-over-bottom');
+}
+
+function dragEnd() {
+  document.querySelectorAll('.stage-row').forEach(r => {
+    r.classList.remove('dragging','drag-over-top','drag-over-bottom');
+  });
+  dragId = null;
+}
+
+async function dropOn(e, targetId) {
+  e.preventDefault();
+  if (!dragId || dragId === targetId) { dragEnd(); return; }
+  const list   = document.getElementById('stage-list');
+  const dragEl = list.querySelector(`[data-id="${dragId}"]`);
+  const tgtEl  = list.querySelector(`[data-id="${targetId}"]`);
+  const rect   = tgtEl.getBoundingClientRect();
+  if (e.clientY < rect.top + rect.height / 2) {
+    list.insertBefore(dragEl, tgtEl);
+  } else {
+    list.insertBefore(dragEl, tgtEl.nextSibling);
+  }
+  dragEnd();
+  renumberRows();
+  // Save new order
+  const rows  = [...list.querySelectorAll('.stage-row')];
+  const order = rows.map((r, i) => ({ id: parseInt(r.dataset.id), sort_order: i }));
+  await fetch('/api/foundation/stages/reorder', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(order)
+  });
+}
+</script>
+{% endblock %}

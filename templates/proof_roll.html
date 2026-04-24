@@ -1,0 +1,346 @@
+{% extends 'base.html' %}
+{% block title %}Proof Roll – {{ wtg.name }} {{ area.label }}{% endblock %}
+{% block page_title %}Proof Roll Record{% endblock %}
+{% block page_sub %}{{ wtg.name }} · {{ area.label }} · {{ test.display_name }}{% endblock %}
+
+{% block head %}
+<style>
+  .form-label { @apply block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide; }
+  .form-input  { @apply w-full px-3 py-2.5 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition; }
+  .form-section { @apply bg-white rounded-2xl border border-slate-200 overflow-hidden mb-6; }
+  .form-section-header { @apply bg-gradient-to-r from-slate-700 to-slate-600 text-white px-6 py-3 text-sm font-bold flex items-center gap-2; }
+  .sig-canvas { border: 2px dashed #d1d5db; border-radius: 12px; cursor: crosshair; background: #fafafa; touch-action: none; }
+  .sig-canvas.has-sig { border-color: #22c55e; border-style: solid; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="flex items-center gap-3 mb-6">
+  <a href="{{ url_for('wtg_detail', wtg_id=wtg.id) }}" class="text-slate-400 hover:text-slate-700 text-sm">
+    <i class="fa-solid fa-arrow-left mr-1"></i> {{ wtg.name }}
+  </a>
+  <span class="text-slate-300">/</span>
+  <span class="text-slate-600 text-sm">{{ area.label }}</span>
+  <span class="text-slate-300">/</span>
+  <span class="text-slate-800 font-semibold text-sm">{{ test.display_name }}</span>
+</div>
+
+{% if existing %}
+<div class="mb-4 px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-800">
+  <i class="fa-solid fa-circle-info mr-2"></i>
+  <strong>{{ existing|length }} previous record(s) exist.</strong>
+  <a href="{{ url_for('view_proof_roll', pr_id=existing[-1].id) }}" class="underline ml-1">View latest</a>
+</div>
+{% endif %}
+
+<!-- ═══ FORM HEADER BLOCK ══════════════════════════════════════════════ -->
+<div class="bg-gradient-to-r from-blue-900 to-blue-700 text-white rounded-2xl p-6 mb-6 flex items-center justify-between">
+  <div>
+    <p class="text-xs text-blue-300 font-semibold uppercase tracking-wider mb-1">CBOP · King Rocks Wind Farm</p>
+    <h2 class="text-xl font-bold">Proof Roll Record</h2>
+    <p class="text-blue-200 text-sm mt-1">{{ test.display_name }} · {{ area.label }}</p>
+  </div>
+  <div class="text-right text-xs text-blue-300 space-y-1">
+    <p>Form Ref: OPER-FRM-057</p>
+    <p>Procedure: HSEC-MSP-005</p>
+    <p class="font-bold text-white">{{ wtg.name }}</p>
+  </div>
+</div>
+
+<form method="POST" id="proofRollForm">
+
+  <!-- ── SECTION 1: Record Information ────────────────────────────── -->
+  <div class="form-section">
+    <div class="form-section-header">
+      <i class="fa-solid fa-circle-info"></i> Section 1 – Record Information
+    </div>
+    <div class="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+      <div>
+        <label class="form-label">Location</label>
+        <input type="text" name="location" class="form-input"
+          value="{{ wtg.name }} – {{ area.label }}" required/>
+      </div>
+      <div>
+        <label class="form-label">Date <span class="text-red-500">*</span></label>
+        <input type="date" name="date" class="form-input" value="{{ today }}" required/>
+      </div>
+      <div>
+        <label class="form-label">Pavement Area</label>
+        <input type="text" name="pavement_area" class="form-input"
+          placeholder="e.g. Hardstand – North Section"/>
+      </div>
+      <div>
+        <label class="form-label">Pavement Material</label>
+        <input type="text" name="pavement_material" class="form-input"
+          placeholder="e.g. Crushed Rock Base"/>
+      </div>
+      <div>
+        <label class="form-label">Material Layer</label>
+        <input type="text" name="material_layer" class="form-input"
+          value="{{ test.display_name.split('–')[-1].strip() if '–' in test.display_name else '' }}"
+          placeholder="e.g. Subbase"/>
+      </div>
+      <div>
+        <label class="form-label">Lot Number</label>
+        <input type="text" name="lot_number" class="form-input"
+          placeholder="e.g. LOT-{{ wtg.name }}-001"/>
+      </div>
+    </div>
+    <div class="px-6 pb-4">
+      <p class="text-xs text-slate-400 italic">
+        <i class="fa-solid fa-info-circle mr-1"></i>
+        Area Location to be attached to document (attach site plan sketch or photo below)
+      </p>
+    </div>
+  </div>
+
+  <!-- ── SECTION 2: Proof Roll Information ────────────────────────── -->
+  <div class="form-section">
+    <div class="form-section-header">
+      <i class="fa-solid fa-truck"></i> Section 2 – Proof Roll Equipment
+    </div>
+    <div class="p-6 overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-slate-200">
+            <th class="text-left py-2 pr-4 text-slate-600 font-semibold text-xs">Equipment</th>
+            <th class="text-left py-2 px-3 text-slate-600 font-semibold text-xs">Spec / Sub-label</th>
+            <th class="text-left py-2 px-3 text-slate-600 font-semibold text-xs">Value</th>
+            <th class="text-left py-2 px-3 text-slate-600 font-semibold text-xs">No. of Passes</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          <tr>
+            <td class="py-3 pr-4 font-medium text-slate-700">Tandem Water Cart</td>
+            <td class="py-3 px-3 text-slate-500 text-xs">Tonnes / Wheel</td>
+            <td class="py-3 px-3"><input type="number" name="tandem_tonnes" step="0.1" min="0" class="form-input" placeholder="0.0"/></td>
+            <td class="py-3 px-3"><input type="number" name="tandem_passes" min="0" class="form-input" placeholder="0"/></td>
+          </tr>
+          <tr>
+            <td class="py-3 pr-4 font-medium text-slate-700">Heavy Vibrating Roller</td>
+            <td class="py-3 px-3 text-slate-500 text-xs">Mass (Tonnes)</td>
+            <td class="py-3 px-3"><input type="number" name="vibrating_mass" step="0.1" min="0" class="form-input" placeholder="0.0"/></td>
+            <td class="py-3 px-3"><input type="number" name="vibrating_passes" min="0" class="form-input" placeholder="0"/></td>
+          </tr>
+          <tr>
+            <td class="py-3 pr-4">
+              <input type="text" name="other_equipment" class="form-input" placeholder="Other equipment…"/>
+            </td>
+            <td class="py-3 px-3">
+              <input type="text" class="form-input text-xs" placeholder="Spec / description"/>
+            </td>
+            <td class="py-3 px-3"><input type="text" name="other_value" class="form-input" placeholder="Value"/></td>
+            <td class="py-3 px-3"><input type="number" name="other_passes" min="0" class="form-input" placeholder="0"/></td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="text-xs text-slate-400 mt-3 italic">
+        <i class="fa-solid fa-info-circle mr-1"></i>
+        Acknowledgement and approval to proceed with track works within inspected section.
+      </p>
+    </div>
+  </div>
+
+  <!-- ── SECTION 3: Comments ───────────────────────────────────────── -->
+  <div class="form-section">
+    <div class="form-section-header">
+      <i class="fa-solid fa-comment-dots"></i> Section 3 – Comments
+    </div>
+    <div class="p-6">
+      <textarea name="comments" rows="5" class="form-input resize-none"
+        placeholder="Enter any observations, site conditions, or notes here…"></textarea>
+    </div>
+  </div>
+
+  <!-- ── SECTION 4: Rectification ─────────────────────────────────── -->
+  <div class="form-section">
+    <div class="form-section-header">
+      <i class="fa-solid fa-wrench"></i> Section 4 – Proof Roll Rectification (If Required)
+    </div>
+    <div class="p-6 space-y-5">
+      <div>
+        <label class="form-label">Method of Rectification</label>
+        <textarea name="rectification_method" rows="4" class="form-input resize-none"
+          placeholder="Describe any rectification method applied…"></textarea>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div>
+          <label class="form-label">Rectification Proof Roll Date</label>
+          <input type="date" name="rectification_date" class="form-input"/>
+        </div>
+        <div>
+          <label class="form-label">Passed? <span class="text-red-500">*</span></label>
+          <div class="flex gap-6 mt-2">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="radio" name="passed" value="yes" class="w-4 h-4 text-green-600 border-slate-300 focus:ring-green-500" required/>
+              <span class="text-sm font-semibold text-green-700">
+                <i class="fa-solid fa-check-circle mr-1"></i>Yes – Passed
+              </span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="radio" name="passed" value="no" class="w-4 h-4 text-red-500 border-slate-300 focus:ring-red-500"/>
+              <span class="text-sm font-semibold text-red-700">
+                <i class="fa-solid fa-times-circle mr-1"></i>No – Failed
+              </span>
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SECTION 5: Acknowledgement & Signatures ──────────────────── -->
+  <div class="form-section">
+    <div class="form-section-header">
+      <i class="fa-solid fa-pen-nib"></i> Section 5 – Acknowledgement & Approval
+    </div>
+    <div class="p-6 space-y-6">
+      {% for i in range(1,5) %}
+      <div class="border border-slate-200 rounded-xl p-4 bg-slate-50">
+        <div class="flex items-center gap-2 mb-4">
+          <div class="w-7 h-7 bg-blue-700 rounded-full flex items-center justify-center text-white text-xs font-bold">{{ i }}</div>
+          <span class="text-sm font-semibold text-slate-700">Signatory {{ i }}
+            {% if i == 1 %}(Engineer){% elif i == 2 %}(Supervisor){% elif i == 3 %}(Client Rep){% else %}(Manager){% endif %}
+          </span>
+        </div>
+        <input type="hidden" name="sig_role_{{ i }}"
+          value="{% if i==1 %}engineer{% elif i==2 %}supervisor{% elif i==3 %}client{% else %}manager{% endif %}"/>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+          <div>
+            <label class="form-label">Full Name</label>
+            <input type="text" name="sig_name_{{ i }}" class="form-input"
+              placeholder="Full name"
+              {% if i == 1 and current_user.can_enter_data() %}value="{{ current_user.name }}"{% endif %}/>
+          </div>
+          <div>
+            <label class="form-label">Company</label>
+            <input type="text" name="sig_company_{{ i }}" class="form-input"
+              placeholder="Company"
+              {% if i == 1 %}value="{{ current_user.company }}"{% endif %}/>
+          </div>
+          <div>
+            <label class="form-label">Date</label>
+            <input type="date" name="sig_date_{{ i }}" class="form-input"
+              {% if i == 1 %}value="{{ today }}"{% endif %}/>
+          </div>
+        </div>
+        <div>
+          <label class="form-label">Signature</label>
+          <div class="relative">
+            <canvas id="sig-canvas-{{ i }}" class="sig-canvas w-full" height="100"
+              style="touch-action:none"></canvas>
+            <input type="hidden" name="sig_data_{{ i }}" id="sig-data-{{ i }}"/>
+            <button type="button" onclick="clearSig({{ i }})"
+              class="absolute top-2 right-2 text-xs text-slate-400 hover:text-red-500 bg-white border border-slate-200 rounded-lg px-2 py-1 transition">
+              <i class="fa-solid fa-eraser mr-1"></i>Clear
+            </button>
+          </div>
+          <p class="text-xs text-slate-400 mt-1">Draw your signature above using mouse or touch</p>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- ── SECTION 6: QSE Info (read-only) ──────────────────────────── -->
+  <div class="form-section">
+    <div class="form-section-header">
+      <i class="fa-solid fa-folder-open"></i> Section 6 – QSE & Filing Information
+    </div>
+    <div class="p-6 space-y-3">
+      <div class="flex gap-4">
+        <span class="text-xs font-semibold text-slate-500 w-32">QSE Activity:</span>
+        <span class="text-sm text-slate-700">No QSE Activity Required</span>
+      </div>
+      <div class="flex gap-4">
+        <span class="text-xs font-semibold text-slate-500 w-32">Filing:</span>
+        <span class="text-sm text-slate-700">Completed Record to be filed within site QA Documentation</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Submit ─────────────────────────────────────────────────────── -->
+  <div class="flex gap-4 justify-end">
+    <a href="{{ url_for('wtg_detail', wtg_id=wtg.id) }}"
+      class="px-6 py-3 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 transition">
+      Cancel
+    </a>
+    <button type="submit"
+      class="px-8 py-3 bg-gradient-to-r from-blue-800 to-blue-600 text-white rounded-xl text-sm font-bold hover:from-blue-700 hover:to-blue-500 transition shadow-lg shadow-blue-900/20">
+      <i class="fa-solid fa-floppy-disk mr-2"></i>Save Proof Roll Record
+    </button>
+  </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Signature Pad ────────────────────────────────────────────────────────────
+const pads = {};
+
+function initSignaturePad(idx) {
+  const canvas  = document.getElementById(`sig-canvas-${idx}`);
+  const input   = document.getElementById(`sig-data-${idx}`);
+  const ctx     = canvas.getContext('2d');
+
+  // Resize canvas to match display size
+  function resize() {
+    const rect = canvas.getBoundingClientRect();
+    canvas.width  = rect.width;
+    canvas.height = rect.height || 100;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  let drawing = false, lastX = 0, lastY = 0;
+
+  function getPos(e) {
+    const r = canvas.getBoundingClientRect();
+    if (e.touches) {
+      return [e.touches[0].clientX - r.left, e.touches[0].clientY - r.top];
+    }
+    return [e.clientX - r.left, e.clientY - r.top];
+  }
+
+  ctx.strokeStyle = '#1e3a5f';
+  ctx.lineWidth   = 2;
+  ctx.lineCap     = 'round';
+  ctx.lineJoin    = 'round';
+
+  canvas.addEventListener('mousedown',  e => { drawing=true; [lastX,lastY]=getPos(e); });
+  canvas.addEventListener('touchstart', e => { e.preventDefault(); drawing=true; [lastX,lastY]=getPos(e); }, {passive:false});
+
+  function draw(e) {
+    if (!drawing) return;
+    e.preventDefault();
+    const [x,y] = getPos(e);
+    ctx.beginPath();
+    ctx.moveTo(lastX, lastY);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+    [lastX,lastY] = [x,y];
+    input.value = canvas.toDataURL();
+    canvas.classList.add('has-sig');
+  }
+  canvas.addEventListener('mousemove',  draw);
+  canvas.addEventListener('touchmove',  draw, {passive:false});
+
+  canvas.addEventListener('mouseup',   () => drawing=false);
+  canvas.addEventListener('touchend',  () => drawing=false);
+  canvas.addEventListener('mouseleave',() => drawing=false);
+
+  pads[idx] = { canvas, ctx, input };
+}
+
+function clearSig(idx) {
+  const p = pads[idx];
+  if (!p) return;
+  p.ctx.clearRect(0, 0, p.canvas.width, p.canvas.height);
+  p.input.value = '';
+  p.canvas.classList.remove('has-sig');
+}
+
+// Init all 4 pads
+[1,2,3,4].forEach(initSignaturePad);
+</script>
+{% endblock %}

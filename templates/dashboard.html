@@ -1,0 +1,176 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard – King Rocks Wind Farm QA{% endblock %}
+{% block page_title %}QA Dashboard{% endblock %}
+{% block page_sub %}Geotechnical Works – {{ wtgs|length }} Turbines{% endblock %}
+
+{% block content %}
+<!-- ── Summary Cards ──────────────────────────────────────────────── -->
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+  <div class="card flex items-center gap-4">
+    <div class="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
+      <i class="fa-solid fa-tower-broadcast text-blue-600 text-xl"></i>
+    </div>
+    <div>
+      <p class="text-2xl font-bold text-slate-800">{{ total }}</p>
+      <p class="text-xs text-slate-500 font-medium">Total WTGs</p>
+    </div>
+  </div>
+  <div class="card flex items-center gap-4">
+    <div class="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
+      <i class="fa-solid fa-circle-check text-green-600 text-xl"></i>
+    </div>
+    <div>
+      <p class="text-2xl font-bold text-slate-800">{{ complete }}</p>
+      <p class="text-xs text-slate-500 font-medium">Complete</p>
+    </div>
+  </div>
+  <div class="card flex items-center gap-4">
+    <div class="w-12 h-12 bg-yellow-100 rounded-xl flex items-center justify-center">
+      <i class="fa-solid fa-spinner text-yellow-600 text-xl"></i>
+    </div>
+    <div>
+      <p class="text-2xl font-bold text-slate-800">{{ in_prog }}</p>
+      <p class="text-xs text-slate-500 font-medium">In Progress</p>
+    </div>
+  </div>
+  <div class="card flex items-center gap-4">
+    <div class="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center">
+      <i class="fa-solid fa-circle-xmark text-red-500 text-xl"></i>
+    </div>
+    <div>
+      <p class="text-2xl font-bold text-slate-800">{{ not_started }}</p>
+      <p class="text-xs text-slate-500 font-medium">Not Started</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Overall Progress ───────────────────────────────────────────── -->
+{% set total_pct = (wtgs | map(attribute='completion_pct') | sum / wtgs|length) | round | int %}
+<div class="card mb-8">
+  <div class="flex items-center justify-between mb-3">
+    <h2 class="font-bold text-slate-800">Overall Project Completion</h2>
+    <span class="text-2xl font-bold text-blue-700">{{ total_pct }}%</span>
+  </div>
+  <div class="w-full bg-slate-100 rounded-full h-4 overflow-hidden">
+    <div class="progress-bar h-4 rounded-full
+      {% if total_pct == 100 %}bg-green-500{% elif total_pct > 50 %}bg-blue-500{% else %}bg-yellow-500{% endif %}"
+      style="width: {{ total_pct }}%"></div>
+  </div>
+  <div class="flex justify-between text-xs text-slate-400 mt-2">
+    <span>0%</span><span>Geotechnical Works</span><span>100%</span>
+  </div>
+</div>
+
+<!-- ── WTG Grid ───────────────────────────────────────────────────── -->
+<div id="wtg-grid">
+  <div class="flex items-center justify-between mb-4">
+    <h2 class="font-bold text-slate-800 text-lg">Wind Turbine Generators</h2>
+    <div class="flex gap-2 text-xs">
+      <span class="badge-green">● Complete</span>
+      <span class="badge-yellow">● In Progress</span>
+      <span class="badge-red">● Not Started</span>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+    {% for wtg in wtgs %}
+    {% set pct = wtg.completion_pct %}
+    <a href="{{ url_for('wtg_detail', wtg_id=wtg.id) }}"
+       class="card hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 group cursor-pointer text-decoration-none">
+      <!-- WTG Icon -->
+      <div class="flex items-center justify-between mb-3">
+        <div class="w-10 h-10 rounded-xl flex items-center justify-center
+          {% if pct == 100 %}bg-green-100{% elif pct > 0 %}bg-yellow-100{% else %}bg-red-100{% endif %}">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" width="22" height="22"
+            fill="{% if pct == 100 %}#16a34a{% elif pct > 0 %}#ca8a04{% else %}#f87171{% endif %}">
+            <polygon points="18,38 22,38 21,16 19,16"/>
+            <rect x="17" y="13" width="6" height="3.5" rx="1"/>
+            <ellipse cx="20" cy="7" rx="2" ry="6" transform="rotate(-15,20,13)"/>
+            <ellipse cx="20" cy="7" rx="2" ry="6" transform="rotate(105,20,13)"/>
+            <ellipse cx="20" cy="7" rx="2" ry="6" transform="rotate(225,20,13)"/>
+          </svg>
+        </div>
+        <span class="text-xs font-bold
+          {% if pct == 100 %}text-green-600{% elif pct > 0 %}text-yellow-600{% else %}text-red-400{% endif %}">
+          {{ pct }}%
+        </span>
+      </div>
+
+      <!-- Name -->
+      <h3 class="font-bold text-slate-800 text-sm group-hover:text-blue-700 transition-colors">{{ wtg.name }}</h3>
+      <p class="text-xs text-slate-400 mb-3">King Rocks WF</p>
+
+      <!-- Progress bar -->
+      <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+        <div class="progress-bar h-2 rounded-full
+          {% if pct == 100 %}bg-green-500{% elif pct > 0 %}bg-yellow-500{% else %}bg-red-300{% endif %}"
+          style="width: {{ pct }}%"></div>
+      </div>
+
+      <!-- Area dots -->
+      <div class="flex gap-1 mt-3">
+        {% for area in wtg.areas %}
+        <div class="flex-1 h-1.5 rounded-full
+          {% if area.completion_pct == 100 %}bg-green-500
+          {% elif area.completion_pct > 0 %}bg-yellow-400
+          {% else %}bg-red-300{% endif %}"
+          title="{{ area.label }}: {{ area.completion_pct }}%"></div>
+        {% endfor %}
+      </div>
+      <div class="flex gap-1 mt-1">
+        <span class="text-xs text-slate-300 truncate" style="font-size:9px">H·C·B·BF</span>
+      </div>
+
+      <div class="mt-3 text-xs text-blue-600 font-medium group-hover:underline">
+        View details <i class="fa-solid fa-arrow-right text-xs"></i>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- ── Test Matrix Legend ─────────────────────────────────────────── -->
+<div class="card mt-8">
+  <h2 class="font-bold text-slate-800 mb-4">Test Matrix Reference</h2>
+  <div class="overflow-x-auto">
+    <table class="w-full text-xs">
+      <thead>
+        <tr class="border-b border-slate-200">
+          <th class="text-left py-2 pr-4 text-slate-600 font-semibold">Test</th>
+          <th class="text-center py-2 px-3 font-semibold" style="color:#ef4444">Hardstand</th>
+          <th class="text-center py-2 px-3 font-semibold" style="color:#22c55e">Crane Pad</th>
+          <th class="text-center py-2 px-3 font-semibold" style="color:#eab308">Boom Pad</th>
+          <th class="text-center py-2 px-3 font-semibold" style="color:#3b82f6">Blade Fingers</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        {% set matrix = [
+          ('DCP Test', True, True, True, True),
+          ('Subgrade Compaction', True, True, True, True),
+          ('Subbase Compaction', True, True, True, False),
+          ('Basecourse Compaction', True, True, True, True),
+          ('Proof Roll – Foundation', True, True, False, True),
+          ('Proof Roll – Subgrade', True, True, False, True),
+          ('Proof Roll – Subbase', True, True, False, False),
+          ('Proof Roll – Basecourse', True, True, False, True),
+          ('Plate Load Test', True, False, False, False),
+        ] %}
+        {% for row in matrix %}
+        <tr class="hover:bg-slate-50">
+          <td class="py-2 pr-4 font-medium text-slate-700">{{ row[0] }}</td>
+          {% for val in row[1:] %}
+          <td class="py-2 px-3 text-center">
+            {% if val %}
+              <i class="fa-solid fa-check text-green-500"></i>
+            {% else %}
+              <i class="fa-solid fa-minus text-slate-200"></i>
+            {% endif %}
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,131 @@
+{% extends 'base.html' %}
+{% block title %}ITP – King Rocks Wind Farm{% endblock %}
+{% block page_title %}Inspection & Test Plans{% endblock %}
+{% block page_sub %}Select WTG and ITP type to view or sign{% endblock %}
+
+{% block head %}
+<style>
+  .itp-card {
+    transition: all 0.2s;
+    cursor: pointer;
+    text-decoration: none;
+  }
+  .itp-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.10);
+  }
+  .status-pill {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    padding: 2px 8px;
+    border-radius: 999px;
+    text-transform: uppercase;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Header banner -->
+<div class="bg-gradient-to-r from-violet-800 to-violet-600 text-white rounded-2xl p-6 mb-8 flex items-center justify-between">
+  <div>
+    <p class="text-xs text-violet-300 font-semibold uppercase tracking-wider mb-1">CBOP · King Rocks Wind Farm</p>
+    <h2 class="text-2xl font-bold">Inspection & Test Plans</h2>
+    <p class="text-violet-200 text-sm mt-1">ITP#2 Access Road · ITP#3 Hardstand / Crane Pads / Blade Laydowns</p>
+  </div>
+  <div class="w-16 h-16 rounded-2xl bg-white/20 flex items-center justify-center">
+    <i class="fa-solid fa-clipboard-list text-white text-3xl"></i>
+  </div>
+</div>
+
+<!-- Quick selector -->
+<div class="bg-white border border-slate-200 rounded-2xl p-6 mb-8 shadow-sm">
+  <h3 class="text-sm font-bold text-slate-700 uppercase tracking-wider mb-4">Open an ITP</h3>
+  <form method="GET" action="#" id="quick-form" class="flex flex-wrap gap-4 items-end">
+    <div class="flex-1 min-w-[200px]">
+      <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">WTG</label>
+      <select id="sel-wtg" name="wtg"
+        class="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm font-medium focus:border-violet-500 focus:ring-2 focus:ring-violet-100 outline-none">
+        <option value="">— Select WTG —</option>
+        {% for wtg in wtgs %}
+        <option value="{{ wtg.id }}">{{ wtg.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="flex-1 min-w-[200px]">
+      <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">ITP Type</label>
+      <select id="sel-itp" name="itp"
+        class="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm font-medium focus:border-violet-500 focus:ring-2 focus:ring-violet-100 outline-none">
+        <option value="">— Select ITP —</option>
+        {% for key, defn in itp_defs.items() %}
+        <option value="{{ key }}">{{ defn.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="button" onclick="openITP()"
+      class="px-8 py-3 bg-gradient-to-r from-violet-700 to-violet-600 text-white rounded-xl text-sm font-bold hover:from-violet-600 hover:to-violet-500 transition shadow-lg shadow-violet-900/20">
+      <i class="fa-solid fa-arrow-right mr-2"></i>Open ITP
+    </button>
+  </form>
+</div>
+
+<!-- All WTGs grid -->
+{% for itp_key, defn in itp_defs.items() %}
+<div class="mb-8">
+  <div class="flex items-center gap-3 mb-4">
+    <div class="w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center">
+      <i class="fa-solid fa-clipboard-check text-violet-600 text-sm"></i>
+    </div>
+    <div>
+      <h3 class="font-bold text-slate-800">{{ defn.name }}</h3>
+      <p class="text-xs text-slate-500">Rev {{ defn.revision }} · {{ defn.date }} · Spec: {{ defn.spec }}</p>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+    {% for wtg in wtgs %}
+    {% set rec = by_key.get((wtg.id, itp_key)) %}
+    <a href="{{ url_for('itp_detail', wtg_id=wtg.id, itp_type=itp_key) }}" class="itp-card block">
+      <div class="bg-white border rounded-xl p-4
+        {% if rec and rec.status == 'complete' %}border-green-300 bg-green-50
+        {% elif rec and rec.status == 'client_invited' %}border-blue-300 bg-blue-50
+        {% elif rec and rec.status == 'engineer_signed' %}border-violet-300 bg-violet-50
+        {% elif rec %}border-yellow-200 bg-yellow-50
+        {% else %}border-slate-200{% endif %}">
+        <p class="font-bold text-slate-800 text-sm mb-1">{{ wtg.name }}</p>
+        {% if rec %}
+          {% if rec.status == 'complete' %}
+            <span class="status-pill bg-green-100 text-green-700">Complete</span>
+          {% elif rec.status == 'client_invited' %}
+            <span class="status-pill bg-blue-100 text-blue-700">Client Invited</span>
+          {% elif rec.status == 'engineer_signed' %}
+            <span class="status-pill bg-violet-100 text-violet-700">Eng. Signed</span>
+          {% else %}
+            <span class="status-pill bg-yellow-100 text-yellow-700">In Progress</span>
+          {% endif %}
+          <p class="text-xs text-slate-400 mt-1">
+            {{ rec.items_complete_count }}/{{ defn['items']|length }} items
+          </p>
+        {% else %}
+          <span class="status-pill bg-slate-100 text-slate-500">Not Started</span>
+        {% endif %}
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+</div>
+{% endfor %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function openITP() {
+  const wtg = document.getElementById('sel-wtg').value;
+  const itp = document.getElementById('sel-itp').value;
+  if (!wtg || !itp) { alert('Please select both a WTG and an ITP type.'); return; }
+  window.location.href = `/itp/${wtg}/${itp}`;
+}
+</script>
+{% endblock %}

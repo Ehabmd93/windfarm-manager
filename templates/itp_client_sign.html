@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>{{ defn.get('name','ITP') }} – Client Sign-off · {{ wtg.name }}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <style>
+    body { font-family:-apple-system,BlinkMacSystemFont,'Inter',sans-serif; background:#f0f4f8; }
+    .code-badge { font-size:10px;font-weight:800;padding:2px 7px;border-radius:5px; }
+    .code-H  { background:#fef2f2;color:#dc2626; }
+    .code-W  { background:#eff6ff;color:#2563eb; }
+    .code-T  { background:#fdf4ff;color:#7c3aed; }
+    .code-C  { background:#f0fdf4;color:#16a34a; }
+    .code-M  { background:#fff7ed;color:#ea580c; }
+    .code-DR { background:#f8fafc;color:#64748b;border:1px solid #e2e8f0; }
+    .crit-row { border-bottom:1px solid #f1f5f9; }
+    .crit-row:last-child { border-bottom:none; }
+    .sig-pad-wrap { border:2px dashed #cbd5e1;border-radius:12px;background:#fafafa;padding:8px; }
+    #client-sig-canvas { display:block;width:100%;height:140px;touch-action:none;cursor:crosshair;border-radius:8px; }
+  </style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="bg-gradient-to-r from-blue-800 to-blue-600 text-white px-5 py-5">
+  <div class="max-w-2xl mx-auto flex items-start gap-4">
+    <div class="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
+      <i class="fa-solid fa-clipboard-list text-2xl"></i>
+    </div>
+    <div class="flex-1">
+      <p class="text-xs text-blue-300 font-semibold uppercase tracking-wider">CBOP · King Rocks Wind Farm</p>
+      <h1 class="text-xl font-bold">{{ defn.get('name','ITP') }}</h1>
+      <p class="text-blue-200 text-sm">{{ wtg.name }} · Client Review &amp; Sign-off</p>
+    </div>
+    <div class="ml-auto flex-shrink-0 mt-1">
+      {% if record.status == 'complete' %}
+      <span class="bg-green-400 text-green-900 text-xs font-bold px-3 py-1 rounded-full">ITP COMPLETE ✓</span>
+      {% else %}
+      <span class="bg-yellow-300 text-yellow-900 text-xs font-bold px-3 py-1 rounded-full">AWAITING YOUR SIGNATURE</span>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Flash messages -->
+<div class="max-w-2xl mx-auto px-4 mt-4">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in messages %}
+  <div class="mb-3 px-4 py-3 rounded-xl text-sm font-medium
+    {% if cat=='success' %}bg-green-50 text-green-800 border border-green-200
+    {% else %}bg-red-50 text-red-800 border border-red-200{% endif %}">
+    {{ msg }}
+  </div>
+  {% endfor %}
+  {% endwith %}
+</div>
+
+<div class="max-w-2xl mx-auto px-4 py-5">
+
+  <!-- ITP Summary card -->
+  <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 mb-5">
+    <h2 class="font-bold text-slate-800 mb-3 text-sm uppercase tracking-wider">ITP Summary</h2>
+    <div class="grid grid-cols-2 gap-3 text-sm">
+      <div><span class="text-slate-400 text-xs">WTG</span><p class="font-bold">{{ wtg.name }}</p></div>
+      <div><span class="text-slate-400 text-xs">Spec</span><p class="font-bold">{{ defn.get('spec','') }}</p></div>
+      <div><span class="text-slate-400 text-xs">Revision</span><p class="font-bold">Rev {{ defn.get('revision','') }} · {{ defn.get('date','') }}</p></div>
+      <div><span class="text-slate-400 text-xs">Works</span><p class="font-bold">{{ defn.get('works','') }}</p></div>
+      {% if record.lot_number %}<div><span class="text-slate-400 text-xs">Lot</span><p class="font-bold">{{ record.lot_number }}</p></div>{% endif %}
+      {% if record.location   %}<div><span class="text-slate-400 text-xs">Location</span><p class="font-bold">{{ record.location }}</p></div>{% endif %}
+      <div><span class="text-slate-400 text-xs">Engineer</span><p class="font-bold">{{ record.engineer_name or 'Lucas' }} · {{ record.engineer_company or 'CBOP' }}</p></div>
+      <div><span class="text-slate-400 text-xs">Client</span><p class="font-bold">{{ record.client_name }} · {{ record.client_company }}</p></div>
+    </div>
+    <div class="mt-3 pt-3 border-t border-slate-100">
+      <p class="text-xs text-slate-500 italic">{{ defn.get('scope','') }}</p>
+    </div>
+  </div>
+
+  {% if record.status == 'complete' %}
+  <!-- ── Already signed ────────────────────────────────────────────── -->
+  <div class="bg-green-50 border border-green-300 rounded-2xl p-6 text-center mb-5">
+    <i class="fa-solid fa-circle-check text-green-500 text-5xl mb-3"></i>
+    <h2 class="text-xl font-bold text-green-800 mb-1">ITP Signed</h2>
+    <p class="text-green-700 text-sm">Signed by <strong>{{ record.client_name }}</strong> on
+      {{ record.client_signed_at.strftime('%d %b %Y at %H:%M') if record.client_signed_at else '–' }}</p>
+    {% if record.client_signature %}
+    <img src="{{ record.client_signature }}" class="mt-4 h-20 mx-auto border border-green-200 rounded-xl bg-white" alt="Your signature"/>
+    {% endif %}
+  </div>
+
+  {% else %}
+  <!-- ── Checklist review ───────────────────────────────────────────── -->
+  <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-5">
+    <div class="bg-blue-700 text-white px-5 py-3 text-sm font-bold flex items-center gap-2">
+      <i class="fa-solid fa-list-check"></i> Review — Signed Criteria
+      <span class="ml-auto text-blue-300 text-xs font-normal">Items signed by engineer shown below</span>
+    </div>
+
+    {% for item in defn.get('items', []) %}
+    <div class="border-b border-slate-100 last:border-0">
+      <!-- Activity header -->
+      <div class="bg-slate-50 px-5 py-3 flex items-center gap-3 border-b border-slate-100">
+        <span class="text-xs font-bold text-slate-400">{{ item.no }}.</span>
+        <span class="font-bold text-slate-700 text-sm">{{ item.activity }}</span>
+        {% if item.client_codes %}
+        <div class="flex gap-1 ml-auto">
+          {% for code in item.client_codes %}
+          <span class="code-badge code-{{ code }}">{{ code }}</span>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+
+      {% for crit in item.criteria %}
+      {% set ci = loop.index0 %}
+      {% set s  = statuses.get((item.no, ci)) %}
+      {% set row = item.rows[ci] if ci < item.rows|length else {} %}
+
+      <div class="crit-row px-5 py-3">
+        <div class="flex items-start gap-3">
+          <!-- Status dot -->
+          <div class="w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center mt-0.5
+            {% if s and s.lucas_complete %}bg-green-100{% else %}bg-slate-100{% endif %}">
+            {% if s and s.lucas_complete %}
+            <i class="fa-solid fa-check text-green-600" style="font-size:10px"></i>
+            {% else %}
+            <i class="fa-solid fa-minus text-slate-400" style="font-size:10px"></i>
+            {% endif %}
+          </div>
+
+          <div class="flex-1 min-w-0">
+            <!-- Code + frequency -->
+            {% if row %}
+            <div class="flex items-center gap-2 mb-1 flex-wrap">
+              <span class="code-badge code-{{ row.inspection.split('&')[0] }}">{{ row.inspection }}</span>
+              <span class="text-xs text-slate-400">{{ row.frequency }}</span>
+            </div>
+            {% endif %}
+
+            <!-- Criterion text -->
+            <p class="text-sm {% if s and s.lucas_complete %}text-slate-700{% else %}text-slate-400{% endif %} leading-relaxed">
+              {{ crit }}
+            </p>
+
+            <!-- Engineer signature preview -->
+            {% if s and s.lucas_complete %}
+            <div class="flex items-center gap-3 mt-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+              {% if s.lucas_signature %}
+              <img src="{{ s.lucas_signature }}" class="h-9 rounded border border-green-200 bg-white" alt="eng sig"/>
+              {% endif %}
+              <div>
+                <p class="text-xs font-bold text-green-800">
+                  <i class="fa-solid fa-check-circle mr-1"></i>{{ record.engineer_name or 'Lucas' }} · {{ record.engineer_company or 'CBOP' }}
+                </p>
+                <p class="text-xs text-green-600">
+                  {{ s.lucas_date.strftime('%d %b %Y') if s.lucas_date else '' }}
+                  {% if s.lucas_comments %} · {{ s.lucas_comments }}{% endif %}
+                </p>
+              </div>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- ── Client final signature ─────────────────────────────────────── -->
+  <div class="bg-white rounded-2xl border border-blue-200 shadow-sm overflow-hidden mb-6">
+    <div class="bg-blue-700 text-white px-5 py-3 text-sm font-bold flex items-center gap-2">
+      <i class="fa-solid fa-pen-nib"></i> Your Signature — {{ record.client_name }}
+    </div>
+    <div class="p-5">
+      <p class="text-sm text-slate-600 mb-4">
+        By signing below, <strong>{{ record.client_name }}</strong> ({{ record.client_company }}) confirms
+        that the above ITP for <strong>{{ wtg.name }}</strong> has been reviewed and accepted.
+      </p>
+      <form method="POST" id="client-sign-form">
+        <input type="hidden" name="action" value="client_sign"/>
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+          Draw Your Signature <span class="text-red-500">*</span>
+        </label>
+        <div class="sig-pad-wrap mb-4">
+          <canvas id="client-sig-canvas" width="600" height="140"></canvas>
+        </div>
+        <input type="hidden" name="client_signature" id="client-sig-data"/>
+        <div class="flex gap-3">
+          <button type="button" onclick="clearClientSig()"
+            class="px-4 py-2.5 border border-slate-200 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-50">
+            <i class="fa-solid fa-eraser mr-1"></i>Clear
+          </button>
+          <button type="submit" onclick="return captureClientSig()"
+            class="flex-1 py-3 bg-gradient-to-r from-green-700 to-green-600 text-white rounded-xl text-sm font-bold hover:from-green-600 hover:to-green-500 transition shadow-lg">
+            <i class="fa-solid fa-signature mr-2"></i>Sign &amp; Submit ITP
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+
+</div><!-- max-w-2xl -->
+
+<div class="text-center text-xs text-slate-400 py-5 mt-2 border-t border-slate-200">
+  King Rocks Wind Farm QA Manager · CBOP · Uncontrolled When Printed
+</div>
+
+<script>
+// Client signature canvas
+const ccanvas = document.getElementById('client-sig-canvas');
+if (ccanvas) {
+  const cctx  = ccanvas.getContext('2d');
+  let drawing = false;
+  ccanvas.hasContent = false;
+
+  function gp(e) {
+    const r = ccanvas.getBoundingClientRect();
+    const s = e.touches ? e.touches[0] : e;
+    return {
+      x: (s.clientX - r.left) * (ccanvas.width  / r.width),
+      y: (s.clientY - r.top)  * (ccanvas.height / r.height)
+    };
+  }
+
+  ccanvas.addEventListener('pointerdown', e => {
+    drawing = true;
+    ccanvas.hasContent = true;
+    const p = gp(e);
+    cctx.beginPath();
+    cctx.moveTo(p.x, p.y);
+    ccanvas.setPointerCapture(e.pointerId);
+  });
+  ccanvas.addEventListener('pointermove', e => {
+    if (!drawing) return;
+    const p = gp(e);
+    cctx.lineTo(p.x, p.y);
+    cctx.strokeStyle = '#1e293b';
+    cctx.lineWidth   = 2.5;
+    cctx.lineCap     = 'round';
+    cctx.lineJoin    = 'round';
+    cctx.stroke();
+  });
+  ccanvas.addEventListener('pointerup',    () => drawing = false);
+  ccanvas.addEventListener('pointerleave', () => drawing = false);
+
+  window.clearClientSig = () => {
+    cctx.clearRect(0, 0, ccanvas.width, ccanvas.height);
+    ccanvas.hasContent = false;
+  };
+
+  window.captureClientSig = () => {
+    if (!ccanvas.hasContent) {
+      // Fallback pixel check
+      const pd = cctx.getImageData(0, 0, ccanvas.width, ccanvas.height).data;
+      if (!Array.from(pd).some((v,i) => i%4===3 && v>0)) {
+        alert('Please draw your signature before submitting.');
+        return false;
+      }
+    }
+    document.getElementById('client-sig-data').value = ccanvas.toDataURL('image/png');
+    return true;
+  };
+}
+</script>
+</body>
+</html>

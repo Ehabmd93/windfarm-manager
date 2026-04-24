@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>{% block title %}King Rocks Wind Farm – QA Manager{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: { 50:'#f0fdf4',100:'#dcfce7',500:'#22c55e',600:'#16a34a',700:'#15803d',800:'#166534',900:'#14532d' },
+            cbop:  { 500:'#0f4c81', 600:'#0a3d6b', 700:'#072f52' }
+          }
+        }
+      }
+    }
+  </script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <style>
+    .sidebar-link {
+      display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:10px;
+      color:#94a3b8;font-size:13px;font-weight:500;text-decoration:none;
+      transition:all 0.15s;border:1px solid transparent;
+    }
+    .sidebar-link:hover { background:rgba(255,255,255,0.07);color:#e2e8f0;border-color:rgba(255,255,255,0.06); }
+    .sidebar-link.active { background:rgba(255,255,255,0.12);color:#fff;border-color:rgba(255,255,255,0.1);font-weight:600; }
+    .nav-section {
+      margin-top:20px;margin-bottom:4px;padding:0 12px;
+      font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;
+      color:#475569;display:flex;align-items:center;gap:6px;
+    }
+    .nav-section::before { content:'';display:block;width:3px;height:3px;border-radius:50%;background:currentColor;opacity:0.6; }
+    .card { @apply bg-white rounded-2xl shadow-sm border border-slate-100 p-6; }
+    .badge-green  { @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800; }
+    .badge-yellow { @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800; }
+    .badge-red    { @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-800; }
+    .badge-blue   { @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800; }
+    .progress-bar { transition: width 0.8s ease; }
+    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body class="h-full bg-slate-50 flex">
+
+  <!-- ── Sidebar ─────────────────────────────────────────────────────── -->
+  <aside style="width:240px;min-height:100vh;background:#0d1f35;display:flex;flex-direction:column;position:fixed;left:0;top:0;z-index:30;box-shadow:4px 0 24px rgba(0,0,0,0.25);">
+
+    <!-- Logo -->
+    <div style="padding:20px 16px 16px;border-bottom:1px solid rgba(255,255,255,0.07);">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div style="width:42px;height:42px;background:linear-gradient(135deg,#0ea5e9,#0284c7);border-radius:12px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(14,165,233,0.4);flex-shrink:0;">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" width="24" height="24" fill="white">
+            <polygon points="18,38 22,38 21,16 19,16"/>
+            <rect x="17" y="13" width="6" height="3.5" rx="1"/>
+            <ellipse cx="20" cy="7" rx="2" ry="6" transform="rotate(-15,20,13)"/>
+            <ellipse cx="20" cy="7" rx="2" ry="6" transform="rotate(105,20,13)"/>
+            <ellipse cx="20" cy="7" rx="2" ry="6" transform="rotate(225,20,13)"/>
+          </svg>
+        </div>
+        <div>
+          <p style="color:#f1f5f9;font-weight:700;font-size:14px;line-height:1.2;">King Rocks</p>
+          <p style="color:#64748b;font-size:11px;margin-top:1px;">Wind Farm QA</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Nav -->
+    <nav style="flex:1;padding:12px 10px;overflow-y:auto;">
+
+      <!-- Overview -->
+      <a href="{{ url_for('dashboard') }}" class="sidebar-link {% if request.endpoint=='dashboard' %}active{% endif %}">
+        <i class="fa-solid fa-gauge-high" style="width:16px;color:#60a5fa;"></i>
+        <span>Dashboard</span>
+      </a>
+      <a href="{{ url_for('map_view') }}" class="sidebar-link {% if request.endpoint=='map_view' %}active{% endif %}"
+         style="background:rgba(16,185,129,0.1);border-color:rgba(16,185,129,0.2);margin-top:4px;">
+        <i class="fa-solid fa-map" style="width:16px;color:#34d399;"></i>
+        <span style="color:#6ee7b7;font-weight:600;">Live Map</span>
+        <span style="margin-left:auto;font-size:9px;background:#059669;color:white;padding:2px 6px;border-radius:10px;font-weight:700;">LIVE</span>
+      </a>
+
+      <!-- Turbines -->
+      <div class="nav-section" style="color:#3b82f6;">Turbines</div>
+      <a href="{{ url_for('dashboard') }}#wtg-grid" class="sidebar-link {% if request.endpoint=='dashboard' and not loop is defined %}active{% endif %}">
+        <i class="fa-solid fa-tower-broadcast" style="width:16px;color:#60a5fa;"></i>
+        <span>All WTGs</span>
+      </a>
+
+      <!-- QA Work -->
+      <div class="nav-section" style="color:#f59e0b;">QA Work</div>
+      <a href="#" class="sidebar-link {% if request.endpoint in ['proof_roll_form','view_proof_roll'] %}active{% endif %}">
+        <i class="fa-solid fa-file-circle-check" style="width:16px;color:#fbbf24;"></i>
+        <span>Proof Rolls</span>
+      </a>
+      <a href="#" class="sidebar-link {% if request.endpoint=='test_record' %}active{% endif %}">
+        <i class="fa-solid fa-clipboard-check" style="width:16px;color:#fbbf24;"></i>
+        <span>Test Records</span>
+      </a>
+
+      <!-- Inspection -->
+      <div class="nav-section" style="color:#a78bfa;">Inspection</div>
+      <a href="{{ url_for('itp_index') }}" class="sidebar-link {% if request.endpoint in ('itp_index','itp_detail') %}active{% endif %}">
+        <i class="fa-solid fa-clipboard-list" style="width:16px;color:#c4b5fd;"></i>
+        <span>ITPs</span>
+      </a>
+      <a href="{{ url_for('itp_export') }}" class="sidebar-link {% if request.endpoint == 'itp_export' %}active{% endif %}">
+        <i class="fa-solid fa-file-arrow-down" style="width:16px;color:#a78bfa;"></i>
+        <span>ITP Export</span>
+      </a>
+
+      <!-- Foundation -->
+      <div class="nav-section" style="color:#fb923c;">Foundation</div>
+      <a href="{{ url_for('foundation_index') }}" class="sidebar-link {% if request.endpoint == 'foundation_index' %}active{% endif %}">
+        <i class="fa-solid fa-layer-group" style="width:16px;color:#fb923c;"></i>
+        <span>Foundation Tracker</span>
+      </a>
+      {% if current_user.role == 'admin' %}
+      <a href="{{ url_for('foundation_stage_settings') }}" class="sidebar-link {% if request.endpoint == 'foundation_stage_settings' %}active{% endif %}">
+        <i class="fa-solid fa-sliders" style="width:16px;color:#fdba74;"></i>
+        <span>Stage Settings</span>
+      </a>
+      {% endif %}
+
+      <!-- Analytics -->
+      <div class="nav-section" style="color:#22d3ee;">Analytics</div>
+      <a href="{{ url_for('progress_tracker') }}" class="sidebar-link {% if request.endpoint=='progress_tracker' %}active{% endif %}">
+        <i class="fa-solid fa-chart-line" style="width:16px;color:#22d3ee;"></i>
+        <span>Progress Tracker</span>
+      </a>
+      {% if current_user.is_authenticated and current_user.role in ['engineer','manager'] %}
+      <a href="{{ url_for('custom_fields') }}" class="sidebar-link {% if request.endpoint=='custom_fields' %}active{% endif %}">
+        <i class="fa-solid fa-sliders" style="width:16px;color:#94a3b8;"></i>
+        <span>Custom Fields</span>
+      </a>
+      {% endif %}
+    </nav>
+
+    <!-- User -->
+    <div style="padding:12px 10px;border-top:1px solid rgba(255,255,255,0.07);">
+      {% if current_user.is_authenticated %}
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;background:rgba(255,255,255,0.05);">
+        <div style="width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#0ea5e9,#6366f1);display:flex;align-items:center;justify-content:center;color:white;font-size:13px;font-weight:700;flex-shrink:0;">
+          {{ current_user.name[0] }}
+        </div>
+        <div style="flex:1;min-width:0;">
+          <p style="color:#e2e8f0;font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ current_user.name }}</p>
+          <p style="color:#64748b;font-size:10px;text-transform:capitalize;">{{ current_user.role }}</p>
+        </div>
+        <a href="{{ url_for('logout') }}" style="color:#475569;text-decoration:none;font-size:13px;padding:4px;" title="Logout"
+           onmouseover="this.style.color='#94a3b8'" onmouseout="this.style.color='#475569'">
+          <i class="fa-solid fa-right-from-bracket"></i>
+        </a>
+      </div>
+      {% endif %}
+    </div>
+  </aside>
+
+  <!-- ── Main ─────────────────────────────────────────────────────────── -->
+  <div style="margin-left:240px;" class="flex-1 flex flex-col min-h-screen">
+    <!-- Top bar -->
+    <header class="bg-white border-b border-slate-200 px-8 py-4 flex items-center justify-between sticky top-0 z-20">
+      <div>
+        <h1 class="text-lg font-bold text-slate-800">{% block page_title %}Dashboard{% endblock %}</h1>
+        <p class="text-xs text-slate-500">King Rocks Wind Farm · CBOP · {% block page_sub %}{% endblock %}</p>
+      </div>
+      <div class="flex items-center gap-3">
+        <span class="text-xs text-slate-400">{{ now.strftime('%d %b %Y') if now else '' }}</span>
+        {% if current_user.is_authenticated %}
+        <span class="badge-blue capitalize">{{ current_user.role }}</span>
+        {% endif %}
+      </div>
+    </header>
+
+    <!-- Flash messages -->
+    <div class="px-8 pt-4">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, msg in messages %}
+          <div class="mb-3 flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium
+            {% if category=='success' %}bg-green-50 text-green-800 border border-green-200
+            {% elif category=='danger' %}bg-red-50 text-red-800 border border-red-200
+            {% else %}bg-blue-50 text-blue-800 border border-blue-200{% endif %}">
+            <i class="fa-solid {% if category=='success' %}fa-circle-check{% elif category=='danger' %}fa-circle-xmark{% else %}fa-circle-info{% endif %}"></i>
+            {{ msg }}
+          </div>
+        {% endfor %}
+      {% endwith %}
+    </div>
+
+    <!-- Page content -->
+    <main class="flex-1 px-8 py-6">
+      {% block content %}{% endblock %}
+    </main>
+
+    <footer class="px-8 py-4 text-center text-xs text-slate-400 border-t border-slate-100">
+      King Rocks Wind Farm QA Manager · CBOP · OPER-FRM-057 · Uncontrolled When Printed
+    </footer>
+  </div>
+
+  <script>
+    // Auto-hide flash after 5s
+    setTimeout(() => {
+      document.querySelectorAll('[data-flash]').forEach(el => el.remove());
+    }, 5000);
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

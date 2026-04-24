@@ -1,0 +1,299 @@
+{% extends 'base.html' %}
+{% block title %}{{ wtg.name }} Foundation – King Rocks QA{% endblock %}
+{% block page_title %}{{ wtg.name }} – Foundation{% endblock %}
+{% block page_sub %}Geotechnical Works · {{ stages.values() | selectattr('status','equalto','complete') | list | length }}/{{ stage_order|length }} stages complete{% endblock %}
+
+{% block head %}
+<style>
+  .stage-card { border-radius:16px;border:1px solid #e2e8f0;background:#fff;overflow:hidden;transition:box-shadow .2s; }
+  .stage-card:hover { box-shadow:0 4px 20px rgba(0,0,0,0.07); }
+  .stage-header { display:flex;align-items:center;gap:12px;padding:16px 20px;cursor:pointer;user-select:none; }
+  .stage-body { display:none;padding:0 20px 20px; }
+  .stage-body.open { display:block; }
+  .status-badge { padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700; }
+  .st-complete    { background:#dcfce7;color:#15803d; }
+  .st-approved    { background:#dbeafe;color:#1d4ed8; }
+  .st-in_review   { background:#fef9c3;color:#854d0e; }
+  .st-in_progress { background:#fed7aa;color:#9a3412; }
+  .st-not_started { background:#f1f5f9;color:#64748b; }
+  .doc-card { display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid #e2e8f0;border-radius:10px;background:#fafafa; }
+  .doc-icon { width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0; }
+  .upload-zone { border:2px dashed #cbd5e1;border-radius:12px;padding:20px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s; }
+  .upload-zone:hover,.upload-zone.drag-over { border-color:#3b82f6;background:#eff6ff; }
+</style>
+{% endblock %}
+
+{% block content %}
+{% set complete_count = stages.values() | selectattr('status','equalto','complete') | list | length %}
+
+<!-- Back nav + progress -->
+<div class="flex items-center gap-3 mb-6">
+  <a href="{{ url_for('foundation_index') }}" class="text-slate-400 hover:text-slate-700 text-sm">
+    <i class="fa-solid fa-arrow-left mr-1"></i> All Foundations
+  </a>
+  <span class="text-slate-300">/</span>
+  <span class="text-slate-700 font-semibold">{{ wtg.name }}</span>
+  <span class="ml-auto text-sm font-bold {% if complete_count == stage_order|length %}text-green-600{% else %}text-blue-600{% endif %}">
+    {{ complete_count }}/{{ stage_order|length }} stages complete
+  </span>
+</div>
+
+<!-- Progress bar -->
+<div class="card mb-6 py-4">
+  <div class="flex items-center justify-between mb-2">
+    <span class="text-sm font-semibold text-slate-700">Foundation Progress</span>
+    <span class="text-lg font-bold text-blue-700">{{ ((complete_count / stage_order|length * 100) | int) if stage_order else 0 }}%</span>
+  </div>
+  <div class="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
+    {% set pct = ((complete_count / stage_order|length * 100) | int) if stage_order else 0 %}
+    <div class="h-3 rounded-full {% if pct == 100 %}bg-green-500{% else %}bg-blue-500{% endif %} progress-bar"
+         style="width:{{ pct }}%"></div>
+  </div>
+  <!-- Stage pills -->
+  <div class="flex gap-1.5 mt-3 flex-wrap">
+    {% for key, label in stage_order %}
+    {% set s = stages.get(key) %}
+    <a href="#stage-{{ key }}"
+       class="h-2.5 rounded-full flex-1 min-w-[18px] transition-all hover:opacity-70
+         {% if s and s.status == 'complete' %}bg-green-500
+         {% elif s and s.status == 'approved' %}bg-blue-400
+         {% elif s and s.status == 'in_review' %}bg-yellow-400
+         {% elif s and s.status == 'in_progress' %}bg-orange-400
+         {% else %}bg-slate-200{% endif %}"
+       title="{{ label }}{% if s %}: {{ s.status.replace('_',' ').title() }}{% endif %}"></a>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Stage cards -->
+<div class="space-y-3">
+  {% for key, label in stage_order %}
+  {% set s = stages.get(key) %}
+  {% if s %}
+  <div class="stage-card" id="stage-{{ key }}">
+    <div class="stage-header" onclick="toggleStage('{{ key }}')">
+      <!-- Stage number -->
+      <div class="w-9 h-9 rounded-xl flex items-center justify-center text-xs font-bold flex-shrink-0
+        {% if s.status == 'complete' %}bg-green-100 text-green-700
+        {% elif s.status in ['approved','in_review'] %}bg-blue-100 text-blue-700
+        {% elif s.status == 'in_progress' %}bg-orange-100 text-orange-700
+        {% else %}bg-slate-100 text-slate-400{% endif %}">
+        {{ loop.index }}
+      </div>
+
+      <!-- Label -->
+      <div class="flex-1 min-w-0">
+        <p class="font-bold text-slate-800 text-sm">{{ label }}</p>
+        {% if s.date_completed %}
+        <p class="text-xs text-slate-400">
+          <i class="fa-solid fa-calendar-check mr-1"></i>{{ s.date_completed.strftime('%d %b %Y') }}
+        </p>
+        {% elif s.status == 'not_started' %}
+        <p class="text-xs text-slate-400">Not started yet</p>
+        {% endif %}
+      </div>
+
+      <!-- Status badge -->
+      <span class="status-badge st-{{ s.status }}">{{ s.status.replace('_',' ').title() }}</span>
+
+      <!-- Doc count -->
+      <span class="text-xs text-slate-400 flex items-center gap-1 flex-shrink-0">
+        <i class="fa-solid fa-paperclip"></i>
+        <span id="doc-count-{{ s.id }}">{{ s.documents|length }}</span>
+      </span>
+
+      <!-- Chevron -->
+      <i class="fa-solid fa-chevron-down text-slate-400 text-xs transition-transform flex-shrink-0" id="chev-{{ key }}"></i>
+    </div>
+
+    <!-- Expandable body -->
+    <div class="stage-body" id="body-{{ key }}">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+
+        <!-- LEFT: Status + notes -->
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Status</label>
+          <select id="status-{{ s.id }}" onchange="updateStage({{ s.id }})"
+            class="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-blue-400">
+            <option value="not_started"  {% if s.status=='not_started'  %}selected{% endif %}>Not Started</option>
+            <option value="in_progress"  {% if s.status=='in_progress'  %}selected{% endif %}>In Progress</option>
+            <option value="in_review"    {% if s.status=='in_review'    %}selected{% endif %}>In Review</option>
+            <option value="approved"     {% if s.status=='approved'     %}selected{% endif %}>Approved</option>
+            <option value="complete"     {% if s.status=='complete'     %}selected{% endif %}>Complete</option>
+          </select>
+
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Date Completed</label>
+          <input type="date" id="date-{{ s.id }}"
+            value="{{ s.date_completed.strftime('%Y-%m-%d') if s.date_completed else '' }}"
+            onchange="updateStage({{ s.id }})"
+            class="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-blue-400"/>
+
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Reference / Report No.</label>
+          <input type="text" id="ref-{{ s.id }}"
+            value="{{ s.reference_no or '' }}"
+            placeholder="e.g. TRN-2024-001"
+            class="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-blue-400"/>
+
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Notes</label>
+          <textarea id="notes-{{ s.id }}" rows="3"
+            placeholder="Add any notes, observations, or follow-up items..."
+            class="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-400">{{ s.notes or '' }}</textarea>
+          <div class="flex gap-2 mt-2">
+            <button onclick="updateStage({{ s.id }})"
+              class="px-4 py-2 bg-blue-700 text-white text-xs rounded-xl font-bold hover:bg-blue-600 transition">
+              <i class="fa-solid fa-save mr-1"></i>Save
+            </button>
+            <span id="save-msg-{{ s.id }}" class="text-xs text-green-600 font-semibold self-center hidden">
+              <i class="fa-solid fa-check mr-1"></i>Saved
+            </span>
+          </div>
+        </div>
+
+        <!-- RIGHT: Documents -->
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+            Documents &amp; Photos
+          </label>
+
+          <!-- Existing docs -->
+          <div id="docs-{{ s.id }}" class="space-y-2 mb-3">
+            {% for doc in s.documents %}
+            <div class="doc-card" id="doc-item-{{ doc.id }}">
+              <div class="doc-icon {% if doc.doc_type=='photo' %}bg-blue-100{% elif doc.doc_type=='pdf' %}bg-red-100{% else %}bg-slate-100{% endif %}">
+                <i class="fa-solid {% if doc.doc_type=='photo' %}fa-image text-blue-600{% elif doc.doc_type=='pdf' %}fa-file-pdf text-red-600{% else %}fa-file text-slate-500{% endif %} text-sm"></i>
+              </div>
+              <div class="flex-1 min-w-0">
+                <p class="text-xs font-semibold text-slate-700 truncate">{{ doc.original_name }}</p>
+                <p class="text-xs text-slate-400">{{ doc.uploaded_at.strftime('%d %b %Y') if doc.uploaded_at else '' }}</p>
+              </div>
+              <div class="flex gap-1.5">
+                <a href="{{ doc.url }}" target="_blank"
+                  class="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-100 text-slate-500 hover:bg-blue-50 hover:text-blue-600 transition text-xs">
+                  <i class="fa-solid fa-eye"></i>
+                </a>
+                {% if current_user.can_enter_data() %}
+                <button onclick="deleteDoc({{ s.id }}, {{ doc.id }})"
+                  class="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-100 text-slate-500 hover:bg-red-50 hover:text-red-500 transition text-xs">
+                  <i class="fa-solid fa-trash"></i>
+                </button>
+                {% endif %}
+              </div>
+            </div>
+            {% else %}
+            <p class="text-xs text-slate-400 italic">No documents yet</p>
+            {% endfor %}
+          </div>
+
+          {% if current_user.can_enter_data() %}
+          <!-- Upload zone -->
+          <div class="upload-zone" id="upload-zone-{{ s.id }}"
+               onclick="document.getElementById('file-input-{{ s.id }}').click()"
+               ondragover="event.preventDefault();dragOver({{ s.id }})"
+               ondragleave="dragLeave({{ s.id }})"
+               ondrop="event.preventDefault();dropFile(event,{{ s.id }})">
+            <i class="fa-solid fa-cloud-arrow-up text-2xl text-slate-300 mb-2"></i>
+            <p class="text-sm text-slate-400 font-medium">Drop files here or <span class="text-blue-600">browse</span></p>
+            <p class="text-xs text-slate-300 mt-1">PDF, images, Excel, Word — any file type</p>
+          </div>
+          <input type="file" id="file-input-{{ s.id }}" multiple class="hidden"
+                 onchange="uploadFiles({{ s.id }}, this.files)"/>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+  {% endfor %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleStage(key) {
+  const body = document.getElementById('body-' + key);
+  const chev = document.getElementById('chev-' + key);
+  if (!body) return;
+  const open = body.classList.toggle('open');
+  if (chev) chev.style.transform = open ? 'rotate(180deg)' : '';
+}
+
+// Auto-open from URL hash
+window.addEventListener('load', () => {
+  const hash = location.hash.replace('#stage-', '');
+  if (hash) {
+    toggleStage(hash);
+    document.getElementById('stage-' + hash)?.scrollIntoView({behavior:'smooth', block:'center'});
+  }
+});
+
+async function updateStage(sid) {
+  const refEl = document.getElementById('ref-' + sid);
+  const body = {
+    status: document.getElementById('status-' + sid).value,
+    notes:  document.getElementById('notes-'  + sid).value,
+    date_completed: document.getElementById('date-' + sid).value || null,
+    reference_no: refEl ? refEl.value : '',
+  };
+  const res = await fetch(`/api/foundation/${sid}/update`, {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+  });
+  if (res.ok) {
+    const msg = document.getElementById('save-msg-' + sid);
+    if (msg) { msg.classList.remove('hidden'); setTimeout(() => msg.classList.add('hidden'), 2500); }
+  }
+}
+
+async function uploadFiles(sid, files) {
+  if (!files || !files.length) return;
+  const zone = document.getElementById('upload-zone-' + sid);
+  zone.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-blue-500 text-xl"></i><p class="text-sm text-slate-400 mt-1">Uploading…</p>';
+
+  for (const file of Array.from(files)) {
+    const fd  = new FormData();
+    fd.append('file', file);
+    const res  = await fetch(`/api/foundation/${sid}/upload`, { method:'POST', body: fd });
+    const data = await res.json();
+    if (res.ok && data.id) {
+      const container = document.getElementById('docs-' + sid);
+      // Remove "No documents yet" placeholder if present
+      container.querySelectorAll('p.text-slate-400').forEach(p => p.remove());
+      const div = document.createElement('div');
+      div.className = 'doc-card'; div.id = 'doc-item-' + data.id;
+      const isImg = ['png','jpg','jpeg','gif','webp','heic'].some(ext => data.url.toLowerCase().endsWith(ext));
+      div.innerHTML = `
+        <div class="doc-icon ${isImg?'bg-blue-100':'bg-slate-100'}">
+          <i class="fa-solid ${isImg?'fa-image text-blue-600':'fa-file text-slate-500'} text-sm"></i>
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="text-xs font-semibold text-slate-700 truncate">${data.name}</p>
+          <p class="text-xs text-slate-400">Just now</p>
+        </div>
+        <div class="flex gap-1.5">
+          <a href="${data.url}" target="_blank" class="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-100 text-slate-500 hover:bg-blue-50 hover:text-blue-600 transition text-xs"><i class="fa-solid fa-eye"></i></a>
+          <button onclick="deleteDoc(${sid},${data.id})" class="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-100 text-slate-500 hover:bg-red-50 hover:text-red-500 transition text-xs"><i class="fa-solid fa-trash"></i></button>
+        </div>`;
+      container.appendChild(div);
+      const cnt = document.getElementById('doc-count-' + sid);
+      if (cnt) cnt.textContent = parseInt(cnt.textContent||0) + 1;
+    }
+  }
+
+  zone.innerHTML = '<i class="fa-solid fa-cloud-arrow-up text-2xl text-slate-300 mb-2"></i><p class="text-sm text-slate-400 font-medium">Drop files here or <span class="text-blue-600">browse</span></p><p class="text-xs text-slate-300 mt-1">PDF, images, Excel, Word — any file type</p>';
+  document.getElementById('file-input-' + sid).value = '';
+}
+
+function dragOver(sid)  { document.getElementById('upload-zone-' + sid)?.classList.add('drag-over'); }
+function dragLeave(sid) { document.getElementById('upload-zone-' + sid)?.classList.remove('drag-over'); }
+function dropFile(e, sid) { dragLeave(sid); uploadFiles(sid, e.dataTransfer.files); }
+
+async function deleteDoc(sid, docId) {
+  if (!confirm('Delete this document?')) return;
+  const res = await fetch(`/api/foundation/${sid}/doc/${docId}/delete`, { method:'POST' });
+  if (res.ok) {
+    document.getElementById('doc-item-' + docId)?.remove();
+    const cnt = document.getElementById('doc-count-' + sid);
+    if (cnt) cnt.textContent = Math.max(0, parseInt(cnt.textContent||1) - 1);
+  }
+}
+</script>
+{% endblock %}

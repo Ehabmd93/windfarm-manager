@@ -1,0 +1,241 @@
+{% extends 'base.html' %}
+{% block title %}Progress Tracker – King Rocks QA{% endblock %}
+{% block page_title %}Progress Tracker{% endblock %}
+{% block page_sub %}Live project analytics · All data sources{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  .widget-card { background:#fff;border-radius:16px;border:1px solid #e2e8f0;box-shadow:0 1px 4px rgba(0,0,0,0.05);padding:20px;position:relative; }
+  .widget-card .remove-btn { display:none;position:absolute;top:10px;right:10px; }
+  .edit-mode .widget-card .remove-btn { display:flex; }
+  .edit-mode .widget-card { border-color:#f87171;border-style:dashed; }
+  .chart-wrap { position:relative;height:260px; }
+  .data-table th { background:#f8fafc;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#64748b; }
+  .data-table td { font-size:12px;padding:8px 12px;border-bottom:1px solid #f1f5f9; }
+  .data-table tr:last-child td { border-bottom:none; }
+  .source-btn { padding:6px 14px;border-radius:8px;font-size:12px;font-weight:600;border:1px solid #e2e8f0;cursor:pointer;transition:all .15s; }
+  .source-btn.active { background:#0f4c81;color:#fff;border-color:#0f4c81; }
+  .source-btn:hover:not(.active) { background:#f1f5f9; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <div>
+    <p class="text-sm text-slate-500 mt-0.5">Customisable widgets showing live data from the QA system.</p>
+  </div>
+  <div class="flex gap-2">
+    <button id="edit-toggle" onclick="toggleEditMode()"
+      class="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 text-sm font-semibold hover:bg-slate-50 transition">
+      <i class="fa-solid fa-pen-to-square mr-1.5"></i>Edit Widgets
+    </button>
+    {% if current_user.role == 'engineer' or current_user.role == 'manager' %}
+    <button onclick="document.getElementById('add-widget-modal').classList.remove('hidden')"
+      class="px-4 py-2 rounded-xl bg-blue-700 text-white text-sm font-semibold hover:bg-blue-600 transition">
+      <i class="fa-solid fa-plus mr-1.5"></i>Add Widget
+    </button>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Widgets grid -->
+<div id="widgets-grid" class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+  {% for w in widgets %}
+  <div class="widget-card" id="widget-{{ w.id }}" data-source="{{ w.data_source }}">
+    <button class="remove-btn items-center justify-center w-7 h-7 bg-red-100 text-red-600 rounded-full text-sm hover:bg-red-200 transition"
+      onclick="removeWidget({{ w.id }})">
+      <i class="fa-solid fa-xmark"></i>
+    </button>
+    <h3 class="font-bold text-slate-700 mb-3 pr-8">{{ w.title }}</h3>
+
+    {% if w.widget_type == 'bar' %}
+    <div class="chart-wrap"><canvas id="chart-{{ w.id }}"></canvas></div>
+
+    {% elif w.widget_type == 'pie' %}
+    <div class="chart-wrap" style="height:220px"><canvas id="chart-{{ w.id }}"></canvas></div>
+
+    {% elif w.widget_type == 'line' %}
+    <div class="chart-wrap"><canvas id="chart-{{ w.id }}"></canvas></div>
+
+    {% elif w.widget_type == 'table' %}
+    <div id="table-{{ w.id }}" class="overflow-x-auto max-h-80 overflow-y-auto rounded-xl border border-slate-100">
+      <div class="text-center py-8 text-slate-400 text-sm"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading...</div>
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+{% if not widgets %}
+<div class="text-center py-16 text-slate-400">
+  <i class="fa-solid fa-chart-bar text-5xl mb-4 opacity-30"></i>
+  <p class="text-lg font-semibold mb-1">No widgets yet</p>
+  <p class="text-sm">Click "Add Widget" to start building your progress dashboard</p>
+</div>
+{% endif %}
+
+<!-- Add Widget Modal -->
+<div id="add-widget-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+  <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 mx-4">
+    <div class="flex items-center justify-between mb-5">
+      <h2 class="font-bold text-slate-800 text-lg">Add Progress Widget</h2>
+      <button onclick="document.getElementById('add-widget-modal').classList.add('hidden')"
+        class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+    <form id="add-widget-form" onsubmit="addWidget(event)">
+      <div class="mb-4">
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Widget Title</label>
+        <input name="title" type="text" required placeholder="e.g. Compaction Progress"
+          class="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"/>
+      </div>
+      <div class="mb-4">
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Data Source</label>
+        <select name="data_source" class="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+          <option value="wtg_completion">WTG Completion Overview</option>
+          <option value="status_breakdown">Overall QA Status Breakdown</option>
+          <option value="foundation_stages">Foundation Stage Progress</option>
+          <option value="area_completion">Tests by Area Type</option>
+          <option value="daily_tests">Daily Test Activity</option>
+          <option value="test_records_table">Test Records Table</option>
+          <option value="foundation_table">Foundation Status Table</option>
+        </select>
+      </div>
+      <div class="mb-6">
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Chart Type</label>
+        <div class="grid grid-cols-4 gap-2">
+          {% for t, icon, label in [('bar','fa-chart-bar','Bar'), ('pie','fa-chart-pie','Pie'), ('line','fa-chart-line','Line'), ('table','fa-table','Table')] %}
+          <label class="flex flex-col items-center gap-1.5 cursor-pointer">
+            <input type="radio" name="widget_type" value="{{ t }}" {% if t == 'bar' %}checked{% endif %} class="sr-only peer"/>
+            <div class="w-full py-3 rounded-xl border-2 border-slate-200 peer-checked:border-blue-600 peer-checked:bg-blue-50 flex flex-col items-center gap-1 transition">
+              <i class="fa-solid {{ icon }} text-lg text-slate-400 peer-checked:text-blue-600"></i>
+              <span class="text-xs font-semibold text-slate-500">{{ label }}</span>
+            </div>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+      <button type="submit" class="w-full py-3 bg-blue-700 text-white rounded-xl text-sm font-bold hover:bg-blue-600 transition">
+        <i class="fa-solid fa-plus mr-2"></i>Add Widget
+      </button>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const WIDGET_SOURCES = {{ widgets | map(attribute='data_source') | list | tojson }};
+const WIDGET_IDS     = {{ widgets | map(attribute='id')          | list | tojson }};
+const WIDGET_TYPES   = {{ widgets | map(attribute='widget_type') | list | tojson }};
+let editMode = false;
+
+const CHART_COLORS = ['#3b82f6','#22c55e','#f59e0b','#ef4444','#8b5cf6','#ec4899','#14b8a6','#f97316','#6366f1','#84cc16'];
+
+async function loadWidget(wid, source, type) {
+  try {
+    const res  = await fetch(`/api/progress/data/${source}`);
+    const data = await res.json();
+    if (type === 'table') { renderTable(wid, data); }
+    else                  { renderChart(wid, data, type); }
+  } catch(e) {
+    const el = document.getElementById('widget-' + wid);
+    if (el) el.innerHTML += `<p class="text-red-400 text-xs mt-2">Failed to load</p>`;
+  }
+}
+
+function renderChart(wid, data, type) {
+  const canvas = document.getElementById('chart-' + wid);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+
+  const chartData = {
+    labels: data.labels || [],
+    datasets: (data.datasets || [{ data: data.values || [] }]).map((ds, i) => ({
+      ...ds,
+      backgroundColor: ds.backgroundColor || (type === 'pie'
+        ? data.labels.map((_,j) => CHART_COLORS[j % CHART_COLORS.length])
+        : CHART_COLORS[i % CHART_COLORS.length]),
+      borderColor: type === 'line' ? CHART_COLORS[i % CHART_COLORS.length] : undefined,
+      borderWidth: type === 'line' ? 2 : 1,
+      fill: type === 'line' ? false : undefined,
+      tension: 0.4,
+      borderRadius: type === 'bar' ? 6 : 0,
+    }))
+  };
+
+  new Chart(ctx, {
+    type: type,
+    data: chartData,
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: type === 'pie' ? 'right' : 'top', labels: { font: { size: 11 }, padding: 10 } },
+        tooltip: { callbacks: {
+          label: ctx => type === 'pie'
+            ? `${ctx.label}: ${ctx.parsed} (${Math.round(ctx.parsed / ctx.dataset.data.reduce((a,b)=>a+b,0)*100)}%)`
+            : `${ctx.dataset.label || ''}: ${ctx.parsed.y ?? ctx.parsed}`
+        }}
+      },
+      scales: type !== 'pie' ? {
+        y: { beginAtZero: true, ticks: { font: { size: 10 } }, grid: { color: '#f1f5f9' } },
+        x: { ticks: { font: { size: 10 }, maxRotation: 45 }, grid: { display: false } }
+      } : {},
+    }
+  });
+}
+
+function renderTable(wid, data) {
+  const el = document.getElementById('table-' + wid);
+  if (!el || !data.columns) { if (el) el.innerHTML = '<p class="p-4 text-slate-400 text-sm">No data</p>'; return; }
+  let html = '<table class="data-table w-full"><thead><tr>';
+  data.columns.forEach(c => html += `<th class="px-3 py-2 text-left">${c}</th>`);
+  html += '</tr></thead><tbody>';
+  (data.rows || []).forEach(row => {
+    html += '<tr>';
+    row.forEach(cell => html += `<td>${cell ?? '–'}</td>`);
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  if ((data.rows || []).length === 0) html = '<p class="p-6 text-center text-slate-400 text-sm">No records yet</p>';
+  el.innerHTML = html;
+}
+
+async function addWidget(e) {
+  e.preventDefault();
+  const form = e.target;
+  const fd   = new FormData(form);
+  const body = { title: fd.get('title'), data_source: fd.get('data_source'), widget_type: fd.get('widget_type') };
+  const res  = await fetch('/api/progress/widgets', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  if (res.ok) { location.reload(); }
+}
+
+async function removeWidget(wid) {
+  if (!confirm('Remove this widget?')) return;
+  const res = await fetch(`/api/progress/widgets/${wid}`, { method:'DELETE' });
+  if (res.ok) { document.getElementById('widget-' + wid)?.remove(); }
+}
+
+function toggleEditMode() {
+  editMode = !editMode;
+  const grid = document.getElementById('widgets-grid');
+  const btn  = document.getElementById('edit-toggle');
+  grid.classList.toggle('edit-mode', editMode);
+  btn.innerHTML = editMode
+    ? '<i class="fa-solid fa-check mr-1.5"></i>Done Editing'
+    : '<i class="fa-solid fa-pen-to-square mr-1.5"></i>Edit Widgets';
+  btn.className = editMode
+    ? 'px-4 py-2 rounded-xl border border-green-300 text-green-700 bg-green-50 text-sm font-semibold hover:bg-green-100 transition'
+    : 'px-4 py-2 rounded-xl border border-slate-200 text-slate-600 text-sm font-semibold hover:bg-slate-50 transition';
+}
+
+// Load all widgets on page load
+document.addEventListener('DOMContentLoaded', () => {
+  WIDGET_IDS.forEach((wid, i) => {
+    loadWidget(wid, WIDGET_SOURCES[i], WIDGET_TYPES[i]);
+  });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,208 @@
+{% extends 'base.html' %}
+{% block title %}Foundation Tracker – King Rocks QA{% endblock %}
+{% block page_title %}Foundation Tracker{% endblock %}
+{% block page_sub %}Foundation Works · {{ stages|length }} stages × {{ wtgs|length }} WTGs{% endblock %}
+
+{% block head %}
+<style>
+  /* ── Status cells ───────────────────────────────────── */
+  .stage-cell {
+    width:32px;height:32px;border-radius:8px;
+    display:inline-flex;align-items:center;justify-content:center;
+    font-size:11px;font-weight:700;cursor:pointer;transition:transform 0.1s;
+  }
+  .stage-cell:hover { transform:scale(1.18); }
+  .status-complete    { background:#dcfce7;color:#15803d;border:1px solid #86efac; }
+  .status-approved    { background:#dbeafe;color:#1d4ed8;border:1px solid #93c5fd; }
+  .status-in_review   { background:#fef9c3;color:#854d0e;border:1px solid #fde047; }
+  .status-in_progress { background:#fed7aa;color:#9a3412;border:1px solid #fb923c; }
+  .status-not_started { background:#f1f5f9;color:#cbd5e1;border:1px solid #e2e8f0; }
+  .status-na          { background:#f8fafc;color:#cbd5e1;border:1px dashed #e2e8f0; }
+
+  /* ── Rotated column headers ─────────────────────────── */
+  .rotated-th {
+    height:130px;
+    white-space:nowrap;
+    vertical-align:bottom;
+    padding:0 6px 10px;
+    text-align:left;
+  }
+  .rotated-th > div {
+    transform:rotate(-55deg);
+    transform-origin:left bottom;
+    width:28px;              /* controls column width */
+  }
+  .rotated-th > div > span {
+    font-size:11px;font-weight:600;color:#475569;
+    display:block;
+    white-space:nowrap;
+  }
+
+  /* ── Tooltip ────────────────────────────────────────── */
+  .tooltip-wrap { position:relative; }
+  .tooltip-wrap:hover .tooltip-box { display:block; }
+  .tooltip-box {
+    display:none;position:absolute;bottom:calc(100% + 6px);left:50%;
+    transform:translateX(-50%);background:#1e293b;color:#fff;
+    font-size:10px;padding:4px 8px;border-radius:6px;
+    white-space:nowrap;z-index:50;pointer-events:none;
+  }
+  .tooltip-box::after {
+    content:'';position:absolute;top:100%;left:50%;
+    transform:translateX(-50%);border:5px solid transparent;border-top-color:#1e293b;
+  }
+
+  /* ── Table row hover ───────────────────────────────── */
+  tbody tr:hover td { background:#f8fafc !important; }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Summary cards -->
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+  <div class="card flex items-center gap-4">
+    <div class="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
+      <i class="fa-solid fa-layer-group text-green-600 text-xl"></i>
+    </div>
+    <div>
+      <p class="text-2xl font-bold text-slate-800">{{ total_stages }}</p>
+      <p class="text-xs text-slate-500">Total Stages</p>
+    </div>
+  </div>
+  <div class="card flex items-center gap-4">
+    <div class="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
+      <i class="fa-solid fa-circle-check text-green-600 text-xl"></i>
+    </div>
+    <div>
+      <p class="text-2xl font-bold text-slate-800">{{ complete_stages }}</p>
+      <p class="text-xs text-slate-500">Complete</p>
+    </div>
+  </div>
+  <div class="card flex items-center gap-4">
+    <div class="w-12 h-12 bg-yellow-100 rounded-xl flex items-center justify-center">
+      <i class="fa-solid fa-spinner text-yellow-600 text-xl"></i>
+    </div>
+    <div>
+      <p class="text-2xl font-bold text-slate-800">{{ in_progress_stages }}</p>
+      <p class="text-xs text-slate-500">In Progress</p>
+    </div>
+  </div>
+  <div class="card flex items-center gap-4">
+    <div class="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center">
+      <i class="fa-solid fa-clock text-slate-400 text-xl"></i>
+    </div>
+    <div>
+      <p class="text-2xl font-bold text-slate-800">{{ not_started_stages }}</p>
+      <p class="text-xs text-slate-500">Not Started</p>
+    </div>
+  </div>
+</div>
+
+<!-- Legend + Settings button -->
+<div class="flex flex-wrap items-center gap-3 mb-5 text-xs font-medium">
+  <span class="flex items-center gap-1.5">
+    <span class="w-5 h-5 rounded status-complete inline-flex items-center justify-center text-xs">✓</span> Complete
+  </span>
+  <span class="flex items-center gap-1.5">
+    <span class="w-5 h-5 rounded status-approved inline-flex items-center justify-center text-xs">A</span> Approved
+  </span>
+  <span class="flex items-center gap-1.5">
+    <span class="w-5 h-5 rounded status-in_review inline-flex items-center justify-center text-xs">R</span> In Review
+  </span>
+  <span class="flex items-center gap-1.5">
+    <span class="w-5 h-5 rounded status-in_progress inline-flex items-center justify-center text-xs">▶</span> In Progress
+  </span>
+  <span class="flex items-center gap-1.5">
+    <span class="w-5 h-5 rounded status-not_started inline-flex items-center justify-center text-xs">–</span> Not Started
+  </span>
+  <span class="ml-auto flex items-center gap-3">
+    <span class="text-slate-400 italic">Click any cell → open WTG detail</span>
+    {% if current_user.role == 'admin' %}
+    <a href="{{ url_for('foundation_stage_settings') }}"
+       style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;background:#fb923c;color:#fff;border-radius:8px;font-weight:700;font-size:11px;text-decoration:none;">
+      <i class="fa-solid fa-sliders"></i> Manage Stages
+    </a>
+    {% endif %}
+  </span>
+</div>
+
+<!-- Grid table -->
+<div class="card overflow-x-auto p-0">
+  <table class="w-full text-xs border-collapse">
+    <thead>
+      <tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0;">
+        <!-- Sticky WTG column header -->
+        <th style="text-align:left;padding:10px 16px;font-weight:800;color:#334155;
+                   position:sticky;left:0;background:#f8fafc;z-index:20;
+                   border-right:1px solid #e2e8f0;min-width:90px;vertical-align:bottom;">
+          WTG
+        </th>
+        {% for key, label in stages %}
+        <th class="rotated-th">
+          <div><span>{{ label }}</span></div>
+        </th>
+        {% endfor %}
+        <th style="padding:10px 16px;font-weight:700;color:#64748b;
+                   text-align:center;vertical-align:bottom;min-width:100px;">
+          Progress
+        </th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for wtg in wtgs %}
+      {% set wtg_stages = stage_map.get(wtg.id, {}) %}
+      {% set active_keys = stages | map(attribute=0) | list %}
+      {% set complete_count = namespace(v=0) %}
+      {% set total_count = stages | length %}
+      {% for key, _ in stages %}
+        {% set s = wtg_stages.get(key) %}
+        {% if s and s.status == 'complete' %}{% set complete_count.v = complete_count.v + 1 %}{% endif %}
+      {% endfor %}
+      {% set pct = ((complete_count.v / total_count * 100) | int) if total_count > 0 else 0 %}
+      <tr style="border-bottom:1px solid #f1f5f9;">
+        <!-- Sticky WTG name -->
+        <td style="padding:10px 16px;position:sticky;left:0;background:#fff;z-index:10;
+                   border-right:1px solid #f1f5f9;font-weight:700;">
+          <a href="{{ url_for('foundation_detail', wtg_id=wtg.id) }}"
+             style="color:#1d4ed8;text-decoration:none;font-size:13px;">{{ wtg.name }}</a>
+        </td>
+
+        {% for key, label in stages %}
+        {% set s = wtg_stages.get(key) %}
+        <td style="padding:8px 4px;text-align:center;vertical-align:middle;">
+          <div class="tooltip-wrap" style="display:inline-block;">
+            <a href="{{ url_for('foundation_detail', wtg_id=wtg.id) }}#stage-{{ key }}">
+              <span class="stage-cell status-{{ s.status if s else 'not_started' }}">
+                {% if s %}
+                  {% if s.status == 'complete' %}✓
+                  {% elif s.status == 'approved' %}A
+                  {% elif s.status == 'in_review' %}R
+                  {% elif s.status == 'in_progress' %}▶
+                  {% elif s.status == 'na' %}N
+                  {% else %}–{% endif %}
+                {% else %}–{% endif %}
+              </span>
+            </a>
+            <div class="tooltip-box">{{ label }}{% if s %}: {{ s.status.replace('_',' ').title() }}{% endif %}</div>
+          </div>
+        </td>
+        {% endfor %}
+
+        <!-- Progress bar -->
+        <td style="padding:10px 16px;text-align:center;min-width:110px;">
+          <div style="width:100%;background:#f1f5f9;border-radius:99px;height:6px;margin-bottom:4px;">
+            <div style="height:6px;border-radius:99px;width:{{ pct }}%;
+              background:{% if pct == 100 %}#16a34a{% elif pct > 0 %}#3b82f6{% else %}#cbd5e1{% endif %};
+              transition:width .4s;"></div>
+          </div>
+          <span style="font-size:11px;font-weight:700;
+            color:{% if pct == 100 %}#16a34a{% elif pct > 0 %}#3b82f6{% else %}#94a3b8{% endif %};">
+            {{ complete_count.v }}/{{ total_count }}
+          </span>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

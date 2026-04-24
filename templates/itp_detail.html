@@ -1,0 +1,729 @@
+{% extends 'base.html' %}
+{% block title %}{{ defn['name'] }} – {{ wtg.name }}{% endblock %}
+{% block page_title %}{{ defn['name'] }}{% endblock %}
+{% block page_sub %}{{ wtg.name }} · Rev {{ defn['revision'] }} · {{ defn['date'] }}{% endblock %}
+
+{% block head %}
+<style>
+  /* ── Layout ── */
+  .itp-layout { display:grid; grid-template-columns:1fr 320px; gap:20px; align-items:start; }
+  @media(max-width:1100px){ .itp-layout { grid-template-columns:1fr; } }
+
+  /* ── Activity group ── */
+  .activity-group { margin-bottom:14px; border:1.5px solid #e2e8f0; border-radius:16px; overflow:hidden; }
+  .activity-header {
+    background:#f8fafc; padding:12px 18px;
+    display:flex; align-items:center; gap:10px; cursor:pointer;
+    border-bottom:1px solid #e2e8f0;
+  }
+  .activity-header:hover { background:#f1f5f9; }
+  .activity-body { background:white; }
+
+  /* ── Criterion row ── */
+  .crit-row { border-bottom:1px solid #f1f5f9; transition:background 0.2s; }
+  .crit-row:last-child { border-bottom:none; }
+  .crit-row.is-signed { background:#f0fdf4; }
+  .crit-row-inner { padding:12px 14px; display:flex; align-items:flex-start; gap:10px; }
+
+  /* ── Checkbox / sign button ── */
+  .crit-check {
+    width:30px; height:30px; border-radius:8px; border:2px solid #cbd5e1;
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer; flex-shrink:0; transition:all 0.2s; margin-top:2px;
+    background:white;
+  }
+  .crit-check:hover  { border-color:#7c3aed; background:#f5f3ff; }
+  .crit-check.pending{ border-color:#f59e0b; background:#fffbeb; }
+  .crit-check.signed { border-color:#22c55e; background:#22c55e; }
+
+  /* ── Attach doc button ── */
+  .btn-attach {
+    width:28px; height:28px; border-radius:7px; border:1.5px solid #e2e8f0;
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer; flex-shrink:0; transition:all 0.2s; margin-top:3px;
+    background:white; color:#94a3b8; font-size:12px;
+  }
+  .btn-attach:hover { border-color:#3b82f6; color:#3b82f6; background:#eff6ff; }
+  .doc-count-badge {
+    font-size:9px; font-weight:800; background:#3b82f6; color:#fff;
+    border-radius:99px; padding:0 4px; min-width:14px; height:14px;
+    display:inline-flex; align-items:center; justify-content:center;
+    margin-left:2px; vertical-align:middle;
+  }
+
+  /* ── Code badges ── */
+  .code-badge { font-size:10px; font-weight:800; padding:2px 7px; border-radius:5px; white-space:nowrap; }
+  .code-H  { background:#fef2f2; color:#dc2626; }
+  .code-W  { background:#eff6ff; color:#2563eb; }
+  .code-T  { background:#fdf4ff; color:#7c3aed; }
+  .code-C  { background:#f0fdf4; color:#16a34a; }
+  .code-M  { background:#fff7ed; color:#ea580c; }
+  .code-DR { background:#f8fafc; color:#64748b; border:1px solid #e2e8f0; }
+  .code-SS { background:#f8fafc; color:#94a3b8; }
+  .code-HW { background:#fef2f2; color:#9f1239; }
+
+  /* ── Signature pad ── */
+  .sig-area { padding:0 14px 14px 52px; }
+  .sig-box { border:1.5px solid #e2e8f0; border-radius:14px; background:#fafafa; padding:12px; }
+  .sig-canvas {
+    display:block; width:100%; height:110px;
+    border-radius:8px; border:1px solid #e2e8f0; background:white;
+    touch-action:none; cursor:crosshair;
+  }
+  .sig-controls { display:flex; gap:8px; margin-top:8px; align-items:center; flex-wrap:wrap; }
+  .sig-dt-input {
+    padding:6px 10px; border:1.5px solid #e2e8f0; border-radius:8px;
+    font-size:12px; outline:none;
+  }
+  .sig-dt-input:focus { border-color:#7c3aed; }
+  .btn-clear  { padding:6px 12px; border:1.5px solid #e2e8f0; border-radius:8px; font-size:12px; font-weight:700; background:white; cursor:pointer; color:#64748b; }
+  .btn-clear:hover { background:#f1f5f9; }
+  .btn-sign   { padding:6px 16px; border-radius:8px; font-size:12px; font-weight:700; background:#7c3aed; color:white; cursor:pointer; border:none; }
+  .btn-sign:hover { background:#6d28d9; }
+  .btn-cancel { padding:6px 12px; border:1.5px solid #e2e8f0; border-radius:8px; font-size:12px; font-weight:600; background:white; cursor:pointer; color:#94a3b8; }
+
+  /* ── Signature preview ── */
+  .sig-preview { padding:0 14px 10px 52px; }
+  .sig-preview-inner {
+    display:flex; align-items:center; gap:10px;
+    background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; padding:8px 12px;
+  }
+  .sig-preview-inner img { height:40px; border-radius:6px; border:1px solid #86efac; background:white; }
+  .sig-preview-meta { flex:1; min-width:0; }
+  .sig-preview-meta .name { font-size:11px; font-weight:700; color:#166534; }
+  .sig-preview-meta .dt   { font-size:11px; color:#4ade80; }
+  .btn-unsign { background:none; border:none; cursor:pointer; color:#fca5a5; padding:4px; }
+  .btn-unsign:hover { color:#dc2626; }
+
+  /* ── Item docs drawer ── */
+  .item-docs-drawer { padding:0 14px 12px 52px; }
+  .item-doc-list { display:flex; flex-direction:column; gap:6px; margin-bottom:8px; }
+  .item-doc-card {
+    display:flex; align-items:center; gap:8px; padding:7px 10px;
+    border:1px solid #e2e8f0; border-radius:8px; background:#fafafa;
+  }
+  .item-doc-icon { width:28px; height:28px; border-radius:7px; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:12px; }
+  .item-upload-zone {
+    border:2px dashed #cbd5e1; border-radius:10px; padding:12px;
+    text-align:center; cursor:pointer; transition:all .2s;
+    background:#fafafa;
+  }
+  .item-upload-zone:hover,.item-upload-zone.drag-over { border-color:#3b82f6; background:#eff6ff; }
+
+  /* ── Right panel ── */
+  .panel { background:white; border:1.5px solid #e2e8f0; border-radius:18px; overflow:hidden; margin-bottom:16px; }
+  .panel-hdr { background:#7c3aed; color:white; padding:12px 18px; font-size:13px; font-weight:700; display:flex; align-items:center; gap:8px; }
+  .panel-hdr.blue  { background:#2563eb; }
+  .panel-hdr.green { background:#16a34a; }
+  .panel-hdr.slate { background:#475569; }
+  .panel-hdr.orange{ background:#ea580c; }
+  .panel-body { padding:16px; }
+
+  .form-label { display:block; font-size:11px; font-weight:700; color:#64748b; margin-bottom:5px; text-transform:uppercase; letter-spacing:0.05em; }
+  .form-input  { width:100%; padding:9px 12px; border-radius:9px; border:1.5px solid #e2e8f0; font-size:13px; outline:none; }
+  .form-input:focus { border-color:#7c3aed; }
+
+  .step-badge { width:26px; height:26px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:11px; font-weight:800; flex-shrink:0; }
+  .progress-bar-wrap { background:#f1f5f9; border-radius:999px; height:8px; overflow:hidden; }
+  .progress-bar-fill { height:100%; border-radius:999px; background:linear-gradient(90deg,#7c3aed,#a855f7); transition:width 0.6s ease; }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Breadcrumb + Download buttons -->
+<div class="flex items-center gap-3 mb-5 text-sm flex-wrap">
+  <a href="{{ url_for('itp_index') }}" class="text-slate-400 hover:text-slate-700">
+    <i class="fa-solid fa-arrow-left mr-1"></i>All ITPs
+  </a>
+  <span class="text-slate-300">/</span>
+  <span class="text-slate-600">{{ wtg.name }}</span>
+  <span class="text-slate-300">/</span>
+  <span class="text-slate-800 font-semibold">{{ itp_type }}</span>
+  <div class="ml-auto flex gap-2">
+    <a href="{{ url_for('itp_print', record_id=record.id) }}" target="_blank"
+       style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;
+              background:#0f172a;color:#fff;border-radius:10px;font-weight:700;font-size:12px;text-decoration:none;">
+      <i class="fa-solid fa-file-pdf"></i> Download PDF
+    </a>
+    <a href="{{ url_for('itp_export') }}"
+       style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;
+              background:#f1f5f9;color:#475569;border-radius:10px;font-weight:700;font-size:12px;text-decoration:none;">
+      <i class="fa-solid fa-download"></i> Bulk Export
+    </a>
+  </div>
+</div>
+
+<!-- Status Banner -->
+{% set done  = record.items_complete_count %}
+{% set total = record.items_total_count %}
+{% set pct   = (done / total * 100)|int if total else 0 %}
+
+<div class="rounded-2xl p-5 mb-5 flex items-center gap-5
+  {% if record.status == 'complete' %}bg-gradient-to-r from-green-700 to-green-500
+  {% elif record.status in ('client_invited',) %}bg-gradient-to-r from-blue-700 to-blue-500
+  {% else %}bg-gradient-to-r from-violet-800 to-violet-600{% endif %} text-white">
+  <div class="flex-1">
+    <p class="text-xs font-semibold uppercase tracking-wider opacity-70 mb-0.5">{{ wtg.name }} · King Rocks Wind Farm</p>
+    <h2 class="text-lg font-bold">{{ defn['name'] }}</h2>
+    <p class="text-sm opacity-75 mt-0.5">Spec: {{ defn['spec'] }} · Rev {{ defn['revision'] }} · {{ defn['date'] }}</p>
+    <div class="mt-3 flex items-center gap-3">
+      <div class="flex-1 max-w-xs">
+        <div class="progress-bar-wrap" style="background:rgba(255,255,255,0.2)">
+          <div class="progress-bar-fill" style="width:{{ pct }}%;background:white" id="main-bar"></div>
+        </div>
+      </div>
+      <span class="text-sm font-bold" id="main-progress-text">{{ done }}/{{ total }} criteria signed</span>
+    </div>
+  </div>
+  <div class="relative flex-shrink-0 w-20 h-20">
+    <svg viewBox="0 0 36 36" class="w-20 h-20 -rotate-90">
+      <circle cx="18" cy="18" r="15.9" fill="none" stroke="rgba(255,255,255,0.25)" stroke-width="3"/>
+      <circle cx="18" cy="18" r="15.9" fill="none" stroke="white" stroke-width="3"
+        stroke-dasharray="{{ pct }},100" stroke-linecap="round" id="main-ring"/>
+    </svg>
+    <span class="absolute inset-0 flex items-center justify-center text-white font-bold text-lg" id="main-pct">{{ pct }}%</span>
+  </div>
+</div>
+
+<!-- Main layout -->
+<div class="itp-layout">
+
+  <!-- ── LEFT: Per-criterion Checklist ─────────────────────────────────── -->
+  <div>
+    <div class="flex items-center gap-3 mb-4">
+      <h3 class="font-bold text-slate-700 text-sm uppercase tracking-wider">Inspection Checklist — Sign each item as you go</h3>
+    </div>
+
+    {% for item in defn['items'] %}
+    <div class="activity-group" id="act-{{ item['no'] }}">
+
+      <!-- Activity header -->
+      <div class="activity-header" onclick="toggleActivity('{{ item['no'] }}')">
+        <span class="text-xs font-bold text-slate-400 w-5">{{ item['no'] }}</span>
+        <span class="font-bold text-slate-800 text-sm flex-1">{{ item['activity'] }}</span>
+        {% if item['hold_witness'] %}
+        <span class="code-badge code-HW">CLIENT: {{ item['hold_witness'] }}</span>
+        {% endif %}
+        <span class="text-xs font-bold text-slate-500 ml-2" id="act-prog-{{ item['no'] }}">
+          {% set act_done = namespace(n=0) %}
+          {% for ci in range(item['criteria']|length) %}
+            {% set s = statuses.get((item['no'], ci)) %}
+            {% if s and s.lucas_complete %}{% set act_done.n = act_done.n + 1 %}{% endif %}
+          {% endfor %}
+          {{ act_done.n }}/{{ item['criteria']|length }}
+        </span>
+        <i class="fa-solid fa-chevron-down text-slate-300 text-xs ml-2 transition-transform" id="act-arr-{{ item['no'] }}"></i>
+      </div>
+
+      <!-- Criteria rows -->
+      <div class="activity-body" id="act-body-{{ item['no'] }}">
+        {% for crit in item['criteria'] %}
+        {% set ci  = loop.index0 %}
+        {% set s   = statuses.get((item['no'], ci)) %}
+        {% set row = item['rows'][ci] if ci < item['rows']|length else {} %}
+
+        <div class="crit-row {% if s and s.lucas_complete %}is-signed{% endif %}"
+             id="crit-row-{{ item['no'] }}-{{ ci }}">
+
+          <!-- Main row content -->
+          <div class="crit-row-inner">
+            <!-- Engineer sign checkbox -->
+            <button type="button"
+                    class="crit-check {% if s and s.lucas_complete %}signed{% endif %}"
+                    id="check-{{ item['no'] }}-{{ ci }}"
+                    onclick="onCheckClick('{{ item['no'] }}', {{ ci }})"
+                    title="{% if s and s.lucas_complete %}Signed — click to remove{% else %}Click to sign{% endif %}">
+              {% if s and s.lucas_complete %}
+              <i class="fa-solid fa-check text-white text-xs"></i>
+              {% endif %}
+            </button>
+
+            <div class="flex-1 min-w-0">
+              {% if row %}
+              <div class="flex items-center gap-2 mb-1 flex-wrap">
+                <span class="code-badge code-{{ row['inspection'].split('&')[0] }}">{{ row['inspection'] }}</span>
+                <span class="text-xs text-slate-400">{{ row['frequency'] }}</span>
+              </div>
+              {% endif %}
+              <p class="text-sm text-slate-700 leading-relaxed">{{ crit }}</p>
+
+              <!-- Doc count indicator (if docs attached) -->
+              {% if s and s.documents %}
+              <p class="text-xs text-blue-500 mt-1 cursor-pointer" onclick="toggleDocs('{{ item['no'] }}',{{ ci }})">
+                <i class="fa-solid fa-paperclip mr-1"></i>{{ s.documents|length }} attachment{% if s.documents|length != 1 %}s{% endif %}
+              </p>
+              {% endif %}
+            </div>
+
+            <!-- Attach doc button -->
+            {% if current_user.can_enter_data() %}
+            <button class="btn-attach" onclick="toggleDocs('{{ item['no'] }}',{{ ci }})"
+                    title="Attach document or photo" id="attach-btn-{{ item['no'] }}-{{ ci }}">
+              <i class="fa-solid fa-paperclip"></i>
+              {% if s and s.documents %}<span class="doc-count-badge" id="doc-cnt-{{ item['no'] }}-{{ ci }}">{{ s.documents|length }}</span>{% endif %}
+            </button>
+            {% endif %}
+          </div>
+
+          <!-- Signature pad (hidden, shown on checkbox click) -->
+          <div class="sig-area hidden" id="sig-area-{{ item['no'] }}-{{ ci }}">
+            <div class="sig-box">
+              <p class="text-xs font-semibold text-slate-500 mb-2">
+                <i class="fa-solid fa-pen-nib mr-1 text-violet-500"></i>Sign to confirm this item is complete:
+              </p>
+              <canvas class="sig-canvas"
+                      id="sig-canvas-{{ item['no'] }}-{{ ci }}"
+                      width="600" height="110"></canvas>
+              <div class="sig-controls">
+                <!-- Date + Time -->
+                <input type="datetime-local"
+                       id="sig-datetime-{{ item['no'] }}-{{ ci }}"
+                       class="sig-dt-input"
+                       value="{{ now_dt }}"
+                       style="width:185px"/>
+                <input type="text"
+                       id="sig-comments-{{ item['no'] }}-{{ ci }}"
+                       class="sig-dt-input"
+                       placeholder="Comments (optional)"
+                       style="flex:1;min-width:100px"/>
+                <button class="btn-clear" onclick="clearSig('{{ item['no'] }}',{{ ci }})"><i class="fa-solid fa-eraser mr-1"></i>Clear</button>
+                <button class="btn-sign"  onclick="saveCriterion('{{ item['no'] }}',{{ ci }})"><i class="fa-solid fa-signature mr-1"></i>Sign &amp; Save</button>
+                <button class="btn-cancel" onclick="cancelSign('{{ item['no'] }}',{{ ci }})">Cancel</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Signature preview (shown after signing) -->
+          <div class="sig-preview {% if not (s and s.lucas_complete) %}hidden{% endif %}"
+               id="sig-preview-{{ item['no'] }}-{{ ci }}">
+            <div class="sig-preview-inner">
+              <img src="{{ s.lucas_signature if s and s.lucas_signature else '' }}"
+                   id="sig-img-{{ item['no'] }}-{{ ci }}"
+                   class="{% if not (s and s.lucas_signature) %}hidden{% endif %}" alt="sig"/>
+              <div class="sig-preview-meta">
+                <p class="name"><i class="fa-solid fa-check-circle mr-1"></i>Signed by {{ record.engineer_name or 'Engineer' }}</p>
+                <p class="dt" id="sig-dt-display-{{ item['no'] }}-{{ ci }}">
+                  {% if s and s.lucas_signed_at %}
+                    <i class="fa-solid fa-clock mr-1"></i>{{ s.lucas_signed_at.strftime('%d %b %Y %H:%M') }}
+                  {% endif %}
+                  {% if s and s.lucas_comments %} · {{ s.lucas_comments }}{% endif %}
+                </p>
+              </div>
+              <button class="btn-unsign" onclick="unsignCriterion('{{ item['no'] }}',{{ ci }})" title="Remove signature">
+                <i class="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- Document drawer (hidden by default) -->
+          {% if current_user.can_enter_data() %}
+          <div class="item-docs-drawer hidden" id="docs-drawer-{{ item['no'] }}-{{ ci }}">
+            <div class="item-doc-list" id="doc-list-{{ item['no'] }}-{{ ci }}">
+              {% if s %}
+              {% for doc in s.documents %}
+              <div class="item-doc-card" id="idoc-{{ doc.id }}">
+                <div class="item-doc-icon {% if doc.doc_type=='photo' %}bg-blue-100{% elif doc.doc_type=='pdf' %}bg-red-100{% else %}bg-slate-100{% endif %}">
+                  <i class="fa-solid {% if doc.doc_type=='photo' %}fa-image text-blue-500{% elif doc.doc_type=='pdf' %}fa-file-pdf text-red-500{% else %}fa-file text-slate-400{% endif %}"></i>
+                </div>
+                <span class="text-xs font-medium text-slate-700 flex-1 truncate">{{ doc.original_name }}</span>
+                <a href="{{ doc.url }}" target="_blank" class="text-blue-500 hover:text-blue-700 text-xs px-2"><i class="fa-solid fa-eye"></i></a>
+                <button onclick="deleteItemDoc({{ doc.id }},'{{ item['no'] }}',{{ ci }})" class="text-red-400 hover:text-red-600 text-xs px-1"><i class="fa-solid fa-trash"></i></button>
+              </div>
+              {% endfor %}
+              {% endif %}
+            </div>
+            <div class="item-upload-zone" id="uzone-{{ item['no'] }}-{{ ci }}"
+                 onclick="document.getElementById('ifile-{{ item['no'] }}-{{ ci }}').click()"
+                 ondragover="event.preventDefault();this.classList.add('drag-over')"
+                 ondragleave="this.classList.remove('drag-over')"
+                 ondrop="event.preventDefault();this.classList.remove('drag-over');uploadItemDocs('{{ item['no'] }}',{{ ci }},event.dataTransfer.files)">
+              <i class="fa-solid fa-cloud-arrow-up text-slate-300 text-lg mb-1"></i>
+              <p class="text-xs text-slate-400">Drop files or <span class="text-blue-500 font-semibold">browse</span> — photos, PDFs, reports</p>
+            </div>
+            <input type="file" id="ifile-{{ item['no'] }}-{{ ci }}" multiple class="hidden"
+                   onchange="uploadItemDocs('{{ item['no'] }}',{{ ci }},this.files)"/>
+          </div>
+          {% endif %}
+
+        </div>
+        {% endfor %}
+      </div><!-- activity-body -->
+    </div><!-- activity-group -->
+    {% endfor %}
+  </div>
+
+  <!-- ── RIGHT: Info + Invite Panel ────────────────────────────────────── -->
+  <div>
+
+    <!-- Download panel -->
+    <div class="panel">
+      <div class="panel-hdr orange"><i class="fa-solid fa-file-arrow-down"></i> Download &amp; Backup</div>
+      <div class="panel-body space-y-2">
+        <a href="{{ url_for('itp_print', record_id=record.id) }}" target="_blank"
+           class="flex items-center gap-3 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 transition text-sm font-semibold text-slate-700">
+          <div style="width:36px;height:36px;background:#fef2f2;border-radius:10px;display:flex;align-items:center;justify-content:center;">
+            <i class="fa-solid fa-file-pdf text-red-500"></i>
+          </div>
+          <div>
+            <p class="font-bold text-slate-800">Download This ITP</p>
+            <p class="text-xs text-slate-400">Print-ready PDF · Save locally</p>
+          </div>
+          <i class="fa-solid fa-external-link-alt text-slate-300 ml-auto"></i>
+        </a>
+        <a href="{{ url_for('itp_export') }}"
+           class="flex items-center gap-3 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 transition text-sm font-semibold text-slate-700">
+          <div style="width:36px;height:36px;background:#eff6ff;border-radius:10px;display:flex;align-items:center;justify-content:center;">
+            <i class="fa-solid fa-boxes-stacked text-blue-500"></i>
+          </div>
+          <div>
+            <p class="font-bold text-slate-800">Bulk Export ITPs</p>
+            <p class="text-xs text-slate-400">Download by WTG, area or all</p>
+          </div>
+          <i class="fa-solid fa-external-link-alt text-slate-300 ml-auto"></i>
+        </a>
+      </div>
+    </div>
+
+    <!-- Workflow steps -->
+    <div class="panel">
+      <div class="panel-hdr slate"><i class="fa-solid fa-list-check"></i> Workflow</div>
+      <div class="panel-body space-y-3">
+        <div class="flex items-center gap-3">
+          <span class="step-badge {% if done > 0 %}bg-violet-600 text-white{% else %}bg-slate-100 text-slate-500{% endif %}">1</span>
+          <div class="flex-1">
+            <p class="text-sm font-semibold {% if done > 0 %}text-violet-700{% else %}text-slate-500{% endif %}">Sign each criterion on site</p>
+            <p class="text-xs text-slate-400">{{ done }}/{{ total }} signed</p>
+          </div>
+          {% if done == total and total > 0 %}<i class="fa-solid fa-circle-check text-green-500"></i>{% endif %}
+        </div>
+        <div class="flex items-center gap-3">
+          <span class="step-badge {% if record.status in ('client_invited','complete') %}bg-blue-600 text-white{% else %}bg-slate-100 text-slate-500{% endif %}">2</span>
+          <div class="flex-1">
+            <p class="text-sm font-semibold {% if record.status in ('client_invited','complete') %}text-blue-700{% else %}text-slate-400{% endif %}">Invite client to sign</p>
+          </div>
+          {% if record.status in ('client_invited','complete') %}<i class="fa-solid fa-circle-check text-green-500"></i>{% endif %}
+        </div>
+        <div class="flex items-center gap-3">
+          <span class="step-badge {% if record.status == 'complete' %}bg-green-600 text-white{% else %}bg-slate-100 text-slate-500{% endif %}">3</span>
+          <div>
+            <p class="text-sm font-semibold {% if record.status == 'complete' %}text-green-700{% else %}text-slate-400{% endif %}">Download &amp; backup PDF</p>
+          </div>
+          {% if record.status == 'complete' %}<i class="fa-solid fa-circle-check text-green-500"></i>{% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- ITP Metadata -->
+    <div class="panel">
+      <div class="panel-hdr"><i class="fa-solid fa-info-circle"></i> ITP Details</div>
+      <div class="panel-body">
+        <form method="POST">
+          <input type="hidden" name="action" value="save_meta"/>
+          <div class="space-y-3">
+            <div>
+              <label class="form-label">Engineer Name</label>
+              <input type="text" name="engineer_name" class="form-input" value="{{ record.engineer_name or '' }}"/>
+            </div>
+            <div>
+              <label class="form-label">Company</label>
+              <input type="text" name="engineer_company" class="form-input" value="{{ record.engineer_company or 'CBOP' }}"/>
+            </div>
+            <div>
+              <label class="form-label">Lot Number</label>
+              <input type="text" name="lot_number" class="form-input" value="{{ record.lot_number or '' }}" placeholder="LOT-001"/>
+            </div>
+            <div>
+              <label class="form-label">Location / Description</label>
+              <input type="text" name="location" class="form-input" value="{{ record.location or '' }}" placeholder="{{ wtg.name }}"/>
+            </div>
+          </div>
+          <button type="submit"
+            class="mt-4 w-full py-2 bg-slate-700 text-white rounded-xl text-xs font-bold hover:bg-slate-600 transition">
+            <i class="fa-solid fa-floppy-disk mr-1"></i>Save Details
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Invite Client -->
+    <div class="panel">
+      {% if record.status == 'complete' %}
+      <div class="panel-hdr green"><i class="fa-solid fa-circle-check"></i> ITP Complete</div>
+      <div class="panel-body">
+        <p class="text-sm font-bold text-green-700 mb-1">Both parties signed</p>
+        <p class="text-xs text-slate-500">
+          Client: {{ record.client_name }} · {{ record.client_company }}<br/>
+          Signed: {{ record.client_signed_at.strftime('%d %b %Y %H:%M') if record.client_signed_at else '–' }}
+        </p>
+        {% if record.client_signature %}
+        <img src="{{ record.client_signature }}" class="mt-3 h-14 rounded-lg border border-green-200 bg-white" alt="Client sig"/>
+        {% endif %}
+      </div>
+      {% elif record.status == 'client_invited' %}
+      <div class="panel-hdr blue"><i class="fa-solid fa-envelope-open-text"></i> Client Invited</div>
+      <div class="panel-body">
+        <p class="text-sm font-semibold text-blue-700 mb-1">{{ record.client_name }} · {{ record.client_company }}</p>
+        <p class="text-xs text-slate-500 mb-3">Invited {{ record.client_invited_at.strftime('%d %b %Y %H:%M') if record.client_invited_at else '' }}</p>
+        <label class="form-label">Signing link — share this:</label>
+        <div class="flex gap-2">
+          <input type="text" id="client-link"
+                 value="{{ url_for('itp_client_sign', token=record.client_token, _external=True) }}"
+                 class="form-input text-xs" readonly style="font-size:11px"/>
+          <button onclick="copyLink()" class="px-3 bg-blue-100 text-blue-700 rounded-lg text-xs font-bold hover:bg-blue-200 flex-shrink-0">
+            <i class="fa-solid fa-copy"></i>
+          </button>
+        </div>
+      </div>
+      {% else %}
+      <div class="panel-hdr blue"><i class="fa-solid fa-user-check"></i> Invite Client to Sign</div>
+      <div class="panel-body">
+        {% if done == 0 %}
+        <div class="bg-yellow-50 border border-yellow-200 rounded-xl p-3 mb-4 text-xs text-yellow-800">
+          <i class="fa-solid fa-circle-info mr-1"></i>Sign at least one criterion before inviting the client.
+        </div>
+        {% endif %}
+        <form method="POST">
+          <input type="hidden" name="action" value="invite_client"/>
+          <div class="space-y-3">
+            <div>
+              <label class="form-label">Client Representative</label>
+              <select name="client_id" class="form-input" required>
+                <option value="">— Select client —</option>
+                {% for c in clients %}
+                <option value="{{ c.id }}">{{ c.name }} · {{ c.company }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div>
+              <label class="form-label">Client Email</label>
+              <input type="email" name="client_email" class="form-input" placeholder="client@vestas.com"/>
+            </div>
+          </div>
+          <button type="submit" {% if done == 0 %}disabled{% endif %}
+            class="mt-4 w-full py-3 bg-gradient-to-r from-blue-700 to-blue-600 text-white rounded-xl text-sm font-bold hover:from-blue-600 hover:to-blue-500 transition shadow-lg disabled:opacity-40 disabled:cursor-not-allowed">
+            <i class="fa-solid fa-user-plus mr-2"></i>Invite Client to Sign
+          </button>
+        </form>
+      </div>
+      {% endif %}
+    </div>
+
+  </div><!-- right col -->
+</div><!-- itp-layout -->
+{% endblock %}
+
+{% block scripts %}
+<script>
+const RECORD_ID = {{ record.id }};
+const TOTAL     = {{ record.items_total_count }};
+let   doneCount = {{ record.items_complete_count }};
+
+// ── Activity expand/collapse ──────────────────────────────────────────────
+function toggleActivity(no) {
+  const body   = document.getElementById('act-body-' + no);
+  const arr    = document.getElementById('act-arr-' + no);
+  const hidden = body.classList.toggle('hidden');
+  arr.style.transform = hidden ? 'rotate(-90deg)' : '';
+}
+
+// ── Canvas management ─────────────────────────────────────────────────────
+const canvasReady = new Set();
+
+function initCanvas(itemNo, ci) {
+  const key = `${itemNo}_${ci}`;
+  if (canvasReady.has(key)) return;
+  canvasReady.add(key);
+  const canvas = document.getElementById(`sig-canvas-${itemNo}-${ci}`);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  let drawing = false;
+  canvas.hasContent = false;
+  canvas.addEventListener('pointerdown', e => {
+    drawing = true; canvas.hasContent = true;
+    const p = pos(canvas, e);
+    ctx.beginPath(); ctx.moveTo(p.x, p.y);
+    canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener('pointermove', e => {
+    if (!drawing) return;
+    const p = pos(canvas, e);
+    ctx.lineTo(p.x, p.y);
+    ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 2;
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.stroke();
+  });
+  canvas.addEventListener('pointerup',    () => drawing = false);
+  canvas.addEventListener('pointerleave', () => drawing = false);
+}
+
+function pos(canvas, e) {
+  const r = canvas.getBoundingClientRect();
+  const src = e.touches ? e.touches[0] : e;
+  return {
+    x: (src.clientX - r.left) * (canvas.width  / r.width),
+    y: (src.clientY - r.top)  * (canvas.height / r.height)
+  };
+}
+
+// ── Checkbox click ────────────────────────────────────────────────────────
+function onCheckClick(itemNo, ci) {
+  const checkBtn = document.getElementById(`check-${itemNo}-${ci}`);
+  const isSigned = checkBtn.classList.contains('signed');
+  if (isSigned) {
+    if (!confirm('Remove your signature from this item?')) return;
+    unsignCriterion(itemNo, ci);
+    return;
+  }
+  const sigArea = document.getElementById(`sig-area-${itemNo}-${ci}`);
+  const isOpen  = !sigArea.classList.contains('hidden');
+  if (isOpen) { cancelSign(itemNo, ci); return; }
+  sigArea.classList.remove('hidden');
+  checkBtn.classList.add('pending');
+  initCanvas(itemNo, ci);
+  // Set current datetime
+  const dtInput = document.getElementById(`sig-datetime-${itemNo}-${ci}`);
+  if (dtInput && !dtInput.value) {
+    const now = new Date();
+    const pad = n => String(n).padStart(2,'0');
+    dtInput.value = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  }
+  setTimeout(() => sigArea.scrollIntoView({behavior:'smooth', block:'nearest'}), 50);
+}
+
+function cancelSign(itemNo, ci) {
+  document.getElementById(`sig-area-${itemNo}-${ci}`).classList.add('hidden');
+  const btn = document.getElementById(`check-${itemNo}-${ci}`);
+  if (!btn.classList.contains('signed')) { btn.classList.remove('pending'); btn.innerHTML = ''; }
+}
+
+function clearSig(itemNo, ci) {
+  const c = document.getElementById(`sig-canvas-${itemNo}-${ci}`);
+  if (c) { c.getContext('2d').clearRect(0,0,c.width,c.height); c.hasContent = false; }
+}
+
+// ── Save criterion signature (AJAX) ──────────────────────────────────────
+async function saveCriterion(itemNo, ci) {
+  const canvas   = document.getElementById(`sig-canvas-${itemNo}-${ci}`);
+  const dtVal    = document.getElementById(`sig-datetime-${itemNo}-${ci}`).value;
+  const comments = document.getElementById(`sig-comments-${itemNo}-${ci}`).value;
+
+  if (!canvas || !canvas.hasContent) {
+    const pd = canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
+    if (!Array.from(pd).some((v,i) => i%4===3 && v>0)) {
+      alert('Please draw your signature first.');
+      return;
+    }
+  }
+  const sig = canvas.toDataURL('image/png');
+
+  const resp = await fetch(`/api/itp/${RECORD_ID}/sign/${itemNo}/${ci}`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({signature: sig, comments, datetime: dtVal})
+  });
+  if (!resp.ok) { alert('Error saving signature.'); return; }
+  const data = await resp.json();
+
+  // Show preview
+  const img = document.getElementById(`sig-img-${itemNo}-${ci}`);
+  img.src = data.signature; img.classList.remove('hidden');
+  document.getElementById(`sig-dt-display-${itemNo}-${ci}`).innerHTML =
+    `<i class="fa-solid fa-clock mr-1"></i>${data.display}` +
+    (data.comments ? ' · ' + data.comments : '');
+
+  document.getElementById(`sig-preview-${itemNo}-${ci}`).classList.remove('hidden');
+  document.getElementById(`sig-area-${itemNo}-${ci}`).classList.add('hidden');
+
+  const btn = document.getElementById(`check-${itemNo}-${ci}`);
+  btn.classList.remove('pending'); btn.classList.add('signed');
+  btn.innerHTML = '<i class="fa-solid fa-check text-white text-xs"></i>';
+  btn.title = 'Signed — click to remove';
+
+  document.getElementById(`crit-row-${itemNo}-${ci}`).classList.add('is-signed');
+  updateActivityProgress(itemNo);
+  doneCount++; updateMainProgress();
+}
+
+// ── Remove signature (AJAX) ───────────────────────────────────────────────
+async function unsignCriterion(itemNo, ci) {
+  await fetch(`/api/itp/${RECORD_ID}/unsign/${itemNo}/${ci}`, {method:'POST'});
+  document.getElementById(`sig-preview-${itemNo}-${ci}`).classList.add('hidden');
+  document.getElementById(`sig-area-${itemNo}-${ci}`).classList.add('hidden');
+  const btn = document.getElementById(`check-${itemNo}-${ci}`);
+  btn.classList.remove('signed','pending'); btn.innerHTML = ''; btn.title = 'Click to sign this item';
+  document.getElementById(`crit-row-${itemNo}-${ci}`).classList.remove('is-signed');
+  updateActivityProgress(itemNo);
+  doneCount--; updateMainProgress();
+}
+
+// ── Progress helpers ──────────────────────────────────────────────────────
+function updateActivityProgress(itemNo) {
+  const group  = document.getElementById('act-' + itemNo);
+  const checks = group.querySelectorAll('.crit-check.signed').length;
+  const total  = group.querySelectorAll('.crit-check').length;
+  document.getElementById('act-prog-' + itemNo).textContent = `${checks}/${total}`;
+}
+function updateMainProgress() {
+  const pct = TOTAL > 0 ? Math.round(doneCount / TOTAL * 100) : 0;
+  document.getElementById('main-bar').style.width = pct + '%';
+  document.getElementById('main-ring').setAttribute('stroke-dasharray', `${pct},100`);
+  document.getElementById('main-pct').textContent = pct + '%';
+  document.getElementById('main-progress-text').textContent = `${doneCount}/${TOTAL} criteria signed`;
+}
+
+// ── Document drawer ───────────────────────────────────────────────────────
+function toggleDocs(itemNo, ci) {
+  const drawer = document.getElementById(`docs-drawer-${itemNo}-${ci}`);
+  if (drawer) drawer.classList.toggle('hidden');
+}
+
+async function uploadItemDocs(itemNo, ci, files) {
+  if (!files || !files.length) return;
+  const zone = document.getElementById(`uzone-${itemNo}-${ci}`);
+  zone.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-blue-400"></i>';
+
+  for (const file of Array.from(files)) {
+    const fd = new FormData(); fd.append('file', file);
+    const res = await fetch(`/api/itp/${RECORD_ID}/item/${itemNo}/${ci}/upload`, {method:'POST', body:fd});
+    const d   = await res.json();
+    if (res.ok && d.id) {
+      const list = document.getElementById(`doc-list-${itemNo}-${ci}`);
+      const icon = d.type === 'photo' ? 'fa-image text-blue-500 bg-blue-100' :
+                   d.type === 'pdf'   ? 'fa-file-pdf text-red-500 bg-red-100' : 'fa-file text-slate-400 bg-slate-100';
+      const div = document.createElement('div');
+      div.className = 'item-doc-card'; div.id = `idoc-${d.id}`;
+      div.innerHTML = `
+        <div class="item-doc-icon ${icon.split(' ').slice(1).join(' ')}"><i class="fa-solid ${icon.split(' ')[0]}"></i></div>
+        <span class="text-xs font-medium text-slate-700 flex-1 truncate">${d.name}</span>
+        <a href="${d.url}" target="_blank" class="text-blue-500 hover:text-blue-700 text-xs px-2"><i class="fa-solid fa-eye"></i></a>
+        <button onclick="deleteItemDoc(${d.id},'${itemNo}',${ci})" class="text-red-400 hover:text-red-600 text-xs px-1"><i class="fa-solid fa-trash"></i></button>`;
+      list.appendChild(div);
+      // Update badge
+      const badgeId = `doc-cnt-${itemNo}-${ci}`;
+      let badge = document.getElementById(badgeId);
+      if (!badge) {
+        const btn = document.getElementById(`attach-btn-${itemNo}-${ci}`);
+        if (btn) { badge = document.createElement('span'); badge.className = 'doc-count-badge'; badge.id = badgeId; badge.textContent = '0'; btn.appendChild(badge); }
+      }
+      if (badge) badge.textContent = parseInt(badge.textContent||0) + 1;
+    }
+  }
+  zone.innerHTML = '<i class="fa-solid fa-cloud-arrow-up text-slate-300 text-lg mb-1"></i><p class="text-xs text-slate-400">Drop files or <span class="text-blue-500 font-semibold">browse</span> — photos, PDFs, reports</p>';
+  const inp = document.getElementById(`ifile-${itemNo}-${ci}`);
+  if (inp) inp.value = '';
+}
+
+async function deleteItemDoc(docId, itemNo, ci) {
+  if (!confirm('Delete this attachment?')) return;
+  const res = await fetch(`/api/itp/item-doc/${docId}/delete`, {method:'POST'});
+  if (res.ok) {
+    document.getElementById(`idoc-${docId}`)?.remove();
+    const badge = document.getElementById(`doc-cnt-${itemNo}-${ci}`);
+    if (badge) { const n = Math.max(0, parseInt(badge.textContent||1) - 1); badge.textContent = n; if (!n) badge.remove(); }
+  }
+}
+
+function copyLink() {
+  const inp = document.getElementById('client-link');
+  if (inp) { inp.select(); navigator.clipboard.writeText(inp.value).then(() => alert('Link copied!')); }
+}
+</script>
+{% endblock %}

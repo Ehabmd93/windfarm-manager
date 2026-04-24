@@ -1,0 +1,255 @@
+{% extends 'base.html' %}
+{% block title %}Record Test – {{ wtg.name }}{% endblock %}
+{% block page_title %}Enter Test Record{% endblock %}
+{% block page_sub %}{{ wtg.name }} · {{ area.label }} · {{ test.display_name }}{% endblock %}
+
+{% block head %}
+<style>
+  .form-label { display:block; font-size:11px; font-weight:700; color:#64748b; margin-bottom:6px; text-transform:uppercase; letter-spacing:0.05em; }
+  .form-input  { width:100%; padding:10px 12px; border-radius:10px; border:1.5px solid #e2e8f0; background:white; font-size:13px; outline:none; transition:border 0.2s; }
+  .form-input:focus { border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,0.1); }
+  .photo-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+  .photo-thumb { aspect-ratio:1; border-radius:10px; overflow:hidden; position:relative; background:#f1f5f9; cursor:pointer; }
+  .photo-thumb img { width:100%; height:100%; object-fit:cover; }
+  .dropzone { border:2px dashed #cbd5e1; border-radius:14px; padding:24px; text-align:center; cursor:pointer; transition:all 0.2s; }
+  .dropzone:hover, .dropzone.drag-over { border-color:#3b82f6; background:#eff6ff; }
+  .result-btn { padding:10px 20px; border-radius:12px; border:2px solid; font-size:13px; font-weight:700; cursor:pointer; transition:all 0.2s; background:transparent; }
+  .result-btn.selected-pass { background:#dcfce7; border-color:#22c55e; color:#15803d; }
+  .result-btn.selected-fail { background:#fef2f2; border-color:#ef4444; color:#dc2626; }
+  .result-btn.selected-pending { background:#fefce8; border-color:#ca8a04; color:#92400e; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="flex items-center gap-3 mb-6">
+  <a href="{{ url_for('wtg_detail', wtg_id=wtg.id) }}" class="text-slate-400 hover:text-slate-700 text-sm">
+    <i class="fa-solid fa-arrow-left mr-1"></i> {{ wtg.name }}
+  </a>
+  <span class="text-slate-300">/</span>
+  <span class="text-slate-600 text-sm">{{ area.label }}</span>
+  <span class="text-slate-300">/</span>
+  <span class="text-slate-800 font-semibold text-sm">{{ test.display_name }}</span>
+</div>
+
+<!-- Header -->
+<div class="bg-gradient-to-r from-green-800 to-green-600 text-white rounded-2xl p-6 mb-6 flex items-center justify-between">
+  <div>
+    <p class="text-xs text-green-300 font-semibold uppercase tracking-wider mb-1">CBOP · King Rocks Wind Farm</p>
+    <h2 class="text-xl font-bold">{{ test.display_name }}</h2>
+    <p class="text-green-200 text-sm mt-1">{{ wtg.name }} · {{ area.label }}</p>
+  </div>
+  <div class="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center">
+    <i class="fa-solid fa-clipboard-check text-white text-2xl"></i>
+  </div>
+</div>
+
+<form method="POST" id="testForm" enctype="multipart/form-data">
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+    <!-- ── LEFT: Test Details ─────────────────────────────────────────── -->
+    <div class="space-y-5">
+      <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+        <div class="bg-slate-700 text-white px-6 py-3 text-sm font-bold flex items-center gap-2">
+          <i class="fa-solid fa-clipboard-list"></i> Test Details
+        </div>
+        <div class="p-6 grid grid-cols-2 gap-4">
+          <div>
+            <label class="form-label">Test Date <span class="text-red-500">*</span></label>
+            <input type="date" name="test_date" class="form-input" value="{{ today }}" required/>
+          </div>
+          <div>
+            <label class="form-label">Lot Number</label>
+            <input type="text" name="lot_number" class="form-input" placeholder="LOT-001"/>
+          </div>
+          <div>
+            <label class="form-label">Lab Reference</label>
+            <input type="text" name="lab_ref" class="form-input" placeholder="Lab report #"/>
+          </div>
+          <div>
+            <label class="form-label">Result Value</label>
+            <input type="number" name="result_value" step="0.01" class="form-input" placeholder="98.5"/>
+          </div>
+          <div>
+            <label class="form-label">Unit</label>
+            <input type="text" name="result_unit" class="form-input" placeholder="% compaction"/>
+          </div>
+          <div>
+            <label class="form-label">Spec Minimum</label>
+            <input type="number" name="spec_value" step="0.01" class="form-input" placeholder="95.0"/>
+          </div>
+        </div>
+
+        <!-- Result selector -->
+        <div class="px-6 pb-6">
+          <label class="form-label">Result <span class="text-red-500">*</span></label>
+          <div class="flex gap-3">
+            <button type="button" onclick="setResult('pass')" id="btn-pass"
+              class="result-btn flex-1 border-green-300 text-green-700 hover:bg-green-50">
+              <i class="fa-solid fa-check-circle mr-2"></i>Pass
+            </button>
+            <button type="button" onclick="setResult('fail')" id="btn-fail"
+              class="result-btn flex-1 border-red-300 text-red-700 hover:bg-red-50">
+              <i class="fa-solid fa-times-circle mr-2"></i>Fail
+            </button>
+            <button type="button" onclick="setResult('pending')" id="btn-pending"
+              class="result-btn flex-1 border-yellow-300 text-yellow-700 hover:bg-yellow-50 selected-pending">
+              <i class="fa-solid fa-clock mr-2"></i>Pending
+            </button>
+          </div>
+          <input type="hidden" name="result" id="result-val" value="pending"/>
+        </div>
+
+        <div class="px-6 pb-6">
+          <label class="form-label">Comments / Observations</label>
+          <textarea name="comments" rows="4" class="form-input" style="resize:none"
+            placeholder="Site conditions, observations, notes…"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── RIGHT: Photos ──────────────────────────────────────────────── -->
+    <div>
+      <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+        <div class="bg-slate-700 text-white px-6 py-3 text-sm font-bold flex items-center gap-2">
+          <i class="fa-solid fa-camera"></i> Site Photos
+          <span class="ml-auto text-slate-300 text-xs font-normal">Add photos taken during this test</span>
+        </div>
+        <div class="p-6">
+          <!-- Drop zone -->
+          <div id="dropzone" class="dropzone" onclick="document.getElementById('photo-input').click()">
+            <i class="fa-solid fa-cloud-arrow-up text-3xl text-slate-300 mb-3"></i>
+            <p class="text-sm font-semibold text-slate-600">Click to add photos</p>
+            <p class="text-xs text-slate-400 mt-1">PNG, JPG, HEIC supported · Multiple files OK</p>
+          </div>
+          <input type="file" id="photo-input" name="photos" multiple accept="image/*" class="hidden" onchange="handleFiles(this.files)"/>
+
+          <!-- Photo date -->
+          <div class="mt-4">
+            <label class="form-label">Photo Date</label>
+            <input type="date" id="photo-date" value="{{ today }}" class="form-input"/>
+          </div>
+
+          <!-- Preview grid -->
+          <div id="photo-preview" class="photo-grid mt-4" style="display:none"></div>
+
+          <!-- Upload progress -->
+          <div id="upload-status" class="mt-3 text-xs text-slate-400 text-center"></div>
+        </div>
+      </div>
+
+      <!-- Existing photos for this test -->
+      {% if test.records %}
+      <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden mt-5">
+        <div class="bg-slate-100 text-slate-700 px-6 py-3 text-sm font-bold">
+          Previous Records
+        </div>
+        <div class="divide-y divide-slate-100">
+          {% for rec in test.records %}
+          <div class="px-6 py-3 flex items-center gap-3">
+            <div class="w-8 h-8 rounded-full flex items-center justify-center
+              {% if rec.result=='pass' %}bg-green-100{% elif rec.result=='fail' %}bg-red-100{% else %}bg-yellow-100{% endif %}">
+              <i class="fa-solid fa-{% if rec.result=='pass' %}check{% elif rec.result=='fail' %}times{% else %}clock{% endif %} text-xs
+                {% if rec.result=='pass' %}text-green-600{% elif rec.result=='fail' %}text-red-500{% else %}text-yellow-600{% endif %}"></i>
+            </div>
+            <div class="flex-1">
+              <p class="text-sm font-medium text-slate-700 capitalize">{{ rec.result }}</p>
+              <p class="text-xs text-slate-400">{{ rec.test_date.strftime('%d %b %Y') }}{% if rec.lot_number %} · {{ rec.lot_number }}{% endif %}</p>
+            </div>
+            {% if rec.result_value %}<span class="text-sm font-bold text-slate-600">{{ rec.result_value }}{{ rec.result_unit }}</span>{% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Submit -->
+  <div class="flex gap-4 justify-end mt-6">
+    <a href="{{ url_for('wtg_detail', wtg_id=wtg.id) }}"
+      class="px-6 py-3 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 transition">
+      Cancel
+    </a>
+    <button type="submit" id="submit-btn"
+      class="px-8 py-3 bg-gradient-to-r from-green-700 to-green-600 text-white rounded-xl text-sm font-bold hover:from-green-600 hover:to-green-500 transition shadow-lg shadow-green-900/20">
+      <i class="fa-solid fa-floppy-disk mr-2"></i>Save Test Record
+    </button>
+  </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Result buttons
+function setResult(val) {
+  document.getElementById('result-val').value = val;
+  ['pass','fail','pending'].forEach(v => {
+    const btn = document.getElementById(`btn-${v}`);
+    btn.className = `result-btn flex-1 border-${v==='pass'?'green':v==='fail'?'red':'yellow'}-300 text-${v==='pass'?'green':v==='fail'?'red':'yellow'}-700 hover:bg-${v==='pass'?'green':v==='fail'?'red':'yellow'}-50`;
+    if (v === val) btn.classList.add(`selected-${val}`);
+  });
+}
+
+// Photo previews (before form submit — just show thumbs)
+const pendingPhotos = [];
+
+function handleFiles(files) {
+  const grid = document.getElementById('photo-preview');
+  grid.style.display = 'grid';
+  Array.from(files).forEach(file => {
+    if (!file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      const div = document.createElement('div');
+      div.className = 'photo-thumb';
+      div.innerHTML = `<img src="${e.target.result}" alt="${file.name}"/>
+        <div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,rgba(0,0,0,0.5));padding:3px;font-size:9px;color:white;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${file.name}</div>`;
+      grid.appendChild(div);
+    };
+    reader.readAsDataURL(file);
+    pendingPhotos.push(file);
+  });
+}
+
+// Drag-drop
+const dz = document.getElementById('dropzone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('drag-over');
+  handleFiles(e.dataTransfer.files);
+});
+
+// After form saves the test record, upload photos
+document.getElementById('testForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Saving…';
+
+  // 1. Submit the main form
+  const formData = new FormData(e.target);
+  const response = await fetch(window.location.href, {
+    method: 'POST',
+    body: formData,
+    redirect: 'follow',
+  });
+
+  // If the server returned a redirect (success), upload photos then follow
+  if (response.redirected || response.ok) {
+    // 2. Upload photos if any selected
+    const photoInput = document.getElementById('photo-input');
+    const photoDate  = document.getElementById('photo-date').value;
+    if (photoInput.files.length > 0) {
+      document.getElementById('upload-status').textContent = `Uploading ${photoInput.files.length} photo(s)…`;
+      // We need the test ID — it's in the URL
+      // But we need the actual test record to be saved first.
+      // For now, upload happens via a separate call after page load.
+      // Store photos in sessionStorage for post-redirect upload.
+      sessionStorage.setItem('pendingPhotoDate', photoDate);
+    }
+    window.location.href = response.url || response.redirected ? response.url : '/';
+  }
+});
+</script>
+{% endblock %}

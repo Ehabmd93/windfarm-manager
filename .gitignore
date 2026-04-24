@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+*.db
+*.sqlite3
+*.log
+.env
+.env.local
+instance/
+static/uploads/
+static/photos/
+static/foundation_docs/
+static/itp_item_docs/
+venv/
+.venv/
+pdf_extract.txt

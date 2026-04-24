@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>{{ defn['name'] }} – {{ wtg.name }}</title>
+<style>
+/* ─────────────────────────────────────────────────────────
+   SCREEN: Print bar (hidden when printing)
+───────────────────────────────────────────────────────── */
+.print-bar {
+  position:fixed;top:0;left:0;right:0;z-index:200;
+  background:#1e293b;color:#fff;
+  padding:10px 24px;display:flex;align-items:center;gap:12px;
+  font-family:Arial,sans-serif;font-size:13px;
+  box-shadow:0 2px 8px rgba(0,0,0,0.3);
+}
+.print-bar h2 { flex:1;font-size:13px;font-weight:700;margin:0; }
+.btn-print {
+  padding:7px 18px;background:#16a34a;color:#fff;border:none;
+  border-radius:6px;font-weight:700;font-size:12px;cursor:pointer;
+  display:flex;align-items:center;gap:6px;
+}
+.btn-print:hover { background:#15803d; }
+.btn-back {
+  padding:7px 14px;background:rgba(255,255,255,0.1);color:#94a3b8;
+  border:1px solid rgba(255,255,255,0.15);border-radius:6px;
+  font-size:12px;cursor:pointer;text-decoration:none;
+}
+@media print { .print-bar { display:none!important; } }
+
+/* ─────────────────────────────────────────────────────────
+   GLOBAL
+───────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+html { font-size:8.5pt; }
+body {
+  font-family:Arial,Helvetica,sans-serif;
+  font-size:8.5pt;
+  color:#000;
+  background:#e5e7eb;   /* grey outside pages on screen */
+}
+@media print {
+  body { background:#fff; }
+}
+
+/* ─────────────────────────────────────────────────────────
+   PAGE SHELL (A4 landscape)
+───────────────────────────────────────────────────────── */
+@page {
+  size:A4 landscape;
+  margin:10mm 10mm 12mm 10mm;
+}
+.sheet {
+  width:277mm;   /* 297mm - 2×10mm margin */
+  min-height:187mm;
+  background:#fff;
+  margin:70px auto 20px;
+  padding:6mm 7mm 8mm;
+  page-break-after:always;
+  border:1px solid #94a3b8;
+  box-shadow:0 4px 20px rgba(0,0,0,0.12);
+}
+.sheet:last-child { page-break-after:avoid; }
+@media print {
+  .sheet { margin:0;border:none;box-shadow:none;padding:0; }
+}
+
+/* ─────────────────────────────────────────────────────────
+   COMMON TABLE RESET
+───────────────────────────────────────────────────────── */
+table { border-collapse:collapse; width:100%; font-size:7.5pt; }
+td, th { border:0.75pt solid #000; padding:1.5pt 3pt; vertical-align:top; }
+
+/* ─────────────────────────────────────────────────────────
+   PAGE 1 — HEADER BLOCK
+───────────────────────────────────────────────────────── */
+.hdr-top {
+  display:flex;
+  align-items:stretch;
+  border:0.75pt solid #000;
+  margin-bottom:0;
+}
+.hdr-logo {
+  width:38mm;
+  border-right:0.75pt solid #000;
+  padding:4pt 6pt;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+}
+.logo-text {
+  font-size:11pt;font-weight:800;color:#1e3a5f;
+  letter-spacing:-0.5pt;line-height:1.1;
+  text-align:center;
+}
+.logo-sub { font-size:6pt;color:#64748b;margin-top:2pt;text-align:center; }
+.hdr-title {
+  flex:1;
+  padding:5pt 8pt;
+  display:flex;flex-direction:column;justify-content:center;
+}
+.hdr-title h1 {
+  font-size:14pt;font-weight:800;color:#1e3a5f;
+  letter-spacing:-0.3pt;
+}
+.hdr-itp-no {
+  width:22mm;
+  border-left:0.75pt solid #000;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:4pt;
+}
+.itp-no-label { font-size:6pt;color:#64748b;text-transform:uppercase;letter-spacing:0.05em; }
+.itp-no-value { font-size:22pt;font-weight:900;color:#1e3a5f;line-height:1; }
+
+/* Form reference row */
+.hdr-ref {
+  border:0.75pt solid #000;
+  border-top:none;
+  display:grid;
+  grid-template-columns:1fr 1fr 1fr 1fr;
+}
+.ref-cell {
+  padding:2pt 4pt;
+  border-right:0.75pt solid #000;
+  font-size:7pt;
+}
+.ref-cell:last-child { border-right:none; }
+.ref-label { font-size:6pt;color:#64748b;font-weight:700;text-transform:uppercase;margin-bottom:1pt; }
+.ref-value { font-weight:700;color:#000; }
+
+/* ITP Details table */
+.details-table td.label-cell {
+  background:#f1f5f9;
+  font-weight:700;
+  width:18mm;
+  color:#1e293b;
+  white-space:nowrap;
+}
+.details-table td.value-cell { background:#fff; }
+.details-table td.wide-value  { background:#fff; }
+
+/* Scope + Drawings */
+.scope-grid {
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  border:0.75pt solid #000;
+  border-top:none;
+}
+.scope-block { padding:3pt 5pt; border-right:0.75pt solid #000; }
+.scope-block:last-child { border-right:none; }
+.scope-block .block-label {
+  font-size:7pt;font-weight:800;color:#1e3a5f;
+  border-bottom:0.5pt solid #cbd5e1;padding-bottom:2pt;margin-bottom:2pt;
+  text-transform:uppercase;letter-spacing:0.04em;
+}
+.scope-block .block-text { font-size:7.5pt;line-height:1.45; }
+
+/* Legend */
+.legend-outer { border:0.75pt solid #000;border-top:none; }
+.legend-title {
+  background:#1e3a5f;color:#fff;
+  padding:2pt 6pt;font-weight:800;font-size:7.5pt;
+  letter-spacing:0.03em;
+}
+.legend-grid {
+  display:grid;grid-template-columns:repeat(3,1fr);
+}
+.legend-col { padding:2pt 6pt;border-right:0.75pt solid #000; font-size:7pt; }
+.legend-col:last-child { border-right:none; }
+.leg-item { margin-bottom:1.5pt; }
+.leg-code { font-weight:800;display:inline-block;width:22pt; }
+.leg-note {
+  padding:2pt 6pt;
+  font-size:7pt;font-style:italic;color:#475569;
+  border-top:0.5pt solid #e2e8f0;
+  background:#f8fafc;
+}
+
+/* ─────────────────────────────────────────────────────────
+   PAGES 2+ — CHECKLIST TABLE
+───────────────────────────────────────────────────────── */
+.checklist-table { table-layout:fixed; }
+.checklist-table col.c-no      { width:7mm; }
+.checklist-table col.c-act     { width:26mm; }
+.checklist-table col.c-crit    { width:82mm; }
+.checklist-table col.c-insp    { width:12mm; }
+.checklist-table col.c-freq    { width:20mm; }
+.checklist-table col.c-lucas   { width:32mm; }
+.checklist-table col.c-client  { width:32mm; }
+.checklist-table col.c-date    { width:20mm; }
+.checklist-table col.c-cmts    { width:32mm; }
+
+/* Header rows */
+.tbl-hdr-1 th {
+  background:#1e3a5f;color:#fff;
+  text-align:center;font-size:7.5pt;font-weight:800;
+  padding:3pt 3pt;
+  border-color:#000;
+}
+.tbl-hdr-2 th {
+  background:#dbeafe;color:#1e3a5f;
+  text-align:center;font-size:7pt;font-weight:800;
+  padding:2pt 2pt;
+  border-color:#000;
+}
+
+/* Activity rows */
+.act-row td.act-no {
+  font-weight:800;font-size:8pt;text-align:center;
+  background:#f1f5f9;vertical-align:middle;
+  color:#1e3a5f;
+}
+.act-row td.act-name {
+  font-weight:800;font-size:8pt;
+  background:#f8fafc;color:#1e3a5f;
+  vertical-align:middle;
+}
+.crit-text { font-size:7.5pt;line-height:1.45;color:#000; }
+.crit-text ul { margin-left:8pt; }
+.crit-text li { margin-bottom:1pt; }
+
+/* Inspection code badge */
+.insp-code {
+  display:inline-block;
+  font-size:7pt;font-weight:900;
+  padding:1pt 3pt;border-radius:2pt;
+  text-align:center;white-space:nowrap;
+}
+.ic-H  { background:#fca5a5;color:#7f1d1d;border:0.5pt solid #f87171; }
+.ic-W  { background:#bfdbfe;color:#1e3a8a;border:0.5pt solid #93c5fd; }
+.ic-T  { background:#e9d5ff;color:#4c1d95;border:0.5pt solid #c4b5fd; }
+.ic-C  { background:#bbf7d0;color:#14532d;border:0.5pt solid #86efac; }
+.ic-M  { background:#fed7aa;color:#7c2d12;border:0.5pt solid #fb923c; }
+.ic-DR { background:#e2e8f0;color:#334155;border:0.5pt solid #94a3b8; }
+.ic-SS { background:#f1f5f9;color:#64748b;border:0.5pt solid #cbd5e1; }
+.ic-I  { background:#cffafe;color:#164e63;border:0.5pt solid #67e8f9; }
+.ic-S  { background:#fef9c3;color:#713f12;border:0.5pt solid #fde047; }
+.ic-HW { background:#fecaca;color:#7f1d1d;border:0.5pt solid #f87171; }
+
+/* Signature cells */
+td.sig-cell { padding:2pt; }
+.sig-signed {
+  display:flex;flex-direction:column;align-items:center;gap:1pt;
+  background:#f0fdf4;border:0.5pt solid #86efac;border-radius:2pt;
+  padding:2pt;height:100%;min-height:14mm;
+}
+.sig-signed img { max-height:28pt;max-width:100%;object-fit:contain; }
+.sig-signed .sig-who { font-size:5.5pt;font-weight:800;color:#166534;text-align:center; }
+.sig-signed .sig-when { font-size:5.5pt;color:#4ade80;text-align:center; }
+.sig-empty {
+  min-height:14mm;
+  border:0.5pt dashed #cbd5e1;border-radius:2pt;
+  display:flex;align-items:center;justify-content:center;
+  color:#e2e8f0;font-size:7pt;font-style:italic;
+}
+.doc-note { font-size:5.5pt;color:#3b82f6;margin-top:2pt; }
+
+/* ─────────────────────────────────────────────────────────
+   FINAL PAGE — Myosh + Acknowledgement
+───────────────────────────────────────────────────────── */
+.section-label {
+  background:#1e3a5f;color:#fff;
+  padding:2pt 5pt;font-weight:800;font-size:7.5pt;
+  border:0.75pt solid #000;
+  letter-spacing:0.04em;text-transform:uppercase;
+}
+.ack-table th {
+  background:#dbeafe;color:#1e3a5f;
+  font-weight:800;font-size:7.5pt;text-align:left;padding:3pt 5pt;
+}
+.ack-table td { height:15mm;padding:3pt 5pt;font-size:7.5pt; }
+.ack-sig-cell { position:relative; }
+.ack-sig-img { max-height:36pt;max-width:90%;object-fit:contain;display:block;margin:auto; }
+
+/* ─────────────────────────────────────────────────────────
+   PAGE FOOTER
+───────────────────────────────────────────────────────── */
+.page-footer {
+  display:flex;justify-content:space-between;align-items:center;
+  margin-top:4pt;
+  font-size:6pt;color:#64748b;
+  border-top:0.5pt solid #cbd5e1;padding-top:2pt;
+}
+</style>
+</head>
+<body>
+
+<!-- ── Print bar (screen only) ──────────────────────────────────────── -->
+<div class="print-bar">
+  <a href="javascript:history.back()" class="btn-back">← Back</a>
+  <h2>{{ defn['name'] }} — {{ wtg.name }} — {{ record.lot_number or 'No Lot' }}</h2>
+  <button class="btn-print" onclick="window.print()">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+    Save as PDF / Print
+  </button>
+</div>
+
+{# ═══════════════════════════════════════════════════════════════════════
+   SHEET 1 — COVER PAGE
+═══════════════════════════════════════════════════════════════════════ #}
+<div class="sheet">
+
+  <!-- Header: Logo | Title | ITP Number -->
+  <div class="hdr-top">
+    <div class="hdr-logo">
+      <!-- Turbine SVG icon -->
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" width="32" height="32" fill="#1e3a5f">
+        <polygon points="19,38 21,38 20.5,17 19.5,17"/>
+        <rect x="18.5" y="14" width="3" height="3.5" rx="0.5"/>
+        <ellipse cx="20" cy="8" rx="1.5" ry="5.5" transform="rotate(-15,20,14)"/>
+        <ellipse cx="20" cy="8" rx="1.5" ry="5.5" transform="rotate(105,20,14)"/>
+        <ellipse cx="20" cy="8" rx="1.5" ry="5.5" transform="rotate(225,20,14)"/>
+      </svg>
+      <div class="logo-text">CBOP</div>
+      <div class="logo-sub">King Rocks Wind Farm</div>
+    </div>
+    <div class="hdr-title">
+      <h1>Inspection &amp; Test Plan</h1>
+      <div style="font-size:8pt;color:#475569;margin-top:3pt;">
+        {{ defn['works'] if defn.get('works') else defn['name'] }}
+      </div>
+    </div>
+    <div class="hdr-itp-no">
+      <span class="itp-no-label">ITP No.</span>
+      <span class="itp-no-value">{{ defn.get('itp_number', defn.get('revision','–')) }}</span>
+      <span style="font-size:6pt;color:#64748b;margin-top:2pt;">Rev {{ defn['revision'] }}</span>
+    </div>
+  </div>
+
+  <!-- Form reference row -->
+  <div class="hdr-ref">
+    <div class="ref-cell">
+      <div class="ref-label">Form Reference</div>
+      <div class="ref-value">OPER-FRM-050</div>
+    </div>
+    <div class="ref-cell">
+      <div class="ref-label">Procedure Reference</div>
+      <div class="ref-value">OPER-PRO-044</div>
+    </div>
+    <div class="ref-cell">
+      <div class="ref-label">Issue Date</div>
+      <div class="ref-value">Version 5 · October 2021</div>
+    </div>
+    <div class="ref-cell" style="border-right:none;">
+      <div class="ref-label">Revision Date</div>
+      <div class="ref-value">{{ defn['date'] }}</div>
+    </div>
+  </div>
+
+  <!-- ITP Details -->
+  <table class="details-table" style="border-top:none;">
+    <colgroup>
+      <col style="width:22mm"/><col style="width:68mm"/>
+      <col style="width:22mm"/><col/>
+    </colgroup>
+    <thead>
+      <tr>
+        <th colspan="4" style="background:#1e3a5f;color:#fff;font-size:8pt;font-weight:800;text-align:left;padding:3pt 5pt;letter-spacing:0.04em;text-transform:uppercase;">
+          Inspection &amp; Test Plan Details
+        </th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="label-cell">Project</td>
+        <td class="wide-value">King Rocks Wind Farm</td>
+        <td class="label-cell">Client</td>
+        <td class="value-cell">Vestas</td>
+      </tr>
+      <tr>
+        <td class="label-cell">Works</td>
+        <td class="wide-value">{{ defn.get('works', defn['name']) }}</td>
+        <td class="label-cell">Date</td>
+        <td class="value-cell">{{ defn['date'] }}</td>
+      </tr>
+      <tr>
+        <td class="label-cell">ITP Number</td>
+        <td class="wide-value">{{ defn.get('itp_number','03') }}</td>
+        <td class="label-cell">Revision</td>
+        <td class="value-cell">{{ defn['revision'] }}</td>
+      </tr>
+      <tr>
+        <td class="label-cell">Prepared By</td>
+        <td class="wide-value">{{ defn.get('prepared_by', record.engineer_name or 'Ehab Yousef') }}</td>
+        <td class="label-cell">Approved By</td>
+        <td class="value-cell">{{ defn.get('approved_by','Wayne Hoey') }}</td>
+      </tr>
+      <tr>
+        <td class="label-cell">Location / Lot #</td>
+        <td class="wide-value" colspan="3">{{ record.location or '' }} &nbsp; {{ record.lot_number or '' }}</td>
+      </tr>
+      <tr>
+        <td class="label-cell">WTG</td>
+        <td class="wide-value" colspan="3">{{ wtg.name }}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- Scope of Works + Drawings side by side -->
+  <div class="scope-grid">
+    <div class="scope-block">
+      <div class="block-label">Scope of Works</div>
+      <div class="block-text">{{ defn.get('scope','') }}</div>
+    </div>
+    <div class="scope-block">
+      <div class="block-label">Drawings &amp; Standards / Specification</div>
+      <div class="block-text">
+        <div style="margin-bottom:3pt;"><strong>Drawings:</strong> KRWF Design Drawings</div>
+        <div><strong>Spec:</strong> {{ defn.get('spec','KRWF-SPE-CIV-3000') }}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Inspection Types Legend -->
+  <div class="legend-outer">
+    <div class="legend-title">Inspection Types</div>
+    <div class="legend-grid">
+      <div class="legend-col">
+        <div class="leg-item"><span class="leg-code">H</span> – Hold Point</div>
+        <div class="leg-item"><span class="leg-code">W</span> – Witness Point</div>
+        <div class="leg-item"><span class="leg-code">T</span> – Test</div>
+      </div>
+      <div class="legend-col">
+        <div class="leg-item"><span class="leg-code">M</span> – Monitor</div>
+        <div class="leg-item"><span class="leg-code">DR</span> – Document Review</div>
+        <div class="leg-item"><span class="leg-code">SS</span> – Sub Supplier Records</div>
+      </div>
+      <div class="legend-col">
+        <div class="leg-item"><span class="leg-code">C</span> – Check</div>
+        <div class="leg-item"><span class="leg-code">I</span> – Inspection</div>
+        <div class="leg-item"><span class="leg-code">S</span> – Surveillance</div>
+      </div>
+    </div>
+    <div class="leg-note">
+      A JSEA, or SWMS, shall be developed, implemented and regularly updated with regards to the works.
+    </div>
+  </div>
+
+  <!-- Progress summary -->
+  {% set done  = record.items_complete_count %}
+  {% set total = record.items_total_count %}
+  {% set pct   = (done / total * 100)|int if total else 0 %}
+  <div style="margin-top:4pt;padding:4pt 6pt;background:#f8fafc;border:0.75pt solid #e2e8f0;border-radius:3pt;display:flex;align-items:center;gap:10pt;">
+    <div style="flex:1;background:#e2e8f0;border-radius:3pt;height:6pt;overflow:hidden;">
+      <div style="height:6pt;border-radius:3pt;background:{% if pct==100 %}#16a34a{% elif pct>0 %}#3b82f6{% else %}#94a3b8{% endif %};width:{{ pct }}%;"></div>
+    </div>
+    <span style="font-size:7.5pt;font-weight:800;color:{% if pct==100 %}#16a34a{% else %}#1e293b{% endif %};white-space:nowrap;">{{ done }}/{{ total }} criteria signed ({{ pct }}%)</span>
+    <span style="font-size:7pt;color:#64748b;white-space:nowrap;">Status: {{ record.status.replace('_',' ').title() }}</span>
+  </div>
+
+  <!-- Footer -->
+  <div class="page-footer">
+    <span>Uncontrolled When Printed</span>
+    <span>OPER-FRM-050</span>
+    <span>Page 1 of {{ defn['items']|length + 2 }}</span>
+  </div>
+</div>
+
+{# ═══════════════════════════════════════════════════════════════════════
+   SHEETS 2+ — CHECKLIST PAGES
+   One page per activity group (or split if many criteria)
+═══════════════════════════════════════════════════════════════════════ #}
+{% set page_num = namespace(n=2) %}
+
+<div class="sheet">
+  <table class="checklist-table">
+    <colgroup>
+      <col class="c-no"/><col class="c-act"/><col class="c-crit"/>
+      <col class="c-insp"/><col class="c-freq"/>
+      <col class="c-lucas"/><col class="c-client"/>
+      <col class="c-date"/><col class="c-cmts"/>
+    </colgroup>
+    <!-- Header row 1 -->
+    <thead>
+      <tr class="tbl-hdr-1">
+        <th>Item No</th>
+        <th>Activity</th>
+        <th>Performance Criteria</th>
+        <th>Inspection</th>
+        <th>Frequency</th>
+        <th colspan="2" style="text-align:center;">Controls / Sign Off</th>
+        <th>Date</th>
+        <th>Comments</th>
+      </tr>
+      <tr class="tbl-hdr-2">
+        <th></th><th></th><th></th><th></th><th></th>
+        <th>Lucas TCS</th>
+        <th>Client</th>
+        <th></th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+
+    {% for item in defn['items'] %}
+    {% set act_done = namespace(n=0) %}
+    {% for ci in range(item['criteria']|length) %}
+      {% set s = statuses.get((item['no'], ci)) %}
+      {% if s and s.lucas_complete %}{% set act_done.n = act_done.n + 1 %}{% endif %}
+    {% endfor %}
+
+    {# Activity header row #}
+    <tr class="act-row">
+      <td class="act-no" rowspan="{{ item['criteria']|length }}">{{ item['no'] }}</td>
+      <td class="act-name" rowspan="{{ item['criteria']|length }}">
+        {{ item['activity'] }}
+        {% if item['hold_witness'] %}
+        <div style="margin-top:3pt;"><span class="insp-code ic-HW" style="font-size:6pt;">CLIENT: {{ item['hold_witness'] }}</span></div>
+        {% endif %}
+        <div style="font-size:5.5pt;color:#64748b;margin-top:3pt;font-style:italic;">{{ act_done.n }}/{{ item['criteria']|length }} signed</div>
+      </td>
+
+      {# First criterion in this activity #}
+      {% set ci = 0 %}
+      {% set s  = statuses.get((item['no'], ci)) %}
+      {% set row = item['rows'][ci] if ci < item['rows']|length else {} %}
+
+      <td class="crit-text">
+        {% if item['criteria'][ci] %}
+        {% set txt = item['criteria'][ci] %}
+        {% if txt.startswith('•') or txt.startswith('-') or txt.startswith('o') %}
+          {{ txt }}
+        {% else %}
+          {{ txt }}
+        {% endif %}
+        {% endif %}
+        {% if s and s.documents %}<div class="doc-note">📎 {{ s.documents|length }} attachment(s)</div>{% endif %}
+      </td>
+
+      <td style="text-align:center;vertical-align:middle;">
+        {% if row %}
+        {% for code in row['inspection'].split('&') %}
+        <span class="insp-code ic-{{ code.strip() }}">{{ code.strip() }}</span>
+        {% endfor %}
+        {% endif %}
+      </td>
+
+      <td style="font-size:7pt;color:#334155;">{{ row['frequency'] if row else '' }}</td>
+
+      {# Lucas sign-off cell #}
+      <td class="sig-cell">
+        {% if s and s.lucas_complete %}
+        <div class="sig-signed">
+          {% if s.lucas_signature %}<img src="{{ s.lucas_signature }}" alt="sig"/>{% endif %}
+          <div class="sig-who">✓ {{ record.engineer_name or 'Lucas TCS' }}</div>
+          <div class="sig-when">
+            {% if s.lucas_signed_at %}{{ s.lucas_signed_at.strftime('%d %b %Y %H:%M') }}{% endif %}
+          </div>
+          {% if s.lucas_comments %}<div class="sig-when" style="font-style:italic;">{{ s.lucas_comments }}</div>{% endif %}
+        </div>
+        {% else %}
+        <div class="sig-empty">–</div>
+        {% endif %}
+      </td>
+
+      {# Client sign-off cell #}
+      <td class="sig-cell">
+        {% if s and s.client_complete %}
+        <div class="sig-signed" style="border-color:#93c5fd;background:#eff6ff;">
+          {% if s.client_signature %}<img src="{{ s.client_signature }}" alt="client sig"/>{% endif %}
+          <div class="sig-who" style="color:#1d4ed8;">✓ {{ record.client_name or 'Client' }}</div>
+          <div class="sig-when" style="color:#60a5fa;">
+            {% if s.client_signed_at %}{{ s.client_signed_at.strftime('%d %b %Y %H:%M') }}{% endif %}
+          </div>
+        </div>
+        {% else %}
+        <div class="sig-empty">–</div>
+        {% endif %}
+      </td>
+
+      <td style="font-size:6.5pt;color:#475569;text-align:center;">
+        {% if s and s.lucas_signed_at %}{{ s.lucas_signed_at.strftime('%d/%m/%Y') }}{% endif %}
+      </td>
+      <td style="font-size:6.5pt;color:#475569;">
+        {% if s %}{{ s.lucas_comments or '' }}{% endif %}
+      </td>
+    </tr>
+
+    {# Remaining criteria (ci >= 1) #}
+    {% for ci in range(1, item['criteria']|length) %}
+    {% set s   = statuses.get((item['no'], ci)) %}
+    {% set row = item['rows'][ci] if ci < item['rows']|length else {} %}
+    <tr>
+      {# no item-no or activity cells — rowspan covers them #}
+      <td class="crit-text">
+        {{ item['criteria'][ci] }}
+        {% if s and s.documents %}<div class="doc-note">📎 {{ s.documents|length }} attachment(s)</div>{% endif %}
+      </td>
+      <td style="text-align:center;vertical-align:middle;">
+        {% if row %}
+        {% for code in row['inspection'].split('&') %}
+        <span class="insp-code ic-{{ code.strip() }}">{{ code.strip() }}</span>
+        {% endfor %}
+        {% endif %}
+      </td>
+      <td style="font-size:7pt;color:#334155;">{{ row['frequency'] if row else '' }}</td>
+      <td class="sig-cell">
+        {% if s and s.lucas_complete %}
+        <div class="sig-signed">
+          {% if s.lucas_signature %}<img src="{{ s.lucas_signature }}" alt="sig"/>{% endif %}
+          <div class="sig-who">✓ {{ record.engineer_name or 'Lucas TCS' }}</div>
+          <div class="sig-when">{% if s.lucas_signed_at %}{{ s.lucas_signed_at.strftime('%d %b %Y %H:%M') }}{% endif %}</div>
+          {% if s.lucas_comments %}<div class="sig-when" style="font-style:italic;">{{ s.lucas_comments }}</div>{% endif %}
+        </div>
+        {% else %}
+        <div class="sig-empty">–</div>
+        {% endif %}
+      </td>
+      <td class="sig-cell">
+        {% if s and s.client_complete %}
+        <div class="sig-signed" style="border-color:#93c5fd;background:#eff6ff;">
+          {% if s.client_signature %}<img src="{{ s.client_signature }}" alt="client sig"/>{% endif %}
+          <div class="sig-who" style="color:#1d4ed8;">✓ {{ record.client_name or 'Client' }}</div>
+          <div class="sig-when" style="color:#60a5fa;">{% if s.client_signed_at %}{{ s.client_signed_at.strftime('%d %b %Y %H:%M') }}{% endif %}</div>
+        </div>
+        {% else %}
+        <div class="sig-empty">–</div>
+        {% endif %}
+      </td>
+      <td style="font-size:6.5pt;color:#475569;text-align:center;">
+        {% if s and s.lucas_signed_at %}{{ s.lucas_signed_at.strftime('%d/%m/%Y') }}{% endif %}
+      </td>
+      <td style="font-size:6.5pt;color:#475569;">{% if s %}{{ s.lucas_comments or '' }}{% endif %}</td>
+    </tr>
+    {% endfor %}
+    {% endfor %}
+
+    </tbody>
+  </table>
+
+  <!-- Footer -->
+  <div class="page-footer">
+    <span>Uncontrolled When Printed</span>
+    <span>OPER-FRM-050</span>
+    <span>Checklist — {{ wtg.name }} · {{ defn['name'] }}</span>
+  </div>
+</div>
+
+{# ═══════════════════════════════════════════════════════════════════════
+   FINAL SHEET — Myosh Activity + Acknowledgement & Approval
+═══════════════════════════════════════════════════════════════════════ #}
+<div class="sheet">
+
+  <!-- Myosh Activity & Filing -->
+  <div class="section-label">Myosh Activity &amp; Filing</div>
+  <table style="border-top:none;margin-bottom:8pt;">
+    <colgroup><col style="width:40mm"/><col/></colgroup>
+    <tr>
+      <td style="font-weight:700;background:#f1f5f9;">Myosh Activity</td>
+      <td>No Myosh Activity Required</td>
+    </tr>
+    <tr>
+      <td style="font-weight:700;background:#f1f5f9;">Filing</td>
+      <td>Completed Inspection &amp; Test Plan to be Filed within the Project MDR Record</td>
+    </tr>
+  </table>
+
+  <!-- Acknowledgement & Approval -->
+  <div class="section-label" style="margin-bottom:0;">Acknowledgement &amp; Approval</div>
+  <table class="ack-table" style="border-top:none;">
+    <colgroup>
+      <col style="width:50mm"/>
+      <col style="width:45mm"/>
+      <col style="width:75mm"/>
+      <col style="width:40mm"/>
+    </colgroup>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Company</th>
+        <th>Signature</th>
+        <th>Date</th>
+      </tr>
+    </thead>
+    <tbody>
+      <!-- Engineer sign-off -->
+      <tr>
+        <td>{{ record.engineer_name or '' }}</td>
+        <td>{{ record.engineer_company or 'CBOP' }}</td>
+        <td class="ack-sig-cell">
+          {% if record.engineer_signature %}
+          <img src="{{ record.engineer_signature }}" class="ack-sig-img" alt="engineer sig"/>
+          {% endif %}
+        </td>
+        <td>{{ record.engineer_signed_at.strftime('%d/%m/%Y %H:%M') if record.engineer_signed_at else '' }}</td>
+      </tr>
+      <!-- Client sign-off -->
+      <tr>
+        <td>{{ record.client_name or '' }}</td>
+        <td>{{ record.client_company or 'Vestas' }}</td>
+        <td class="ack-sig-cell">
+          {% if record.client_signature %}
+          <img src="{{ record.client_signature }}" class="ack-sig-img" alt="client sig"/>
+          {% endif %}
+        </td>
+        <td>{{ record.client_signed_at.strftime('%d/%m/%Y %H:%M') if record.client_signed_at else '' }}</td>
+      </tr>
+      <!-- Blank rows for additional signatories -->
+      <tr><td>&nbsp;</td><td></td><td></td><td></td></tr>
+      <tr><td>&nbsp;</td><td></td><td></td><td></td></tr>
+    </tbody>
+  </table>
+
+  <!-- Sign-off status summary -->
+  {% set done = record.items_complete_count %}
+  {% set total = record.items_total_count %}
+  <div style="margin-top:8pt;padding:5pt 8pt;background:#f8fafc;border:0.75pt solid #e2e8f0;border-radius:3pt;font-size:7.5pt;color:#475569;">
+    <strong style="color:#1e293b;">Summary:</strong>
+    {{ done }}/{{ total }} criteria signed by engineer ·
+    Status: <strong>{{ record.status.replace('_',' ').title() }}</strong>
+    {% if record.client_name %} · Client: {{ record.client_name }}{% endif %}
+  </div>
+
+  <!-- Footer -->
+  <div class="page-footer">
+    <span>Uncontrolled When Printed</span>
+    <span>OPER-FRM-050</span>
+    <span>Page {{ defn['items']|length + 2 }} of {{ defn['items']|length + 2 }}</span>
+  </div>
+</div>
+
+<script>
+// Auto-trigger print after page fully loads
+window.addEventListener('load', () => setTimeout(() => window.print(), 900));
+</script>
+</body>
+</html>

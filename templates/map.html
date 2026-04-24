@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Live Map – King Rocks Wind Farm QA</title>
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Leaflet Draw -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css"/>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+  <!-- Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100% !important; overflow: hidden !important; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+
+    /* ── Layout ─────────────────────────────────────── */
+    #app    { display: flex !important; height: 100vh !important; width: 100vw !important; }
+    #sidebar{ width: 340px; min-width: 340px; height: 100vh; background: #0f172a; display: flex; flex-direction: column; z-index: 1000; overflow: hidden; flex-shrink: 0; }
+    #map-wrap { flex: 1; position: relative; height: 100vh; overflow: hidden; }
+    #map    { width: 100% !important; height: 100% !important; z-index: 1; }
+
+    /* ── Sidebar sections ───────────────────────────── */
+    .s-header { background: linear-gradient(135deg,#1e3a5f,#0f4c81); padding: 16px 18px; flex-shrink: 0; }
+    .s-body   { flex: 1; overflow-y: auto; padding: 0; }
+    .s-body::-webkit-scrollbar { width: 4px; }
+    .s-body::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+
+    /* ── WTG list items ─────────────────────────────── */
+    .wtg-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 16px; cursor: pointer;
+      border-bottom: 1px solid #1e293b;
+      transition: background 0.15s;
+    }
+    .wtg-item:hover  { background: #1e293b; }
+    .wtg-item.active { background: #1e3a5f; border-left: 3px solid #3b82f6; }
+    .wtg-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .wtg-name { font-weight: 700; font-size: 13px; color: #f1f5f9; }
+    .wtg-pct  { font-size: 11px; color: #94a3b8; margin-left: auto; }
+    .wtg-bar  { height: 3px; border-radius: 2px; margin-top: 4px; }
+
+    /* ── QA Panel ───────────────────────────────────── */
+    #qa-panel {
+      position: absolute; right: 0; top: 0; bottom: 0; width: 380px;
+      background: white; z-index: 900; box-shadow: -4px 0 24px rgba(0,0,0,0.15);
+      display: flex; flex-direction: column;
+      transform: translateX(100%); transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
+    }
+    #qa-panel.open { transform: translateX(0); }
+    .panel-header { background: linear-gradient(135deg,#1e3a5f,#0f4c81); color:white; padding: 16px 20px; flex-shrink:0; }
+    .panel-body   { flex:1; overflow-y:auto; padding: 16px; }
+    .panel-body::-webkit-scrollbar { width: 4px; }
+    .panel-body::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
+
+    /* ── Area cards ─────────────────────────────────── */
+    .area-card {
+      border-radius: 12px; padding: 12px; margin-bottom: 10px;
+      cursor: pointer; transition: all 0.2s; border: 2px solid transparent;
+    }
+    .area-card:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    .area-card.expanded { border-color: #3b82f6; }
+    .area-h  { background: #fef2f2; }
+    .area-c  { background: #f0fdf4; }
+    .area-b  { background: #fefce8; }
+    .area-bf { background: #eff6ff; }
+
+    /* ── Test rows ──────────────────────────────────── */
+    .test-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 10px; border-radius: 8px; margin-bottom: 4px;
+      background: white; border: 1px solid #f1f5f9;
+    }
+    .test-check { width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 10px; }
+    .check-done { background: #dcfce7; color: #16a34a; }
+    .check-pend { background: #f1f5f9; color: #94a3b8; }
+
+    /* ── Timeline ───────────────────────────────────── */
+    .timeline-date { font-size: 11px; font-weight: 700; color: #64748b; margin-bottom: 6px; text-transform: uppercase; }
+    .photo-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 6px; margin-bottom: 12px; }
+    .photo-thumb { aspect-ratio:1; border-radius: 8px; overflow:hidden; cursor:pointer; background:#f1f5f9; position:relative; }
+    .photo-thumb img { width:100%; height:100%; object-fit:cover; }
+    .photo-thumb:hover img { opacity: 0.85; }
+
+    /* ── Map controls ───────────────────────────────── */
+    .map-pill {
+      position: absolute; z-index: 800;
+      background: white; border-radius: 20px; padding: 6px 12px;
+      font-size: 12px; font-weight: 600; box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      display: flex; align-items: center; gap: 6px;
+    }
+    #layer-controls { top: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; }
+    .layer-btn { cursor: pointer; padding: 6px 14px; border-radius: 20px; border: 2px solid transparent; font-size: 11px; font-weight: 700; transition: all 0.15s; }
+    .layer-btn.active { box-shadow: 0 0 0 2px white, 0 0 0 4px currentColor; }
+
+    /* ── Lightbox ───────────────────────────────────── */
+    #lightbox {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.9);
+      z-index: 9999; align-items: center; justify-content: center; flex-direction: column;
+    }
+    #lightbox.show { display: flex; }
+    #lightbox img { max-width: 90vw; max-height: 80vh; border-radius: 12px; }
+
+    /* ── Progress ring ──────────────────────────────── */
+    .ring { transform: rotate(-90deg); }
+
+    /* ── Photo upload dropzone ──────────────────────── */
+    .dropzone { border: 2px dashed #cbd5e1; border-radius: 10px; padding: 16px; text-align: center; cursor: pointer; transition: all 0.2s; }
+    .dropzone:hover, .dropzone.drag { border-color: #3b82f6; background: #eff6ff; }
+
+    /* ── Nav back button ─────────────────────────────── */
+    #back-btn { top: 12px; right: 12px; }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ══ SIDEBAR ═══════════════════════════════════════════════════════════ -->
+  <aside id="sidebar">
+    <!-- Header -->
+    <div class="s-header">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <a href="{{ url_for('dashboard') }}" style="color:#94a3b8;font-size:12px;text-decoration:none">
+          <i class="fa-solid fa-arrow-left"></i>
+        </a>
+        <div style="width:32px;height:32px;background:#22c55e;border-radius:10px;display:flex;align-items:center;justify-content:center">
+          <i class="fa-solid fa-wind" style="color:white;font-size:14px"></i>
+        </div>
+        <div>
+          <div style="color:white;font-weight:800;font-size:14px">King Rocks WF</div>
+          <div style="color:#94a3b8;font-size:11px">Live QA Map</div>
+        </div>
+        <div style="margin-left:auto">
+          <span style="background:#1e3a5f;color:#94a3b8;font-size:10px;padding:3px 8px;border-radius:20px;font-weight:600" id="role-badge">
+            {{ current_user.role | title }}
+          </span>
+        </div>
+      </div>
+
+      <!-- Map layers toggle -->
+      <div style="display:flex;gap:4px;flex-wrap:wrap">
+        <button class="layer-btn active" style="color:#ef4444;border-color:#fca5a5;background:#fef2f2" onclick="toggleLayer('hardstand',this)" id="btn-hardstand">
+          Hardstand
+        </button>
+        <button class="layer-btn active" style="color:#3b82f6;border-color:#93c5fd;background:#eff6ff" onclick="toggleLayer('blade_fingers',this)" id="btn-bf">
+          Blade Fingers
+        </button>
+        <button class="layer-btn active" style="color:#ca8a04;border-color:#fde047;background:#fefce8" onclick="toggleLayer('boom_pad',this)" id="btn-bp">
+          Boom Pad
+        </button>
+        <button class="layer-btn active" style="color:#6b7280;border-color:#d1d5db;background:#f9fafb" onclick="toggleLayer('track',this)" id="btn-track">
+          Track
+        </button>
+      </div>
+    </div>
+
+    <!-- WTG List -->
+    <div class="s-body" id="wtg-list-container">
+      <div style="padding:10px 16px 6px;font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.08em">
+        Wind Turbine Generators
+      </div>
+      {% for wtg in wtgs %}
+      {% set pct = wtg.completion_pct %}
+      <div class="wtg-item" id="wtg-list-{{ wtg.id }}" onclick="selectWTG({{ wtg.id }}, '{{ wtg.name }}')">
+        <div class="wtg-dot"
+          style="background:{% if pct==100 %}#22c55e{% elif pct>0 %}#f59e0b{% else %}#ef4444{% endif %}"></div>
+        <div style="flex:1;min-width:0">
+          <div class="wtg-name">{{ wtg.name }}</div>
+          <div class="wtg-bar" style="width:100%;background:#1e293b">
+            <div class="wtg-bar" style="width:{{ pct }}%;background:{% if pct==100 %}#22c55e{% elif pct>0 %}#f59e0b{% else %}#ef4444{% endif %}"></div>
+          </div>
+        </div>
+        <div class="wtg-pct">{{ pct }}%</div>
+      </div>
+      {% endfor %}
+
+      {% if current_user.can_enter_data() %}
+      <!-- Draw Zone Tool -->
+      <div style="padding:12px 16px;border-top:1px solid #1e293b;margin-top:8px">
+        <div style="font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px">Draw Tools</div>
+        <button onclick="startDrawing()" id="draw-btn"
+          style="width:100%;padding:10px;background:#1e3a5f;color:#93c5fd;border:1px solid #2563eb;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;transition:all 0.2s">
+          <i class="fa-solid fa-draw-polygon mr-2"></i>Draw Custom Zone
+        </button>
+        <div id="draw-hint" style="display:none;margin-top:8px;padding:8px;background:#0f2240;border-radius:8px;font-size:11px;color:#7dd3fc">
+          <i class="fa-solid fa-info-circle mr-1"></i>Click on map to draw polygon. Double-click to finish.
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </aside>
+
+  <!-- ══ MAP ══════════════════════════════════════════════════════════════ -->
+  <div id="map-wrap">
+    <div id="map"></div>
+  </div>
+
+</div>
+
+<!-- ══ QA PANEL (slides in from right) ══════════════════════════════════════ -->
+<div id="qa-panel">
+  <div class="panel-header">
+    <div style="display:flex;align-items:center;gap:10px">
+      <button onclick="closePanel()" style="background:rgba(255,255,255,0.15);border:none;color:white;width:28px;height:28px;border-radius:8px;cursor:pointer;font-size:14px">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+      <div>
+        <div style="font-size:18px;font-weight:800" id="panel-wtg-name">WTG22</div>
+        <div style="font-size:12px;color:#93c5fd" id="panel-subtitle">Geotechnical QA Status</div>
+      </div>
+      <div style="margin-left:auto;text-align:right">
+        <div style="font-size:28px;font-weight:900;color:#22c55e" id="panel-pct">0%</div>
+        <div style="font-size:10px;color:#93c5fd">Complete</div>
+      </div>
+    </div>
+    <!-- Progress bar -->
+    <div style="background:rgba(255,255,255,0.15);border-radius:4px;height:6px;margin-top:12px;overflow:hidden">
+      <div id="panel-bar" style="height:100%;border-radius:4px;background:#22c55e;transition:width 0.6s ease;width:0%"></div>
+    </div>
+  </div>
+
+  <div class="panel-body" id="panel-body">
+    <div style="text-align:center;padding:40px;color:#94a3b8">
+      <i class="fa-solid fa-spinner fa-spin fa-2x"></i>
+      <p style="margin-top:10px;font-size:13px">Loading QA data…</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══ LIGHTBOX ══════════════════════════════════════════════════════════════ -->
+<div id="lightbox" onclick="closeLightbox()">
+  <img id="lb-img" src="" alt=""/>
+  <div id="lb-caption" style="color:white;font-size:13px;margin-top:12px;text-align:center"></div>
+  <button onclick="closeLightbox()" style="position:absolute;top:20px;right:20px;background:rgba(255,255,255,0.2);border:none;color:white;width:36px;height:36px;border-radius:50%;cursor:pointer;font-size:16px">
+    <i class="fa-solid fa-xmark"></i>
+  </button>
+</div>
+
+<!-- ══ DRAW MODAL ════════════════════════════════════════════════════════════ -->
+<div id="draw-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9000;align-items:center;justify-content:center">
+  <div style="background:white;border-radius:20px;padding:28px;width:360px;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
+    <h3 style="font-size:18px;font-weight:800;color:#0f172a;margin-bottom:6px">Name This Zone</h3>
+    <p style="font-size:13px;color:#64748b;margin-bottom:20px">Assign a WTG and area type to this drawn zone.</p>
+
+    <div style="margin-bottom:14px">
+      <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;margin-bottom:6px">Zone Label</label>
+      <input id="draw-label" type="text" placeholder="e.g. WTG22 – Hardstand North"
+        style="width:100%;padding:10px 12px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;outline:none"/>
+    </div>
+
+    <div style="margin-bottom:14px">
+      <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;margin-bottom:6px">WTG</label>
+      <select id="draw-wtg" style="width:100%;padding:10px 12px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;outline:none;background:white">
+        <option value="">Select WTG…</option>
+        {% for wtg in wtgs %}
+        <option value="{{ wtg.id }}">{{ wtg.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div style="margin-bottom:20px">
+      <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;margin-bottom:6px">Area Type</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        {% for key,label,color,bg in [('hardstand','Hardstand','#ef4444','#fef2f2'),('crane_pad','Crane Pad','#22c55e','#f0fdf4'),('boom_pad','Boom Pad','#ca8a04','#fefce8'),('blade_fingers','Blade Fingers','#3b82f6','#eff6ff')] %}
+        <label style="cursor:pointer">
+          <input type="radio" name="draw-area" value="{{ key }}" style="display:none" onchange="selectAreaType('{{ color }}','{{ bg }}',this)"/>
+          <div class="area-type-btn" data-key="{{ key }}"
+            style="padding:8px;border-radius:8px;border:2px solid #e2e8f0;text-align:center;font-size:11px;font-weight:700;color:{{ color }};background:{{ bg }};transition:all 0.2s">
+            {{ label }}
+          </div>
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px">
+      <button onclick="cancelDraw()" style="flex:1;padding:12px;background:#f1f5f9;border:none;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer;color:#64748b">Cancel</button>
+      <button onclick="saveZone()" style="flex:2;padding:12px;background:linear-gradient(135deg,#1e3a5f,#0f4c81);border:none;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer;color:white">
+        <i class="fa-solid fa-floppy-disk mr-2"></i>Save Zone
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════════════════════
+// MAP INIT
+// ════════════════════════════════════════════════════════════════════════════
+const map = L.map('map', { zoomControl: false, attributionControl: true });
+L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+// Satellite tiles (Esri — free, no API key)
+const satellite = L.tileLayer(
+  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+  { attribution: 'Tiles © Esri' }
+);
+const topo = L.tileLayer(
+  'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+  { attribution: '© OpenStreetMap' }
+);
+satellite.addTo(map);
+
+// Base layer switcher (satellite / topo)
+let satMode = true;
+// Simple toggle — bottom-left
+const basePill = L.control({ position: 'bottomleft' });
+basePill.onAdd = () => {
+  const d = L.DomUtil.create('div');
+  d.innerHTML = `<button onclick="toggleBase()" style="background:white;border:none;padding:8px 14px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.2)">
+    <i class="fa-solid fa-satellite-dish mr-1" id="base-icon"></i><span id="base-label">Satellite</span>
+  </button>`;
+  L.DomEvent.disableClickPropagation(d);
+  return d;
+};
+basePill.addTo(map);
+
+function toggleBase() {
+  if (satMode) { map.removeLayer(satellite); topo.addTo(map); document.getElementById('base-icon').className='fa-solid fa-map mr-1'; document.getElementById('base-label').textContent='Topo'; }
+  else         { map.removeLayer(topo); satellite.addTo(map); document.getElementById('base-icon').className='fa-solid fa-satellite-dish mr-1'; document.getElementById('base-label').textContent='Satellite'; }
+  satMode = !satMode;
+}
+
+// ── Layer groups ─────────────────────────────────────────────────────────────
+const layerGroups = {
+  hardstand:    L.layerGroup().addTo(map),
+  blade_fingers:L.layerGroup().addTo(map),
+  boom_pad:     L.layerGroup().addTo(map),
+  track:        L.layerGroup().addTo(map),
+  wtg_centers:  L.layerGroup().addTo(map),
+};
+const layerVisible = { hardstand:true, blade_fingers:true, boom_pad:true, track:true };
+
+const LAYER_COLORS = {
+  hardstand:    { color:'#ff4444', weight:2.5, opacity:0.9 },
+  blade_fingers:{ color:'#3b82f6', weight:2,   opacity:0.8 },
+  boom_pad:     { color:'#facc15', weight:2.5, opacity:0.9 },
+  track:        { color:'#94a3b8', weight:1.5, opacity:0.6 },
+};
+
+// ── Load GeoJSON from server ─────────────────────────────────────────────────
+let wtgMarkers = {};  // wtg name → marker
+
+async function loadKML() {
+  try {
+    const res  = await fetch('/api/kml/geojson');
+    const data = await res.json();
+
+    // Draw each layer
+    for (const [layer, fc] of Object.entries(data)) {
+      if (!fc || !fc.features) continue;
+      const style = LAYER_COLORS[layer];
+
+      if (layer === 'wtg_centers') {
+        fc.features.forEach(f => {
+          if (f.geometry.type !== 'Point') return;
+          const [lon, lat] = f.geometry.coordinates;
+          const name = f.properties.name;
+          const marker = createWTGMarker(lat, lon, name);
+          marker.addTo(layerGroups.wtg_centers);
+          wtgMarkers[name] = marker;
+        });
+      } else if (style) {
+        fc.features.forEach(f => {
+          if (f.geometry.type !== 'LineString') return;
+          const coords = f.geometry.coordinates.map(c => [c[1], c[0]]);
+          L.polyline(coords, { ...style, interactive: false }).addTo(layerGroups[layer]);
+        });
+      }
+    }
+
+    // Fit map to WTG centers
+    const pts = Object.values(wtgMarkers).map(m => m.getLatLng());
+    if (pts.length) map.fitBounds(L.latLngBounds(pts).pad(0.3));
+
+  } catch(e) {
+    console.error('Failed to load KML:', e);
+  }
+}
+
+function createWTGMarker(lat, lon, name) {
+  // Coloured circle marker
+  const icon = L.divIcon({
+    className: '',
+    html: `<div id="wtg-marker-${name}" style="
+      width:38px;height:38px;border-radius:50%;border:3px solid white;
+      background:#ef4444;display:flex;align-items:center;justify-content:center;
+      font-size:9px;font-weight:900;color:white;cursor:pointer;
+      box-shadow:0 2px 12px rgba(0,0,0,0.35);
+      transition: transform 0.2s;
+      white-space:nowrap;
+    ">${name.replace('WTG','')}</div>`,
+    iconSize: [38,38],
+    iconAnchor: [19,19],
+  });
+
+  const marker = L.marker([lat, lon], { icon });
+
+  // Tooltip
+  marker.bindTooltip(`<b>${name}</b><br><span id="tt-${name}">Loading…</span>`, {
+    direction: 'top', offset: [0,-22], className: 'wtg-tooltip'
+  });
+
+  // Click → open QA panel
+  marker.on('click', () => {
+    // Find WTG id from server-side list
+    const wtg = WTG_LIST.find(w => w.name === name);
+    if (wtg) selectWTG(wtg.id, wtg.name);
+  });
+
+  return marker;
+}
+
+// ── Toggle layer visibility ──────────────────────────────────────────────────
+function toggleLayer(name, btn) {
+  if (layerVisible[name]) {
+    map.removeLayer(layerGroups[name]);
+    btn.classList.remove('active');
+    btn.style.opacity = '0.4';
+  } else {
+    layerGroups[name].addTo(map);
+    btn.classList.add('active');
+    btn.style.opacity = '1';
+  }
+  layerVisible[name] = !layerVisible[name];
+}
+
+// WTG list from template
+const WTG_LIST = [
+  {% for wtg in wtgs %}
+  { id: {{ wtg.id }}, name: '{{ wtg.name }}', pct: {{ wtg.completion_pct }} },
+  {% endfor %}
+];
+
+// Update marker colours from completion %
+function updateMarkerColour(name, pct) {
+  const el = document.getElementById(`wtg-marker-${name}`);
+  if (!el) return;
+  el.style.background = pct===100 ? '#22c55e' : pct>0 ? '#f59e0b' : '#ef4444';
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// QA PANEL
+// ════════════════════════════════════════════════════════════════════════════
+let currentWTGId = null;
+
+async function selectWTG(id, name) {
+  currentWTGId = id;
+
+  // Highlight sidebar
+  document.querySelectorAll('.wtg-item').forEach(el => el.classList.remove('active'));
+  const li = document.getElementById(`wtg-list-${id}`);
+  if (li) { li.classList.add('active'); li.scrollIntoView({ behavior:'smooth', block:'nearest' }); }
+
+  // Open panel
+  document.getElementById('panel-wtg-name').textContent = name;
+  document.getElementById('panel-subtitle').textContent = 'Geotechnical QA Status';
+  document.getElementById('qa-panel').classList.add('open');
+
+  // Show loading
+  document.getElementById('panel-body').innerHTML = `
+    <div style="text-align:center;padding:40px;color:#94a3b8">
+      <i class="fa-solid fa-spinner fa-spin fa-2x"></i>
+      <p style="margin-top:10px;font-size:13px">Loading…</p>
+    </div>`;
+
+  // Fetch status
+  const [statusRes, photosRes, foundRes] = await Promise.all([
+    fetch(`/api/wtg/${id}/status`),
+    fetch(`/api/wtg/${id}/photos`),
+    fetch(`/api/wtg/${id}/foundation/summary`),
+  ]);
+  const status     = await statusRes.json();
+  const photos     = await photosRes.json();
+  const foundation = foundRes.ok ? await foundRes.json() : null;
+
+  // Update header
+  document.getElementById('panel-pct').textContent = `${status.pct}%`;
+  document.getElementById('panel-bar').style.width = `${status.pct}%`;
+  document.getElementById('panel-bar').style.background = status.pct===100 ? '#22c55e' : status.pct>0 ? '#f59e0b' : '#ef4444';
+
+  // Update marker
+  updateMarkerColour(name, status.pct);
+
+  // Render body
+  document.getElementById('panel-body').innerHTML = renderPanel(status, photos, id, foundation);
+}
+
+function closePanel() {
+  document.getElementById('qa-panel').classList.remove('open');
+  currentWTGId = null;
+  document.querySelectorAll('.wtg-item').forEach(el => el.classList.remove('active'));
+}
+
+function renderPanel(status, photos, wtgId, foundation) {
+  const AREA_CONF = {
+    hardstand:    { label:'Hardstand',     cls:'area-h',  icon:'🔴', color:'#ef4444' },
+    crane_pad:    { label:'Crane Pad',     cls:'area-c',  icon:'🟢', color:'#22c55e' },
+    boom_pad:     { label:'Boom Pad',      cls:'area-b',  icon:'🟡', color:'#ca8a04' },
+    blade_fingers:{ label:'Blade Fingers', cls:'area-bf', icon:'🔵', color:'#3b82f6' },
+  };
+
+  let html = '';
+
+  // ── Area cards ──
+  for (const [aType, aData] of Object.entries(status.areas)) {
+    const conf = AREA_CONF[aType] || { label: aType, cls:'area-h', icon:'⚪', color:'#6b7280' };
+    const done = aData.tests.filter(t => t.complete).length;
+    const total = aData.tests.length;
+
+    html += `<div class="area-card ${conf.cls}" onclick="toggleArea('${aType}')">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:14px">${conf.icon}</span>
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:800;color:#0f172a">${conf.label}</div>
+          <div style="font-size:11px;color:#64748b">${done} / ${total} complete</div>
+        </div>
+        <div style="font-size:18px;font-weight:900;color:${conf.color}">${aData.pct}%</div>
+        <i class="fa-solid fa-chevron-down" id="chevron-${aType}" style="color:#94a3b8;font-size:11px;transition:transform 0.2s"></i>
+      </div>
+      <!-- Progress bar -->
+      <div style="background:#e2e8f0;border-radius:4px;height:5px;margin-top:8px;overflow:hidden">
+        <div style="height:100%;border-radius:4px;width:${aData.pct}%;background:${conf.color};transition:width 0.5s ease"></div>
+      </div>
+    </div>
+    <div id="tests-${aType}" style="display:none;margin:-6px 0 12px 0">`;
+
+    for (const test of aData.tests) {
+      const isProofRoll = test.is_proof_roll;
+      const enterUrl = isProofRoll
+        ? `/test/${test.id}/proof-roll`
+        : `/test/${test.id}/record`;
+
+      html += `<div class="test-item">
+        <div class="test-check ${test.complete ? 'check-done' : 'check-pend'}">
+          <i class="fa-solid fa-${test.complete ? 'check' : 'clock'}"></i>
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;font-weight:600;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${test.name}</div>
+          <div style="font-size:10px;color:#94a3b8">${test.complete ? '✓ Done' : 'Pending'}</div>
+        </div>`;
+
+      if (!test.complete && {{ 'true' if current_user.can_enter_data() else 'false' }}) {
+        html += `<a href="${enterUrl}" style="padding:5px 10px;background:${isProofRoll ? '#2563eb' : '#16a34a'};color:white;border-radius:7px;font-size:10px;font-weight:700;text-decoration:none;white-space:nowrap">
+          ${isProofRoll ? '📋 Proof Roll' : '+ Record'}
+        </a>`;
+      }
+      html += `</div>`;
+    }
+    html += `</div>`;  // close tests-aType
+  }
+
+  // ── Foundation Summary ──
+  if (foundation && foundation.stages) {
+    const fDone  = foundation.complete;
+    const fTotal = foundation.total;
+    const fPct   = foundation.pct;
+    const STATUS_COLOR = { complete:'#22c55e', approved:'#3b82f6', in_review:'#f59e0b', in_progress:'#f97316', not_started:'#e2e8f0' };
+    const STATUS_LABEL = { complete:'✓', approved:'A', in_review:'R', in_progress:'▶', not_started:'–' };
+
+    html += `<div style="margin-top:16px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <div style="font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;flex:1">
+          <i class="fa-solid fa-layer-group mr-2" style="color:#f59e0b"></i>Foundation Stages
+        </div>
+        <span style="font-size:11px;font-weight:700;color:${fPct===100?'#16a34a':'#0f4c81'}">${fDone}/${fTotal}</span>
+      </div>
+      <!-- Progress bar -->
+      <div style="background:#e2e8f0;border-radius:4px;height:5px;margin-bottom:10px;overflow:hidden">
+        <div style="height:100%;border-radius:4px;width:${fPct}%;background:${fPct===100?'#22c55e':'#7c3aed'};transition:width 0.5s"></div>
+      </div>
+      <!-- Stage pills -->
+      <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px">`;
+
+    for (const s of foundation.stages) {
+      const col = STATUS_COLOR[s.status] || '#e2e8f0';
+      const lbl = STATUS_LABEL[s.status] || '–';
+      const shortLabel = s.label.replace('Foundation – ','').replace('Foundation - ','').substring(0,20);
+      html += `<div title="${s.label}: ${s.status.replace(/_/g,' ')}"
+        style="background:${col};color:${s.status==='not_started'?'#94a3b8':'white'};padding:3px 8px;border-radius:20px;font-size:10px;font-weight:700;white-space:nowrap">
+        ${lbl} ${shortLabel}
+      </div>`;
+    }
+
+    html += `</div>
+      <a href="/foundation/${wtgId}" style="display:block;padding:10px;background:#f5f3ff;border-radius:10px;text-align:center;font-size:12px;font-weight:700;color:#7c3aed;text-decoration:none;border:1px solid #ddd6fe">
+        <i class="fa-solid fa-layer-group mr-2"></i>Open Foundation Tracker
+      </a>
+    </div>`;
+  }
+
+  // ── Photo Timeline ──
+  const photoEntries = Object.entries(photos);
+  if (photoEntries.length > 0) {
+    html += `<div style="margin-top:16px">
+      <div style="font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px">
+        <i class="fa-solid fa-camera mr-2"></i>Photo Timeline
+      </div>`;
+
+    for (const [date, datePhotos] of photoEntries.sort()) {
+      html += `<div class="timeline-date">${formatDate(date)}</div>
+        <div class="photo-grid">`;
+      for (const p of datePhotos) {
+        html += `<div class="photo-thumb" onclick="openLightbox('${p.url}','${p.caption || p.test_name}')">
+          <img src="${p.url}" alt="${p.caption}" loading="lazy"
+            onerror="this.style.display='none';this.parentNode.innerHTML='<div style=padding:10px;font-size:9px;color:#94a3b8;text-align:center>Photo</div>'"/>
+          <div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,rgba(0,0,0,0.6));padding:4px;font-size:9px;color:white;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.area}</div>
+        </div>`;
+      }
+      html += `</div>`;
+    }
+    html += `</div>`;
+  } else {
+    html += `<div style="margin-top:16px;padding:14px;background:#f8fafc;border-radius:10px;text-align:center;color:#94a3b8;font-size:12px">
+      <i class="fa-solid fa-camera fa-2x" style="margin-bottom:8px;display:block"></i>No photos yet — add them via test records
+    </div>`;
+  }
+
+  // ── View in detail ──
+  html += `<a href="/wtg/${wtgId}" style="display:block;margin-top:16px;padding:12px;background:#f1f5f9;border-radius:12px;text-align:center;font-size:13px;font-weight:700;color:#0f4c81;text-decoration:none">
+    <i class="fa-solid fa-arrow-up-right-from-square mr-2"></i>Full WTG Detail
+  </a>`;
+
+  return html;
+}
+
+function toggleArea(aType) {
+  const el = document.getElementById(`tests-${aType}`);
+  const ch = document.getElementById(`chevron-${aType}`);
+  const isOpen = el.style.display !== 'none';
+  el.style.display = isOpen ? 'none' : 'block';
+  if (ch) ch.style.transform = isOpen ? '' : 'rotate(180deg)';
+  // Mark card expanded
+  el.previousElementSibling.classList.toggle('expanded', !isOpen);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// DRAW TOOLS
+// ════════════════════════════════════════════════════════════════════════════
+const drawnItems = new L.FeatureGroup().addTo(map);
+let drawControl = null;
+let pendingLayer = null;
+
+function startDrawing() {
+  document.getElementById('draw-hint').style.display = 'block';
+  document.getElementById('draw-btn').textContent = '✏️ Drawing… (dbl-click to finish)';
+
+  const drawer = new L.Draw.Polygon(map, {
+    shapeOptions: { color: '#3b82f6', fillOpacity: 0.15, weight: 2 }
+  });
+  drawer.enable();
+
+  map.once(L.Draw.Event.CREATED, e => {
+    pendingLayer = e.layer;
+    drawnItems.addLayer(pendingLayer);
+    document.getElementById('draw-modal').style.display = 'flex';
+    document.getElementById('draw-hint').style.display = 'none';
+    document.getElementById('draw-btn').innerHTML = '<i class="fa-solid fa-draw-polygon mr-2"></i>Draw Custom Zone';
+  });
+}
+
+function cancelDraw() {
+  if (pendingLayer) { drawnItems.removeLayer(pendingLayer); pendingLayer = null; }
+  document.getElementById('draw-modal').style.display = 'none';
+}
+
+async function saveZone() {
+  if (!pendingLayer) return;
+  const label   = document.getElementById('draw-label').value.trim();
+  const wtgId   = document.getElementById('draw-wtg').value;
+  const areaEl  = document.querySelector('input[name="draw-area"]:checked');
+  const areaType = areaEl ? areaEl.value : '';
+
+  if (!label || !wtgId || !areaType) {
+    alert('Please fill in all fields.'); return;
+  }
+
+  const geojson = pendingLayer.toGeoJSON();
+  // Save to server
+  await fetch('/api/zones', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ label, wtg_id: wtgId, area_type: areaType, geojson: JSON.stringify(geojson) })
+  });
+
+  // Style the layer permanently
+  pendingLayer.setStyle({ color: areaTypeColor(areaType), fillOpacity: 0.12, weight: 2 });
+  pendingLayer.bindTooltip(`<b>${label}</b>`, { permanent: false });
+  pendingLayer.on('click', () => {
+    const wtg = WTG_LIST.find(w => w.id == wtgId);
+    if (wtg) selectWTG(wtg.id, wtg.name);
+  });
+
+  pendingLayer = null;
+  document.getElementById('draw-modal').style.display = 'none';
+  flash(`Zone "${label}" saved!`);
+}
+
+function areaTypeColor(t) {
+  return { hardstand:'#ef4444', crane_pad:'#22c55e', boom_pad:'#facc15', blade_fingers:'#3b82f6' }[t] || '#6b7280';
+}
+
+function selectAreaType(color, bg, input) {
+  document.querySelectorAll('.area-type-btn').forEach(b => {
+    b.style.borderColor = '#e2e8f0';
+    b.style.boxShadow = '';
+  });
+  const btn = document.querySelector(`.area-type-btn[data-key="${input.value}"]`);
+  if (btn) { btn.style.borderColor = color; btn.style.boxShadow = `0 0 0 3px ${color}33`; }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// UTILS
+// ════════════════════════════════════════════════════════════════════════════
+function openLightbox(url, caption) {
+  document.getElementById('lb-img').src = url;
+  document.getElementById('lb-caption').textContent = caption || '';
+  document.getElementById('lightbox').classList.add('show');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('show');
+}
+
+function formatDate(iso) {
+  const d = new Date(iso + 'T00:00:00');
+  return d.toLocaleDateString('en-AU', { weekday:'short', day:'numeric', month:'long', year:'numeric' });
+}
+
+function flash(msg) {
+  const el = document.createElement('div');
+  el.textContent = msg;
+  el.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#22c55e;color:white;padding:12px 24px;border-radius:20px;font-size:13px;font-weight:700;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,0.2)';
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3000);
+}
+
+// ── Tooltip CSS ──────────────────────────────────────────────────────────────
+const style = document.createElement('style');
+style.textContent = `.wtg-tooltip { background:white;border:none;box-shadow:0 2px 12px rgba(0,0,0,0.15);border-radius:8px;padding:6px 10px;font-size:12px;font-weight:600; } .wtg-tooltip::before{display:none}`;
+document.head.appendChild(style);
+
+// ── Boot ─────────────────────────────────────────────────────────────────────
+// Force Leaflet to recalculate map size after full render
+window.addEventListener('load', () => {
+  setTimeout(() => {
+    map.invalidateSize();
+    loadKML();
+  }, 100);
+});
+
+// Update marker colours
+WTG_LIST.forEach(w => updateMarkerColour(w.name, w.pct));
+
+// Load saved user-drawn zones
+async function loadSavedZones() {
+  try {
+    const res   = await fetch('/api/zones');
+    const zones = await res.json();
+    zones.forEach(z => {
+      if (!z.geojson) return;
+      const gj = typeof z.geojson === 'string' ? JSON.parse(z.geojson) : z.geojson;
+      const layer = L.geoJSON(gj, {
+        style: { color: areaTypeColor(z.area_type || ''), fillOpacity: 0.12, weight: 2 }
+      });
+      layer.bindTooltip(`<b>${z.label}</b>`, { sticky: true });
+      layer.on('click', () => {
+        const wtg = WTG_LIST.find(w => w.id == z.wtg_id);
+        if (wtg) selectWTG(wtg.id, wtg.name);
+      });
+      layer.addTo(drawnItems);
+    });
+  } catch(e) { console.log('No saved zones yet'); }
+}
+loadSavedZones();
+</script>
+</body>
+</html>

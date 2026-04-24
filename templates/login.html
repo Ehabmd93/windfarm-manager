@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Login – King Rocks Wind Farm QA</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    .wind-bg { background: linear-gradient(135deg, #072f52 0%, #0f4c81 50%, #1a6fa0 100%); }
+  </style>
+</head>
+<body class="min-h-screen wind-bg flex items-center justify-center p-4">
+
+  <!-- Decorative turbine silhouettes -->
+  <div class="absolute inset-0 overflow-hidden pointer-events-none opacity-10">
+    <svg viewBox="0 0 800 600" class="absolute right-0 bottom-0 w-96 h-96 text-white fill-current">
+      <path d="M400,300 L400,100 L420,280 Z M400,300 L230,420 L390,310 Z M400,300 L570,420 L410,310 Z"/>
+      <circle cx="400" cy="300" r="12"/>
+      <rect x="395" y="300" width="10" height="200"/>
+    </svg>
+  </div>
+
+  <div class="relative w-full max-w-md">
+    <!-- Card -->
+    <div class="bg-white rounded-3xl shadow-2xl overflow-hidden">
+      <!-- Header -->
+      <div class="bg-gradient-to-r from-blue-900 to-blue-700 px-8 py-8 text-center">
+        <div class="w-16 h-16 bg-green-400 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+          <i class="fa-solid fa-wind text-white text-2xl"></i>
+        </div>
+        <h1 class="text-white text-2xl font-bold">King Rocks Wind Farm</h1>
+        <p class="text-blue-200 text-sm mt-1">QA Management System · CBOP</p>
+      </div>
+
+      <!-- Form -->
+      <div class="px-8 py-8">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% for category, msg in messages %}
+            <div class="mb-4 px-4 py-3 rounded-xl text-sm font-medium
+              {% if category=='danger' %}bg-red-50 text-red-700 border border-red-200{% else %}bg-blue-50 text-blue-700 border border-blue-200{% endif %}">
+              {{ msg }}
+            </div>
+          {% endfor %}
+        {% endwith %}
+
+        <form method="POST">
+          <div class="space-y-5">
+            <div>
+              <label class="block text-sm font-semibold text-slate-700 mb-2">Email Address</label>
+              <div class="relative">
+                <i class="fa-solid fa-envelope absolute left-3.5 top-3.5 text-slate-400 text-sm"></i>
+                <input type="email" name="email" required placeholder="you@cbop.com"
+                  class="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition"/>
+              </div>
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-slate-700 mb-2">Password</label>
+              <div class="relative">
+                <i class="fa-solid fa-lock absolute left-3.5 top-3.5 text-slate-400 text-sm"></i>
+                <input type="password" name="password" required placeholder="••••••••"
+                  class="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition"/>
+              </div>
+            </div>
+            <button type="submit"
+              class="w-full bg-gradient-to-r from-blue-800 to-blue-600 text-white py-3 rounded-xl font-semibold text-sm hover:from-blue-700 hover:to-blue-500 transition-all duration-200 shadow-lg shadow-blue-900/30">
+              <i class="fa-solid fa-right-to-bracket mr-2"></i>Sign In
+            </button>
+          </div>
+        </form>
+
+        <!-- Demo accounts -->
+        <div class="mt-6 pt-6 border-t border-slate-100">
+          <p class="text-xs text-slate-500 text-center font-semibold mb-3">Demo Accounts</p>
+          <div class="grid grid-cols-2 gap-2 text-xs">
+            <button onclick="fill('engineer@cbop.com','engineer123')"
+              class="px-3 py-2 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition font-medium border border-green-200">
+              <i class="fa-solid fa-helmet-safety mr-1"></i>Engineer
+            </button>
+            <button onclick="fill('supervisor@cbop.com','supervisor123')"
+              class="px-3 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition font-medium border border-blue-200">
+              <i class="fa-solid fa-user-tie mr-1"></i>Supervisor
+            </button>
+            <button onclick="fill('manager@cbop.com','manager123')"
+              class="px-3 py-2 bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 transition font-medium border border-purple-200">
+              <i class="fa-solid fa-briefcase mr-1"></i>Manager
+            </button>
+            <button onclick="fill('client@client.com','client123')"
+              class="px-3 py-2 bg-orange-50 text-orange-700 rounded-lg hover:bg-orange-100 transition font-medium border border-orange-200">
+              <i class="fa-solid fa-building mr-1"></i>Client
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function fill(email, pw) {
+      document.querySelector('input[name=email]').value = email;
+      document.querySelector('input[name=password]').value = pw;
+    }
+  </script>
+</body>
+</html>

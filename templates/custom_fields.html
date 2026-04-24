@@ -1,0 +1,255 @@
+{% extends 'base.html' %}
+{% block title %}Custom Fields – King Rocks QA{% endblock %}
+{% block page_title %}Custom Tracking Fields{% endblock %}
+{% block page_sub %}Engineer-configurable data fields per test type{% endblock %}
+
+{% block content %}
+<div class="flex items-center gap-3 mb-6">
+  <p class="text-sm text-slate-500 flex-1">Add, edit, or remove fields that appear in test records. Fields are grouped by test type (scope).</p>
+  <button onclick="document.getElementById('add-field-modal').classList.remove('hidden')"
+    class="px-4 py-2 rounded-xl bg-blue-700 text-white text-sm font-semibold hover:bg-blue-600 transition">
+    <i class="fa-solid fa-plus mr-1.5"></i>Add Field
+  </button>
+</div>
+
+<!-- Scope tabs -->
+<div class="flex gap-2 flex-wrap mb-5" id="scope-tabs">
+  {% for scope in scopes.keys() %}
+  <button onclick="selectScope('{{ scope }}')" id="tab-{{ scope }}"
+    class="scope-tab px-4 py-2 rounded-xl text-xs font-semibold border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 transition-all">
+    {{ scope.replace('_',' ').title() }}
+  </button>
+  {% endfor %}
+</div>
+
+<!-- Fields per scope -->
+{% for scope, fields in grouped.items() %}
+<div id="scope-panel-{{ scope }}" class="scope-panel hidden">
+  <div class="card p-0 overflow-hidden">
+    <div class="bg-slate-50 border-b border-slate-200 px-5 py-3 flex items-center justify-between">
+      <h3 class="font-bold text-slate-700">{{ scope.replace('_',' ').title() }} Fields</h3>
+      <span class="text-xs text-slate-400">{{ fields|length }} field{{ 's' if fields|length != 1 }}</span>
+    </div>
+    {% if fields %}
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="border-b border-slate-100 bg-white text-xs text-slate-500 font-semibold uppercase tracking-wide">
+          <th class="px-5 py-2.5 text-left">Label</th>
+          <th class="px-3 py-2.5 text-left">Key</th>
+          <th class="px-3 py-2.5 text-left">Type</th>
+          <th class="px-3 py-2.5 text-left">Unit</th>
+          <th class="px-3 py-2.5 text-left">Spec Min</th>
+          <th class="px-3 py-2.5 text-left">Spec Max</th>
+          <th class="px-3 py-2.5 text-left">Default</th>
+          <th class="px-3 py-2.5 text-left">Required</th>
+          <th class="px-3 py-2.5 text-center">Actions</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-50">
+        {% for f in fields %}
+        <tr class="hover:bg-slate-50 transition" id="field-row-{{ f.id }}">
+          <td class="px-5 py-3 font-medium text-slate-700">{{ f.label }}</td>
+          <td class="px-3 py-3 font-mono text-xs text-slate-500 bg-slate-50">{{ f.field_key }}</td>
+          <td class="px-3 py-3">
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold
+              {% if f.field_type=='number' %}bg-blue-100 text-blue-700
+              {% elif f.field_type=='select' %}bg-purple-100 text-purple-700
+              {% elif f.field_type=='date' %}bg-orange-100 text-orange-700
+              {% else %}bg-slate-100 text-slate-600{% endif %}">
+              {{ f.field_type }}
+            </span>
+          </td>
+          <td class="px-3 py-3 text-slate-500">{{ f.unit or '–' }}</td>
+          <td class="px-3 py-3 text-slate-500">{{ f.spec_min if f.spec_min is not none else '–' }}</td>
+          <td class="px-3 py-3 text-slate-500">{{ f.spec_max if f.spec_max is not none else '–' }}</td>
+          <td class="px-3 py-3 text-slate-500 max-w-32 truncate">{{ f.default_value or '–' }}</td>
+          <td class="px-3 py-3 text-center">
+            {% if f.required %}<i class="fa-solid fa-check text-green-500"></i>{% else %}<i class="fa-solid fa-minus text-slate-200"></i>{% endif %}
+          </td>
+          <td class="px-3 py-3 text-center">
+            <div class="flex items-center justify-center gap-1.5">
+              <button onclick="openEditField({{ f.id }}, {{ {'scope':f.scope,'label':f.label,'field_key':f.field_key,'field_type':f.field_type,'unit':f.unit,'spec_min':f.spec_min,'spec_max':f.spec_max,'default_value':f.default_value,'sort_order':f.sort_order,'options':f.options,'required':f.required} | tojson }})"
+                class="w-7 h-7 flex items-center justify-center rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition text-xs">
+                <i class="fa-solid fa-pen"></i>
+              </button>
+              <button onclick="deleteField({{ f.id }})"
+                class="w-7 h-7 flex items-center justify-center rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition text-xs">
+                <i class="fa-solid fa-trash"></i>
+              </button>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="px-5 py-8 text-center text-slate-400 text-sm">
+      <i class="fa-solid fa-inbox text-3xl mb-2 opacity-30"></i>
+      <p>No custom fields for this test type yet.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endfor %}
+
+<!-- Add Field Modal -->
+<div id="add-field-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+  <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 mx-4 max-h-screen overflow-y-auto">
+    <div class="flex items-center justify-between mb-5">
+      <h2 class="font-bold text-slate-800 text-lg" id="modal-title">Add Custom Field</h2>
+      <button onclick="closeModal()" class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+    <form id="field-form" onsubmit="saveField(event)">
+      <input type="hidden" id="edit-field-id" value=""/>
+      <div class="grid grid-cols-2 gap-4 mb-4">
+        <div class="col-span-2">
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Test Type Scope <span class="text-red-500">*</span></label>
+          <select name="scope" id="f-scope" required class="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+            {% for scope in scopes.keys() %}
+            <option value="{{ scope }}">{{ scope.replace('_',' ').title() }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Label <span class="text-red-500">*</span></label>
+          <input name="label" id="f-label" type="text" required placeholder="e.g. Density Ratio"
+            class="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"/>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Field Key <span class="text-red-500">*</span></label>
+          <input name="field_key" id="f-key" type="text" required placeholder="e.g. density_ratio"
+            class="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-mono"/>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Field Type <span class="text-red-500">*</span></label>
+          <select name="field_type" id="f-type" required onchange="toggleOptions()"
+            class="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+            <option value="text">Text</option>
+            <option value="number">Number</option>
+            <option value="select">Select (dropdown)</option>
+            <option value="date">Date</option>
+            <option value="textarea">Text Area</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Unit</label>
+          <input name="unit" id="f-unit" type="text" placeholder="e.g. %, t/m³, MN/m²"
+            class="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"/>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Spec Min</label>
+          <input name="spec_min" id="f-spec-min" type="number" step="any" placeholder="e.g. 92"
+            class="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"/>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Spec Max</label>
+          <input name="spec_max" id="f-spec-max" type="number" step="any" placeholder="e.g. 2.5"
+            class="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"/>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Default Value</label>
+          <input name="default_value" id="f-default" type="text" placeholder="Pre-filled value"
+            class="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"/>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Sort Order</label>
+          <input name="sort_order" id="f-order" type="number" value="10" min="1"
+            class="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"/>
+        </div>
+      </div>
+
+      <!-- Options (shown for select type only) -->
+      <div id="options-wrap" class="hidden mb-4">
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Dropdown Options <span class="text-slate-400 font-normal">(comma separated)</span></label>
+        <input name="options" id="f-options" type="text" placeholder="Option A,Option B,Option C"
+          class="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"/>
+      </div>
+
+      <div class="flex items-center gap-2 mb-6">
+        <input type="checkbox" name="required" id="f-required" class="w-4 h-4 rounded accent-blue-600"/>
+        <label for="f-required" class="text-sm text-slate-600 font-medium">Required field</label>
+      </div>
+
+      <button type="submit" class="w-full py-3 bg-blue-700 text-white rounded-xl text-sm font-bold hover:bg-blue-600 transition">
+        <i class="fa-solid fa-save mr-2"></i>Save Field
+      </button>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Select first scope tab on load
+const firstScope = '{{ scopes.keys() | list | first if scopes else "" }}';
+if (firstScope) selectScope(firstScope);
+
+function selectScope(scope) {
+  document.querySelectorAll('.scope-panel').forEach(p => p.classList.add('hidden'));
+  document.querySelectorAll('.scope-tab').forEach(t => {
+    t.className = 'scope-tab px-4 py-2 rounded-xl text-xs font-semibold border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 transition-all';
+  });
+  const panel = document.getElementById('scope-panel-' + scope);
+  const tab   = document.getElementById('tab-' + scope);
+  if (panel) panel.classList.remove('hidden');
+  if (tab)   tab.className = 'scope-tab px-4 py-2 rounded-xl text-xs font-semibold border border-blue-400 bg-blue-50 text-blue-700 transition-all';
+}
+
+function toggleOptions() {
+  const type = document.getElementById('f-type').value;
+  document.getElementById('options-wrap').classList.toggle('hidden', type !== 'select');
+}
+
+function closeModal() {
+  document.getElementById('add-field-modal').classList.add('hidden');
+  document.getElementById('field-form').reset();
+  document.getElementById('edit-field-id').value = '';
+  document.getElementById('modal-title').textContent = 'Add Custom Field';
+}
+
+function openEditField(fid, field) {
+  document.getElementById('edit-field-id').value = fid;
+  document.getElementById('f-scope').value   = field.scope || '';
+  document.getElementById('f-label').value   = field.label || '';
+  document.getElementById('f-key').value     = field.field_key || '';
+  document.getElementById('f-type').value    = field.field_type || 'text';
+  document.getElementById('f-unit').value    = field.unit || '';
+  document.getElementById('f-spec-min').value = field.spec_min ?? '';
+  document.getElementById('f-spec-max').value = field.spec_max ?? '';
+  document.getElementById('f-default').value = field.default_value || '';
+  document.getElementById('f-order').value   = field.sort_order || 10;
+  document.getElementById('f-options').value = field.options || '';
+  document.getElementById('f-required').checked = !!field.required;
+  document.getElementById('modal-title').textContent = 'Edit Field';
+  toggleOptions();
+  document.getElementById('add-field-modal').classList.remove('hidden');
+}
+
+async function saveField(e) {
+  e.preventDefault();
+  const fid  = document.getElementById('edit-field-id').value;
+  const form = e.target;
+  const fd   = new FormData(form);
+  const body = {};
+  fd.forEach((v, k) => body[k] = v);
+  body.required = fd.has('required') ? true : false;
+  if (body.spec_min === '') delete body.spec_min; else body.spec_min = parseFloat(body.spec_min);
+  if (body.spec_max === '') delete body.spec_max; else body.spec_max = parseFloat(body.spec_max);
+  if (body.sort_order) body.sort_order = parseInt(body.sort_order);
+
+  const url    = fid ? `/api/fields/${fid}` : '/api/fields';
+  const method = fid ? 'PUT' : 'POST';
+  const res    = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  if (res.ok) { location.reload(); }
+  else { const d = await res.json(); alert(d.error || 'Save failed'); }
+}
+
+async function deleteField(fid) {
+  if (!confirm('Delete this field? Existing records are not affected.')) return;
+  const res = await fetch(`/api/fields/${fid}`, { method: 'DELETE' });
+  if (res.ok) { document.getElementById('field-row-' + fid)?.remove(); }
+}
+</script>
+{% endblock %}
