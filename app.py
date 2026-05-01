@@ -1251,12 +1251,19 @@ def api_get_fields(scope):
     } for f in fields])
 
 
+# ─── Health check (for Railway / load balancers) ─────────────────────────────
+@app.route('/health')
+def health():
+    return {'status': 'ok', 'app': 'windfarm-manager'}, 200
+
 # ─── Startup: create tables, dirs, seed ──────────────────────────────────────
 def startup():
     create_dirs()
     with app.app_context():
         db.create_all()
     seed(app)
+    with app.app_context():
+        db.session.remove()   # clean up any sessions left open by seed
 
 # ─── Run ─────────────────────────────────────────────────────────────────────
 if __name__ == '__main__':
