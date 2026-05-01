@@ -15,6 +15,7 @@ from models import (db, User, WTG, Area, QATest, TestRecord,
 from itp_definitions import ITP_DEFINITIONS, CLIENTS
 from seed import seed
 from kml_parser import get_geojson
+from email_utils import email_client_invitation, email_client_signed
 
 # ─── App setup ──────────────────────────────────────────────────────────────
 BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
@@ -509,7 +510,22 @@ def itp_detail(wtg_id, itp_type):
             db.session.commit()
 
             sign_url = url_for('itp_client_sign', token=token, _external=True)
-            flash(f'Client link generated for {client_info["name"]}! Copy link below.', 'success')
+
+            # ── Send email invitation ──────────────────────────────────────
+            if client_email:
+                sent = email_client_invitation(
+                    record   = record,
+                    wtg_name = wtg.name,
+                    sign_url = sign_url,
+                    client_name  = client_info['name'],
+                    client_email = client_email,
+                )
+                if sent:
+                    flash(f'Invitation email sent to {client_email}! They can sign without logging in.', 'success')
+                else:
+                    flash(f'Client link generated for {client_info["name"]}. Email could not be sent — copy the link below manually.', 'warning')
+            else:
+                flash(f'Client link generated for {client_info["name"]}! Copy link below.', 'success')
             return redirect(url_for('itp_detail', wtg_id=wtg_id, itp_type=itp_type))
 
     now = datetime.now()
@@ -544,6 +560,19 @@ def itp_client_sign(token):
                 record.client_signed_at = datetime.now(timezone.utc)
                 record.status           = 'complete'
                 db.session.commit()
+
+                # ── Notify internal team ───────────────────────────────────
+                from models import User
+                notify = User.query.filter(
+                    User.role.in_(['engineer', 'supervisor', 'manager'])
+                ).all()
+                email_client_signed(
+                    record       = record,
+                    wtg_name     = wtg.name,
+                    client_name  = record.client_name or 'Client',
+                    notify_users = notify,
+                )
+
                 flash('ITP signed successfully. Thank you!', 'success')
             return redirect(url_for('itp_client_sign', token=token))
 
