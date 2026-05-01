@@ -38,6 +38,10 @@ def allowed_image(filename):
 
 app = Flask(__name__)
 
+# ── Fix for Railway / any reverse proxy (fixes HTTPS redirects) ──────────────
+from werkzeug.middleware.proxy_fix import ProxyFix
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+
 # ── Production config via environment variables ──────────────────────────────
 app.secret_key = os.environ.get('SECRET_KEY', 'KRKWF-secret-2024-cbop-dev')
 
