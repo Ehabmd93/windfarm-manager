@@ -173,6 +173,7 @@ def _seed_defaults(app):
 
 
 def seed(app):
+    from sqlalchemy.exc import IntegrityError
     with app.app_context():
         _migrate_itp_schema(app)
         db.create_all()  # Creates / updates tables
@@ -200,8 +201,14 @@ def seed(app):
             User(name='Morgan Manager',  email='manager@cbop.com',    password=generate_password_hash('manager123'),    role='manager',    company='CBOP'),
             User(name='Client Rep',      email='client@client.com',   password=generate_password_hash('client123'),    role='client',     company='Client'),
         ]
-        db.session.add_all(users)
-        db.session.flush()
+        try:
+            db.session.add_all(users)
+            db.session.flush()
+        except IntegrityError:
+            # Another worker already seeded — this worker can safely exit seed
+            db.session.rollback()
+            print("Database already seeded (concurrent worker).")
+            return
 
         # ── WTGs & Areas ───────────────────────────────
         for wtg_name in WTG_NAMES:
