@@ -150,7 +150,9 @@ class ProofRollRecord(db.Model):
     passed                  = db.Column(db.String(5))
     entered_by      = db.Column(db.Integer, db.ForeignKey('users.id'))
     entered_at      = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-    signatories     = db.relationship('ProofRollSignatory', backref='proof_roll', lazy=True, cascade='all,delete')
+    signatories     = db.relationship('ProofRollSignatory',  backref='proof_roll',     lazy=True, cascade='all,delete')
+    equipment_rows  = db.relationship('ProofRollEquipment',  backref='proof_roll_rec', lazy=True, cascade='all,delete')
+    pr_photos       = db.relationship('ProofRollPhoto',      backref='proof_roll_rec', lazy=True, cascade='all,delete')
 
 class ProofRollSignatory(db.Model):
     __tablename__ = 'proof_roll_signatories'
@@ -161,6 +163,27 @@ class ProofRollSignatory(db.Model):
     signature_data  = db.Column(db.Text)
     signed_date     = db.Column(db.Date)
     role            = db.Column(db.String(50))
+
+class ProofRollEquipment(db.Model):
+    """One row of equipment used during a proof roll (replaces fixed tandem/vibrating fields)."""
+    __tablename__ = 'proof_roll_equipment'
+    id              = db.Column(db.Integer, primary_key=True)
+    proof_roll_id   = db.Column(db.Integer, db.ForeignKey('proof_roll_records.id'), nullable=False)
+    equipment_name  = db.Column(db.String(150))
+    mass_tonnes     = db.Column(db.String(50))
+    value           = db.Column(db.String(50))
+    passes          = db.Column(db.String(20))
+    sort_order      = db.Column(db.Integer, default=0)
+
+class ProofRollPhoto(db.Model):
+    """Photos taken on-site during a proof roll — stored as compressed base64."""
+    __tablename__ = 'proof_roll_photos'
+    id              = db.Column(db.Integer, primary_key=True)
+    proof_roll_id   = db.Column(db.Integer, db.ForeignKey('proof_roll_records.id'), nullable=False)
+    image_data      = db.Column(db.Text)          # base64 data URI (compressed JPEG)
+    caption         = db.Column(db.String(200), default='')
+    taken_at        = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    uploaded_by     = db.Column(db.Integer, db.ForeignKey('users.id'))
 
 # ─────────────────────────────────────────────
 # TEST PHOTOS

@@ -1,186 +1,254 @@
 {% extends 'base.html' %}
 {% block title %}Proof Roll – {{ wtg.name }} {{ area.label }}{% endblock %}
-{% block page_title %}Proof Roll Record{% endblock %}
+{% block page_title %}New Proof Roll{% endblock %}
 {% block page_sub %}{{ wtg.name }} · {{ area.label }} · {{ test.display_name }}{% endblock %}
 
 {% block head %}
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
 <style>
-  .form-label { @apply block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide; }
-  .form-input  { @apply w-full px-3 py-2.5 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition; }
-  .form-section { @apply bg-white rounded-2xl border border-slate-200 overflow-hidden mb-6; }
-  .form-section-header { @apply bg-gradient-to-r from-slate-700 to-slate-600 text-white px-6 py-3 text-sm font-bold flex items-center gap-2; }
-  .sig-canvas { border: 2px dashed #d1d5db; border-radius: 12px; cursor: crosshair; background: #fafafa; touch-action: none; }
-  .sig-canvas.has-sig { border-color: #22c55e; border-style: solid; }
+  /* ─── Mobile-first form styles ─────────────────────────────── */
+  .sc { background:white; border-radius:16px; border:1px solid #e2e8f0; margin-bottom:14px; overflow:hidden; box-shadow:0 1px 4px rgba(0,0,0,.04); }
+  .sh { padding:13px 16px; font-size:13px; font-weight:700; display:flex; align-items:center; gap:8px; color:white; }
+  .sb { padding:16px; }
+  .fl { display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:#64748b; margin-bottom:6px; }
+  .fi { width:100%; padding:13px 14px; border-radius:10px; border:1.5px solid #e2e8f0; background:white; font-size:15px; color:#0f172a; -webkit-appearance:none; box-sizing:border-box; transition:border-color .15s; }
+  .fi:focus { outline:none; border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,0.12); }
+  textarea.fi { resize:vertical; min-height:90px; font-family:inherit; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; }
+  .span2 { grid-column:1/-1; }
+
+  /* Equipment rows */
+  .eq-row { display:grid; grid-template-columns:2fr 1fr 1fr 1fr 34px; gap:6px; align-items:center; margin-bottom:8px; }
+  .eq-row .fi { padding:11px 10px; font-size:14px; text-align:center; }
+  .eq-row .fi:first-child { text-align:left; }
+  .eq-del { width:34px; height:38px; border-radius:8px; background:#fee2e2; border:none; color:#ef4444; font-size:13px; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .eq-del:hover { background:#fecaca; }
+  .btn-add { width:100%; padding:11px; border-radius:10px; background:#f0f9ff; border:1.5px dashed #93c5fd; color:#2563eb; font-size:13px; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px; margin-top:4px; }
+  .btn-add:hover { background:#dbeafe; }
+
+  /* Photo section */
+  .photo-pick { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; padding:22px 16px; border:2.5px dashed #67e8f9; border-radius:14px; background:#ecfeff; cursor:pointer; color:#0891b2; font-weight:700; font-size:14px; transition:background .15s; }
+  .photo-pick:hover { background:#cffafe; }
+  .photo-pick i { font-size:32px; margin-bottom:2px; }
+  .photo-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:12px; }
+  .photo-thumb { aspect-ratio:1; border-radius:10px; overflow:hidden; position:relative; background:#f1f5f9; }
+  .photo-thumb img { width:100%; height:100%; object-fit:cover; }
+  .photo-del { position:absolute; top:4px; right:4px; width:24px; height:24px; border-radius:50%; background:rgba(220,38,38,.85); color:white; font-size:11px; display:flex; align-items:center; justify-content:center; cursor:pointer; border:none; }
+
+  /* Result radio */
+  .result-opt { display:flex; align-items:center; gap:10px; padding:13px 14px; border-radius:10px; border:2px solid #e2e8f0; cursor:pointer; background:white; transition:all .15s; }
+  .result-opt input { width:20px; height:20px; cursor:pointer; flex-shrink:0; }
+  .result-pass { accent-color:#16a34a; }
+  .result-fail { accent-color:#dc2626; }
+  .result-opt.selected-pass { border-color:#16a34a; background:#f0fdf4; }
+  .result-opt.selected-fail { border-color:#dc2626; background:#fef2f2; }
+
+  /* Signature pads */
+  .sig-wrap { border:2px dashed #cbd5e1; border-radius:12px; background:#fafafa; overflow:hidden; }
+  .sig-wrap.signed { border-style:solid; border-color:#22c55e; }
+  canvas.sig-pad { display:block; width:100%; touch-action:none; cursor:crosshair; }
+
+  /* Signatory cards */
+  .sig-card { border-radius:14px; overflow:hidden; }
+  .sig-card-tcs { border:2px solid #dbeafe; }
+  .sig-card-client { border:2px solid #dcfce7; }
+  .sig-head { padding:12px 14px; display:flex; align-items:center; gap:10px; border-bottom:1px solid currentColor; }
+  .sig-head-tcs { background:#eff6ff; border-color:#dbeafe; }
+  .sig-head-client { background:#f0fdf4; border-color:#dcfce7; }
+  .sig-num { width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:white; font-size:12px; font-weight:800; flex-shrink:0; }
+  .sig-body { padding:14px; display:grid; gap:10px; }
+
+  /* Sticky footer bar */
+  .save-bar { position:fixed; bottom:0; left:240px; right:0; background:white; border-top:1.5px solid #e2e8f0; padding:12px 16px; z-index:50; display:flex; gap:10px; box-shadow:0 -4px 20px rgba(0,0,0,.06); }
+  @media (max-width:767px) { .save-bar { left:0; } }
+  .btn-cancel { padding:14px 18px; border:1.5px solid #e2e8f0; border-radius:12px; font-size:14px; font-weight:600; color:#64748b; text-decoration:none; display:flex; align-items:center; gap:6px; white-space:nowrap; }
+  .btn-save { flex:1; padding:14px 20px; background:linear-gradient(135deg,#1e40af,#2563eb); color:white; border:none; border-radius:12px; font-size:15px; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px; box-shadow:0 4px 15px rgba(37,99,235,.28); }
+  .btn-save:disabled { opacity:.7; cursor:not-allowed; }
+
+  /* Remove number spinners */
+  input[type=number]::-webkit-outer-spin-button,
+  input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+  input[type=number] { -moz-appearance:textfield; }
+
+  /* Extra bottom padding so sticky bar doesn't cover content */
+  .page-bottom-pad { height:80px; }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="flex items-center gap-3 mb-6">
-  <a href="{{ url_for('wtg_detail', wtg_id=wtg.id) }}" class="text-slate-400 hover:text-slate-700 text-sm">
-    <i class="fa-solid fa-arrow-left mr-1"></i> {{ wtg.name }}
+
+<!-- Breadcrumb -->
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
+  <a href="{{ url_for('proof_roll_index') }}" style="color:#64748b;font-size:13px;font-weight:600;text-decoration:none;display:flex;align-items:center;gap:4px;">
+    <i class="fa-solid fa-arrow-left"></i> Proof Rolling
   </a>
-  <span class="text-slate-300">/</span>
-  <span class="text-slate-600 text-sm">{{ area.label }}</span>
-  <span class="text-slate-300">/</span>
-  <span class="text-slate-800 font-semibold text-sm">{{ test.display_name }}</span>
+  <span style="color:#cbd5e1;">›</span>
+  <span style="color:#1e293b;font-size:13px;font-weight:700;">{{ wtg.name }} · {{ area.label }}</span>
 </div>
 
 {% if existing %}
-<div class="mb-4 px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-800">
-  <i class="fa-solid fa-circle-info mr-2"></i>
-  <strong>{{ existing|length }} previous record(s) exist.</strong>
-  <a href="{{ url_for('view_proof_roll', pr_id=existing[-1].id) }}" class="underline ml-1">View latest</a>
+<div style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;font-size:13px;color:#1d4ed8;margin-bottom:14px;">
+  <i class="fa-solid fa-circle-info"></i>
+  <span><strong>{{ existing|length }} previous record(s) exist.</strong>
+  <a href="{{ url_for('view_proof_roll', pr_id=existing[-1].id) }}" style="text-decoration:underline;margin-left:4px;font-weight:700;">View latest →</a></span>
 </div>
 {% endif %}
 
-<!-- ═══ FORM HEADER BLOCK ══════════════════════════════════════════════ -->
-<div class="bg-gradient-to-r from-blue-900 to-blue-700 text-white rounded-2xl p-6 mb-6 flex items-center justify-between">
-  <div>
-    <p class="text-xs text-blue-300 font-semibold uppercase tracking-wider mb-1">CBOP · King Rocks Wind Farm</p>
-    <h2 class="text-xl font-bold">Proof Roll Record</h2>
-    <p class="text-blue-200 text-sm mt-1">{{ test.display_name }} · {{ area.label }}</p>
-  </div>
-  <div class="text-right text-xs text-blue-300 space-y-1">
-    <p>Form Ref: OPER-FRM-057</p>
-    <p>Procedure: HSEC-MSP-005</p>
-    <p class="font-bold text-white">{{ wtg.name }}</p>
+<!-- Form Header Banner -->
+<div style="background:linear-gradient(135deg,#0f2942 0%,#1e4976 100%);border-radius:16px;padding:18px 20px;margin-bottom:14px;">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+    <div>
+      <p style="color:#93c5fd;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;margin:0 0 5px;">CBOP · King Rocks Wind Farm</p>
+      <h2 style="color:white;font-size:20px;font-weight:800;margin:0 0 4px;line-height:1.2;">Proof Roll Record</h2>
+      <p style="color:#bfdbfe;font-size:12px;margin:0;">{{ test.display_name }} · {{ area.label }}</p>
+    </div>
+    <div style="text-align:right;flex-shrink:0;">
+      <p style="color:#64748b;font-size:9px;margin:0 0 2px;">OPER-FRM-057</p>
+      <p style="color:white;font-size:16px;font-weight:800;margin:0;">{{ wtg.name }}</p>
+    </div>
   </div>
 </div>
 
-<form method="POST" id="proofRollForm">
+<form method="POST" id="prForm">
 
-  <!-- ── SECTION 1: Record Information ────────────────────────────── -->
-  <div class="form-section">
-    <div class="form-section-header">
-      <i class="fa-solid fa-circle-info"></i> Section 1 – Record Information
+  <!-- ══ SECTION 1: Record Info ══════════════════════════════════════ -->
+  <div class="sc">
+    <div class="sh" style="background:linear-gradient(90deg,#1e40af,#2563eb);">
+      <i class="fa-solid fa-circle-info"></i> 1 &mdash; Record Information
     </div>
-    <div class="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-      <div>
-        <label class="form-label">Location</label>
-        <input type="text" name="location" class="form-input"
-          value="{{ wtg.name }} – {{ area.label }}" required/>
-      </div>
-      <div>
-        <label class="form-label">Date <span class="text-red-500">*</span></label>
-        <input type="date" name="date" class="form-input" value="{{ today }}" required/>
-      </div>
-      <div>
-        <label class="form-label">Pavement Area</label>
-        <input type="text" name="pavement_area" class="form-input"
-          placeholder="e.g. Hardstand – North Section"/>
-      </div>
-      <div>
-        <label class="form-label">Pavement Material</label>
-        <input type="text" name="pavement_material" class="form-input"
-          placeholder="e.g. Crushed Rock Base"/>
-      </div>
-      <div>
-        <label class="form-label">Material Layer</label>
-        <input type="text" name="material_layer" class="form-input"
-          value="{{ test.display_name.split('–')[-1].strip() if '–' in test.display_name else '' }}"
-          placeholder="e.g. Subbase"/>
-      </div>
-      <div>
-        <label class="form-label">Lot Number</label>
-        <input type="text" name="lot_number" class="form-input"
-          placeholder="e.g. LOT-{{ wtg.name }}-001"/>
+    <div class="sb">
+      <div class="grid2">
+        <div class="span2">
+          <label class="fl">Location</label>
+          <input type="text" name="location" class="fi" value="{{ wtg.name }} – {{ area.label }}" required/>
+        </div>
+        <div>
+          <label class="fl">Date <span style="color:#ef4444">*</span></label>
+          <input type="date" name="date" class="fi" value="{{ today }}" required/>
+        </div>
+        <div>
+          <label class="fl">Lot Number</label>
+          <input type="text" name="lot_number" class="fi" placeholder="LOT-{{ wtg.name }}-001"/>
+        </div>
+        <div>
+          <label class="fl">Pavement Material</label>
+          <input type="text" name="pavement_material" class="fi" placeholder="e.g. Crushed Rock"/>
+        </div>
+        <div>
+          <label class="fl">Material Layer</label>
+          <input type="text" name="material_layer" class="fi"
+            value="{{ test.display_name.split('–')[-1].strip() if '–' in test.display_name else '' }}"
+            placeholder="e.g. Subbase"/>
+        </div>
+        <div class="span2">
+          <label class="fl">Pavement Area / Description</label>
+          <input type="text" name="pavement_area" class="fi" placeholder="e.g. Hardstand – North Section"/>
+        </div>
       </div>
     </div>
-    <div class="px-6 pb-4">
-      <p class="text-xs text-slate-400 italic">
-        <i class="fa-solid fa-info-circle mr-1"></i>
-        Area Location to be attached to document (attach site plan sketch or photo below)
+  </div>
+
+  <!-- ══ SECTION 2: Equipment ════════════════════════════════════════ -->
+  <div class="sc">
+    <div class="sh" style="background:linear-gradient(90deg,#92400e,#b45309);">
+      <i class="fa-solid fa-truck"></i> 2 &mdash; Equipment Used
+    </div>
+    <div class="sb">
+      <!-- Column headers -->
+      <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 34px;gap:6px;padding:0 2px;margin-bottom:6px;">
+        <span style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;padding-left:4px;">Equipment</span>
+        <span style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;text-align:center;">Mass (t)</span>
+        <span style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;text-align:center;">Value</span>
+        <span style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;text-align:center;">Passes</span>
+        <span></span>
+      </div>
+
+      <div id="equip-rows">
+        <!-- Default first row -->
+        <div class="eq-row">
+          <input type="text"   name="equip_name[]"   class="fi" placeholder="e.g. Vibrating Roller"/>
+          <input type="text"   name="equip_mass[]"   class="fi" placeholder="–"/>
+          <input type="text"   name="equip_value[]"  class="fi" placeholder="–"/>
+          <input type="text"   name="equip_passes[]" class="fi" placeholder="0"/>
+          <button type="button" class="eq-del" onclick="delRow(this)" title="Remove row">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+      </div>
+
+      <button type="button" class="btn-add" onclick="addRow()">
+        <i class="fa-solid fa-plus"></i> Add Equipment Row
+      </button>
+
+      <p style="font-size:11px;color:#94a3b8;margin-top:10px;font-style:italic;">
+        <i class="fa-solid fa-info-circle"></i>
+        Record all equipment used. Leave blank fields you don't need.
       </p>
     </div>
   </div>
 
-  <!-- ── SECTION 2: Proof Roll Information ────────────────────────── -->
-  <div class="form-section">
-    <div class="form-section-header">
-      <i class="fa-solid fa-truck"></i> Section 2 – Proof Roll Equipment
+  <!-- ══ SECTION 3: Site Photos ══════════════════════════════════════ -->
+  <div class="sc">
+    <div class="sh" style="background:linear-gradient(90deg,#0f766e,#0d9488);">
+      <i class="fa-solid fa-camera"></i> 3 &mdash; Site Photos
     </div>
-    <div class="p-6 overflow-x-auto">
-      <table class="w-full text-sm">
-        <thead>
-          <tr class="border-b border-slate-200">
-            <th class="text-left py-2 pr-4 text-slate-600 font-semibold text-xs">Equipment</th>
-            <th class="text-left py-2 px-3 text-slate-600 font-semibold text-xs">Spec / Sub-label</th>
-            <th class="text-left py-2 px-3 text-slate-600 font-semibold text-xs">Value</th>
-            <th class="text-left py-2 px-3 text-slate-600 font-semibold text-xs">No. of Passes</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-slate-100">
-          <tr>
-            <td class="py-3 pr-4 font-medium text-slate-700">Tandem Water Cart</td>
-            <td class="py-3 px-3 text-slate-500 text-xs">Tonnes / Wheel</td>
-            <td class="py-3 px-3"><input type="number" name="tandem_tonnes" step="0.1" min="0" class="form-input" placeholder="0.0"/></td>
-            <td class="py-3 px-3"><input type="number" name="tandem_passes" min="0" class="form-input" placeholder="0"/></td>
-          </tr>
-          <tr>
-            <td class="py-3 pr-4 font-medium text-slate-700">Heavy Vibrating Roller</td>
-            <td class="py-3 px-3 text-slate-500 text-xs">Mass (Tonnes)</td>
-            <td class="py-3 px-3"><input type="number" name="vibrating_mass" step="0.1" min="0" class="form-input" placeholder="0.0"/></td>
-            <td class="py-3 px-3"><input type="number" name="vibrating_passes" min="0" class="form-input" placeholder="0"/></td>
-          </tr>
-          <tr>
-            <td class="py-3 pr-4">
-              <input type="text" name="other_equipment" class="form-input" placeholder="Other equipment…"/>
-            </td>
-            <td class="py-3 px-3">
-              <input type="text" class="form-input text-xs" placeholder="Spec / description"/>
-            </td>
-            <td class="py-3 px-3"><input type="text" name="other_value" class="form-input" placeholder="Value"/></td>
-            <td class="py-3 px-3"><input type="number" name="other_passes" min="0" class="form-input" placeholder="0"/></td>
-          </tr>
-        </tbody>
-      </table>
-      <p class="text-xs text-slate-400 mt-3 italic">
-        <i class="fa-solid fa-info-circle mr-1"></i>
-        Acknowledgement and approval to proceed with track works within inspected section.
-      </p>
+    <div class="sb">
+      <!-- Hidden file input — triggered by the label button -->
+      <input type="file" id="photo-file" accept="image/*" capture="environment" multiple
+             style="position:absolute;opacity:0;width:1px;height:1px;pointer-events:none;" onchange="handlePhotos(this)"/>
+
+      <label for="photo-file" class="photo-pick">
+        <i class="fa-solid fa-camera"></i>
+        <span>Take Photo or Choose from Gallery</span>
+        <span style="font-size:11px;font-weight:400;color:#0891b2;">Tap to open camera on mobile</span>
+      </label>
+
+      <div id="photo-grid" class="photo-grid"></div>
+      <div id="photo-inputs"></div>
     </div>
   </div>
 
-  <!-- ── SECTION 3: Comments ───────────────────────────────────────── -->
-  <div class="form-section">
-    <div class="form-section-header">
-      <i class="fa-solid fa-comment-dots"></i> Section 3 – Comments
+  <!-- ══ SECTION 4: Comments ═════════════════════════════════════════ -->
+  <div class="sc">
+    <div class="sh" style="background:linear-gradient(90deg,#374151,#4b5563);">
+      <i class="fa-solid fa-comment-dots"></i> 4 &mdash; Comments &amp; Observations
     </div>
-    <div class="p-6">
-      <textarea name="comments" rows="5" class="form-input resize-none"
-        placeholder="Enter any observations, site conditions, or notes here…"></textarea>
+    <div class="sb">
+      <textarea name="comments" class="fi"
+        placeholder="Enter site conditions, observations, deviations, or additional notes…"></textarea>
     </div>
   </div>
 
-  <!-- ── SECTION 4: Rectification ─────────────────────────────────── -->
-  <div class="form-section">
-    <div class="form-section-header">
-      <i class="fa-solid fa-wrench"></i> Section 4 – Proof Roll Rectification (If Required)
+  <!-- ══ SECTION 5: Rectification ════════════════════════════════════ -->
+  <div class="sc">
+    <div class="sh" style="background:linear-gradient(90deg,#5b21b6,#7c3aed);">
+      <i class="fa-solid fa-wrench"></i> 5 &mdash; Rectification (If Required)
     </div>
-    <div class="p-6 space-y-5">
+    <div class="sb" style="display:grid;gap:14px;">
       <div>
-        <label class="form-label">Method of Rectification</label>
-        <textarea name="rectification_method" rows="4" class="form-input resize-none"
-          placeholder="Describe any rectification method applied…"></textarea>
+        <label class="fl">Method of Rectification</label>
+        <textarea name="rectification_method" class="fi" style="min-height:80px;"
+          placeholder="Describe rectification method applied (if any)…"></textarea>
       </div>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+      <div class="grid2">
         <div>
-          <label class="form-label">Rectification Proof Roll Date</label>
-          <input type="date" name="rectification_date" class="form-input"/>
+          <label class="fl">Rectification Date</label>
+          <input type="date" name="rectification_date" class="fi"/>
         </div>
         <div>
-          <label class="form-label">Passed? <span class="text-red-500">*</span></label>
-          <div class="flex gap-6 mt-2">
-            <label class="flex items-center gap-2 cursor-pointer">
-              <input type="radio" name="passed" value="yes" class="w-4 h-4 text-green-600 border-slate-300 focus:ring-green-500" required/>
-              <span class="text-sm font-semibold text-green-700">
-                <i class="fa-solid fa-check-circle mr-1"></i>Yes – Passed
+          <label class="fl">Proof Roll Result <span style="color:#ef4444">*</span></label>
+          <div style="display:flex;flex-direction:column;gap:8px;margin-top:2px;">
+            <label class="result-opt" id="lbl-pass" onclick="pickResult(this,'yes')">
+              <input type="radio" name="passed" value="yes" class="result-pass" required/>
+              <span style="font-size:15px;font-weight:700;color:#15803d;">
+                <i class="fa-solid fa-circle-check" style="margin-right:4px;"></i>PASSED
               </span>
             </label>
-            <label class="flex items-center gap-2 cursor-pointer">
-              <input type="radio" name="passed" value="no" class="w-4 h-4 text-red-500 border-slate-300 focus:ring-red-500"/>
-              <span class="text-sm font-semibold text-red-700">
-                <i class="fa-solid fa-times-circle mr-1"></i>No – Failed
+            <label class="result-opt" id="lbl-fail" onclick="pickResult(this,'no')">
+              <input type="radio" name="passed" value="no" class="result-fail"/>
+              <span style="font-size:15px;font-weight:700;color:#b91c1c;">
+                <i class="fa-solid fa-circle-xmark" style="margin-right:4px;"></i>FAILED
               </span>
             </label>
           </div>
@@ -189,147 +257,278 @@
     </div>
   </div>
 
-  <!-- ── SECTION 5: Acknowledgement & Signatures ──────────────────── -->
-  <div class="form-section">
-    <div class="form-section-header">
-      <i class="fa-solid fa-pen-nib"></i> Section 5 – Acknowledgement & Approval
+  <!-- ══ SECTION 6: Signatures ═══════════════════════════════════════ -->
+  <div class="sc">
+    <div class="sh" style="background:linear-gradient(90deg,#0f2942,#1a3a5c);">
+      <i class="fa-solid fa-pen-nib"></i> 6 &mdash; Acknowledgement &amp; Approval
     </div>
-    <div class="p-6 space-y-6">
-      {% for i in range(1,5) %}
-      <div class="border border-slate-200 rounded-xl p-4 bg-slate-50">
-        <div class="flex items-center gap-2 mb-4">
-          <div class="w-7 h-7 bg-blue-700 rounded-full flex items-center justify-center text-white text-xs font-bold">{{ i }}</div>
-          <span class="text-sm font-semibold text-slate-700">Signatory {{ i }}
-            {% if i == 1 %}(Engineer){% elif i == 2 %}(Supervisor){% elif i == 3 %}(Client Rep){% else %}(Manager){% endif %}
-          </span>
-        </div>
-        <input type="hidden" name="sig_role_{{ i }}"
-          value="{% if i==1 %}engineer{% elif i==2 %}supervisor{% elif i==3 %}client{% else %}manager{% endif %}"/>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+    <div class="sb" style="display:flex;flex-direction:column;gap:14px;">
+
+      <!-- ── Signatory 1: Lucas TCS ── -->
+      <div class="sig-card sig-card-tcs">
+        <div class="sig-head sig-head-tcs">
+          <div class="sig-num" style="background:#1d4ed8;">1</div>
           <div>
-            <label class="form-label">Full Name</label>
-            <input type="text" name="sig_name_{{ i }}" class="form-input"
-              placeholder="Full name"
-              {% if i == 1 and current_user.can_enter_data() %}value="{{ current_user.name }}"{% endif %}/>
-          </div>
-          <div>
-            <label class="form-label">Company</label>
-            <input type="text" name="sig_company_{{ i }}" class="form-input"
-              placeholder="Company"
-              {% if i == 1 %}value="{{ current_user.company }}"{% endif %}/>
-          </div>
-          <div>
-            <label class="form-label">Date</label>
-            <input type="date" name="sig_date_{{ i }}" class="form-input"
-              {% if i == 1 %}value="{{ today }}"{% endif %}/>
+            <p style="font-size:13px;font-weight:700;color:#1e40af;margin:0;">Lucas TCS Representative</p>
+            <p style="font-size:11px;color:#64748b;margin:2px 0 0;">CBOP Quality Assurance</p>
           </div>
         </div>
-        <div>
-          <label class="form-label">Signature</label>
-          <div class="relative">
-            <canvas id="sig-canvas-{{ i }}" class="sig-canvas w-full" height="100"
-              style="touch-action:none"></canvas>
-            <input type="hidden" name="sig_data_{{ i }}" id="sig-data-{{ i }}"/>
-            <button type="button" onclick="clearSig({{ i }})"
-              class="absolute top-2 right-2 text-xs text-slate-400 hover:text-red-500 bg-white border border-slate-200 rounded-lg px-2 py-1 transition">
-              <i class="fa-solid fa-eraser mr-1"></i>Clear
+        <input type="hidden" name="sig_role_1" value="tcs_rep"/>
+        <div class="sig-body grid2">
+          <div class="span2">
+            <label class="fl">Full Name</label>
+            <input type="text" name="sig_name_1" class="fi"
+              value="{{ current_user.name if current_user.can_enter_data() else '' }}"
+              placeholder="Full name"/>
+          </div>
+          <div>
+            <label class="fl">Company</label>
+            <input type="text" name="sig_company_1" class="fi"
+              value="{{ current_user.company if current_user.can_enter_data() else 'CBOP' }}"
+              placeholder="Company"/>
+          </div>
+          <div>
+            <label class="fl">Date</label>
+            <input type="date" name="sig_date_1" class="fi" value="{{ today }}"/>
+          </div>
+          <div class="span2">
+            <label class="fl">Signature <span style="color:#94a3b8;font-size:10px;font-weight:400;text-transform:none;">(draw with finger or mouse)</span></label>
+            <div class="sig-wrap" id="sig-wrap-1">
+              <canvas id="sig-canvas-1" class="sig-pad" height="150"></canvas>
+            </div>
+            <input type="hidden" name="sig_data_1" id="sig-data-1"/>
+            <button type="button" onclick="clearSig(1)"
+              style="margin-top:6px;float:right;padding:5px 12px;border-radius:8px;border:1px solid #e2e8f0;background:white;font-size:11px;font-weight:600;color:#94a3b8;cursor:pointer;">
+              <i class="fa-solid fa-eraser"></i> Clear
             </button>
+            <div style="clear:both;"></div>
           </div>
-          <p class="text-xs text-slate-400 mt-1">Draw your signature above using mouse or touch</p>
         </div>
       </div>
-      {% endfor %}
+
+      <!-- ── Signatory 2: Client Rep ── -->
+      <div class="sig-card sig-card-client">
+        <div class="sig-head sig-head-client">
+          <div class="sig-num" style="background:#16a34a;">2</div>
+          <div>
+            <p style="font-size:13px;font-weight:700;color:#15803d;margin:0;">Client Representative</p>
+            <p style="font-size:11px;color:#64748b;margin:2px 0 0;">Authorised Client Signatory</p>
+          </div>
+        </div>
+        <input type="hidden" name="sig_role_2" value="client_rep"/>
+        <div class="sig-body grid2">
+          <div class="span2">
+            <label class="fl">Full Name</label>
+            <input type="text" name="sig_name_2" class="fi" placeholder="Client representative name"/>
+          </div>
+          <div>
+            <label class="fl">Company</label>
+            <input type="text" name="sig_company_2" class="fi" placeholder="Client company"/>
+          </div>
+          <div>
+            <label class="fl">Date</label>
+            <input type="date" name="sig_date_2" class="fi" value="{{ today }}"/>
+          </div>
+          <div class="span2">
+            <label class="fl">Signature <span style="color:#94a3b8;font-size:10px;font-weight:400;text-transform:none;">(draw with finger or mouse)</span></label>
+            <div class="sig-wrap" id="sig-wrap-2">
+              <canvas id="sig-canvas-2" class="sig-pad" height="150"></canvas>
+            </div>
+            <input type="hidden" name="sig_data_2" id="sig-data-2"/>
+            <button type="button" onclick="clearSig(2)"
+              style="margin-top:6px;float:right;padding:5px 12px;border-radius:8px;border:1px solid #e2e8f0;background:white;font-size:11px;font-weight:600;color:#94a3b8;cursor:pointer;">
+              <i class="fa-solid fa-eraser"></i> Clear
+            </button>
+            <div style="clear:both;"></div>
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 
-  <!-- ── SECTION 6: QSE Info (read-only) ──────────────────────────── -->
-  <div class="form-section">
-    <div class="form-section-header">
-      <i class="fa-solid fa-folder-open"></i> Section 6 – QSE & Filing Information
-    </div>
-    <div class="p-6 space-y-3">
-      <div class="flex gap-4">
-        <span class="text-xs font-semibold text-slate-500 w-32">QSE Activity:</span>
-        <span class="text-sm text-slate-700">No QSE Activity Required</span>
-      </div>
-      <div class="flex gap-4">
-        <span class="text-xs font-semibold text-slate-500 w-32">Filing:</span>
-        <span class="text-sm text-slate-700">Completed Record to be filed within site QA Documentation</span>
-      </div>
-    </div>
+  <!-- QSE info strip -->
+  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:12px 16px;font-size:11px;color:#64748b;">
+    <div style="display:flex;gap:8px;margin-bottom:3px;"><span style="font-weight:700;min-width:90px;">QSE Activity:</span><span>No QSE Activity Required</span></div>
+    <div style="display:flex;gap:8px;"><span style="font-weight:700;min-width:90px;">Filing:</span><span>Record to be filed in site QA Documentation · OPER-FRM-057</span></div>
   </div>
 
-  <!-- ── Submit ─────────────────────────────────────────────────────── -->
-  <div class="flex gap-4 justify-end">
-    <a href="{{ url_for('wtg_detail', wtg_id=wtg.id) }}"
-      class="px-6 py-3 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 transition">
-      Cancel
-    </a>
-    <button type="submit"
-      class="px-8 py-3 bg-gradient-to-r from-blue-800 to-blue-600 text-white rounded-xl text-sm font-bold hover:from-blue-700 hover:to-blue-500 transition shadow-lg shadow-blue-900/20">
-      <i class="fa-solid fa-floppy-disk mr-2"></i>Save Proof Roll Record
-    </button>
-  </div>
+  <div class="page-bottom-pad"></div>
 </form>
+
+<!-- ══ Sticky Save Bar ══════════════════════════════════════════════ -->
+<div class="save-bar">
+  <a href="{{ url_for('proof_roll_index') }}" class="btn-cancel">
+    <i class="fa-solid fa-xmark"></i> Cancel
+  </a>
+  <button type="submit" form="prForm" class="btn-save" id="save-btn" onclick="prepSave(this)">
+    <i class="fa-solid fa-floppy-disk"></i> Save Proof Roll Record
+  </button>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
 <script>
-// ── Signature Pad ────────────────────────────────────────────────────────────
+// ═══ Equipment Row Management ══════════════════════════════════════════════
+
+function addRow() {
+  const c = document.getElementById('equip-rows');
+  const d = document.createElement('div');
+  d.className = 'eq-row';
+  d.innerHTML = `
+    <input type="text" name="equip_name[]"   class="fi" placeholder="Equipment name"/>
+    <input type="text" name="equip_mass[]"   class="fi" placeholder="–" style="text-align:center"/>
+    <input type="text" name="equip_value[]"  class="fi" placeholder="–" style="text-align:center"/>
+    <input type="text" name="equip_passes[]" class="fi" placeholder="0" style="text-align:center"/>
+    <button type="button" class="eq-del" onclick="delRow(this)" title="Remove"><i class="fa-solid fa-xmark"></i></button>
+  `;
+  c.appendChild(d);
+  d.querySelector('input').focus();
+}
+
+function delRow(btn) {
+  const rows = document.querySelectorAll('#equip-rows .eq-row');
+  if (rows.length > 1) {
+    btn.closest('.eq-row').remove();
+  } else {
+    btn.closest('.eq-row').querySelectorAll('input').forEach(i => i.value = '');
+  }
+}
+
+
+// ═══ Photo Capture & Compression ══════════════════════════════════════════
+
+const photos = [];   // array of compressed base64 data-URIs
+
+function handlePhotos(input) {
+  Array.from(input.files).forEach(file => {
+    if (!file.type.startsWith('image/')) return;
+    const r = new FileReader();
+    r.onload = e => compress(e.target.result, blob => {
+      photos.push(blob);
+      redrawPhotos();
+    });
+    r.readAsDataURL(file);
+  });
+  input.value = '';
+}
+
+function compress(src, cb) {
+  const img = new Image();
+  img.onload = () => {
+    const MAX = 1280;
+    let w = img.width, h = img.height;
+    if (w > h && w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
+    else if (h > MAX) { w = Math.round(w * MAX / h); h = MAX; }
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    c.getContext('2d').drawImage(img, 0, 0, w, h);
+    cb(c.toDataURL('image/jpeg', 0.78));
+  };
+  img.src = src;
+}
+
+function redrawPhotos() {
+  const grid = document.getElementById('photo-grid');
+  grid.innerHTML = '';
+  photos.forEach((d, i) => {
+    const div = document.createElement('div');
+    div.className = 'photo-thumb';
+    div.innerHTML = `<img src="${d}" alt="Photo ${i+1}"/>
+      <button type="button" class="photo-del" onclick="delPhoto(${i})"><i class="fa-solid fa-xmark"></i></button>`;
+    grid.appendChild(div);
+  });
+  // Update hidden inputs
+  const hc = document.getElementById('photo-inputs');
+  hc.innerHTML = '';
+  photos.forEach(d => {
+    const inp = document.createElement('input');
+    inp.type = 'hidden'; inp.name = 'photo_data[]'; inp.value = d;
+    hc.appendChild(inp);
+  });
+}
+
+function delPhoto(i) {
+  photos.splice(i, 1);
+  redrawPhotos();
+}
+
+
+// ═══ Result Radio Highlight ════════════════════════════════════════════════
+
+function pickResult(lbl, val) {
+  const lp = document.getElementById('lbl-pass');
+  const lf = document.getElementById('lbl-fail');
+  lp.className = 'result-opt' + (val === 'yes' ? ' selected-pass' : '');
+  lf.className = 'result-opt' + (val === 'no'  ? ' selected-fail' : '');
+}
+
+// Listen for direct radio clicks too
+document.querySelectorAll('input[name=passed]').forEach(r =>
+  r.addEventListener('change', () => pickResult(null, r.value))
+);
+
+
+// ═══ Signature Pads ════════════════════════════════════════════════════════
+
 const pads = {};
 
-function initSignaturePad(idx) {
-  const canvas  = document.getElementById(`sig-canvas-${idx}`);
-  const input   = document.getElementById(`sig-data-${idx}`);
-  const ctx     = canvas.getContext('2d');
+function initSig(idx) {
+  const canvas = document.getElementById(`sig-canvas-${idx}`);
+  const wrap   = document.getElementById(`sig-wrap-${idx}`);
+  const input  = document.getElementById(`sig-data-${idx}`);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
 
-  // Resize canvas to match display size
   function resize() {
-    const rect = canvas.getBoundingClientRect();
-    canvas.width  = rect.width;
-    canvas.height = rect.height || 100;
+    const w = canvas.offsetWidth || canvas.parentElement.offsetWidth || 300;
+    const saved = canvas.toDataURL();
+    canvas.width  = w;
+    canvas.height = 150;
+    ctx.strokeStyle = '#0f172a';
+    ctx.lineWidth   = 2.5;
+    ctx.lineCap     = 'round';
+    ctx.lineJoin    = 'round';
+    // Restore if had signature
+    if (input.value) {
+      const img = new Image();
+      img.onload = () => ctx.drawImage(img, 0, 0);
+      img.src = saved;
+    }
   }
   resize();
-  window.addEventListener('resize', resize);
 
-  let drawing = false, lastX = 0, lastY = 0;
+  let resizeTO;
+  window.addEventListener('resize', () => { clearTimeout(resizeTO); resizeTO = setTimeout(resize, 200); });
 
-  function getPos(e) {
+  let drawing = false, lx = 0, ly = 0;
+
+  function xy(e) {
     const r = canvas.getBoundingClientRect();
-    if (e.touches) {
-      return [e.touches[0].clientX - r.left, e.touches[0].clientY - r.top];
-    }
-    return [e.clientX - r.left, e.clientY - r.top];
+    const src = e.touches ? e.touches[0] : e;
+    return [src.clientX - r.left, src.clientY - r.top];
   }
 
-  ctx.strokeStyle = '#1e3a5f';
-  ctx.lineWidth   = 2;
-  ctx.lineCap     = 'round';
-  ctx.lineJoin    = 'round';
-
-  canvas.addEventListener('mousedown',  e => { drawing=true; [lastX,lastY]=getPos(e); });
-  canvas.addEventListener('touchstart', e => { e.preventDefault(); drawing=true; [lastX,lastY]=getPos(e); }, {passive:false});
+  canvas.addEventListener('mousedown',  e => { drawing=true; [lx,ly]=xy(e); });
+  canvas.addEventListener('touchstart', e => { e.preventDefault(); drawing=true; [lx,ly]=xy(e); }, {passive:false});
 
   function draw(e) {
     if (!drawing) return;
     e.preventDefault();
-    const [x,y] = getPos(e);
-    ctx.beginPath();
-    ctx.moveTo(lastX, lastY);
-    ctx.lineTo(x, y);
-    ctx.stroke();
-    [lastX,lastY] = [x,y];
+    const [x,y] = xy(e);
+    ctx.beginPath(); ctx.moveTo(lx,ly); ctx.lineTo(x,y); ctx.stroke();
+    [lx,ly]=[x,y];
     input.value = canvas.toDataURL();
-    canvas.classList.add('has-sig');
+    wrap.classList.add('signed');
   }
   canvas.addEventListener('mousemove',  draw);
   canvas.addEventListener('touchmove',  draw, {passive:false});
+  canvas.addEventListener('mouseup',    () => drawing=false);
+  canvas.addEventListener('touchend',   () => drawing=false);
+  canvas.addEventListener('mouseleave', () => drawing=false);
 
-  canvas.addEventListener('mouseup',   () => drawing=false);
-  canvas.addEventListener('touchend',  () => drawing=false);
-  canvas.addEventListener('mouseleave',() => drawing=false);
-
-  pads[idx] = { canvas, ctx, input };
+  pads[idx] = {canvas, ctx, wrap, input};
 }
 
 function clearSig(idx) {
@@ -337,10 +536,29 @@ function clearSig(idx) {
   if (!p) return;
   p.ctx.clearRect(0, 0, p.canvas.width, p.canvas.height);
   p.input.value = '';
-  p.canvas.classList.remove('has-sig');
+  p.wrap.classList.remove('signed');
 }
 
-// Init all 4 pads
-[1,2,3,4].forEach(initSignaturePad);
+
+// ═══ Submit ════════════════════════════════════════════════════════════════
+
+function prepSave(btn) {
+  // Quick validation
+  const passed = document.querySelector('input[name=passed]:checked');
+  if (!passed) {
+    alert('Please select PASSED or FAILED before saving.');
+    return false;
+  }
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving…';
+}
+
+
+// ═══ Init ══════════════════════════════════════════════════════════════════
+
+document.addEventListener('DOMContentLoaded', () => {
+  initSig(1);
+  initSig(2);
+});
 </script>
 {% endblock %}

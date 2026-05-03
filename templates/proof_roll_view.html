@@ -1,168 +1,254 @@
 {% extends 'base.html' %}
-{% block title %}View Proof Roll – {{ wtg.name }}{% endblock %}
+{% block title %}Proof Roll Record – {{ wtg.name }}{% endblock %}
 {% block page_title %}Proof Roll Record{% endblock %}
 {% block page_sub %}{{ wtg.name }} · {{ area.label }} · {{ pr.date.strftime('%d %b %Y') }}{% endblock %}
 
+{% block head %}
+<style>
+  .view-section { margin-bottom:22px; }
+  .vs-title { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.07em; color:#64748b; border-bottom:2px solid #f1f5f9; padding-bottom:8px; margin-bottom:14px; display:flex; align-items:center; gap:6px; }
+  .kv-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:12px; }
+  .kv { }
+  .kv-label { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:#94a3b8; margin-bottom:3px; }
+  .kv-val { font-size:14px; font-weight:600; color:#0f172a; }
+  .eq-table { width:100%; border-collapse:collapse; font-size:13px; }
+  .eq-table th { background:#f8fafc; padding:8px 12px; text-align:left; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:#64748b; border-bottom:2px solid #e2e8f0; }
+  .eq-table td { padding:10px 12px; border-bottom:1px solid #f1f5f9; color:#1e293b; }
+  .eq-table tr:last-child td { border-bottom:none; }
+  .eq-table tr:nth-child(even) td { background:#f8fafc; }
+  .photo-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:10px; }
+  .photo-card { border-radius:12px; overflow:hidden; border:1px solid #e2e8f0; background:#f8fafc; cursor:pointer; transition:transform .15s; }
+  .photo-card:hover { transform:scale(1.02); }
+  .photo-card img { width:100%; aspect-ratio:1; object-fit:cover; display:block; }
+  .sig-box { border:1px solid #e2e8f0; border-radius:12px; overflow:hidden; background:#f8fafc; }
+  .sig-row { padding:14px 16px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; align-items:start; }
+  .sig-img-wrap { padding:8px 12px 12px; background:#f0f9ff; border-top:1px solid #e2e8f0; text-align:center; }
+  /* Lightbox */
+  #lb { display:none; position:fixed; inset:0; background:rgba(0,0,0,.88); z-index:9999; align-items:center; justify-content:center; }
+  #lb.open { display:flex; }
+  #lb img { max-width:92vw; max-height:92vh; border-radius:12px; object-fit:contain; }
+  #lb-close { position:absolute; top:16px; right:16px; width:40px; height:40px; border-radius:50%; background:rgba(255,255,255,.2); color:white; font-size:20px; border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+  @media print {
+    aside, header, footer, .no-print { display:none !important; }
+    [style*="margin-left:240px"] { margin-left:0 !important; }
+    #printable { max-width:100%; }
+    #lb { display:none !important; }
+  }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="flex items-center gap-3 mb-6">
-  <a href="{{ url_for('wtg_detail', wtg_id=wtg.id) }}" class="text-slate-400 hover:text-slate-700 text-sm">
-    <i class="fa-solid fa-arrow-left mr-1"></i> {{ wtg.name }}
+<!-- Top nav -->
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap;" class="no-print">
+  <a href="{{ url_for('proof_roll_index') }}"
+     style="color:#64748b;font-size:13px;font-weight:600;text-decoration:none;display:flex;align-items:center;gap:4px;">
+    <i class="fa-solid fa-arrow-left"></i> Proof Rolling
   </a>
-  <span class="text-slate-300">/</span>
-  <span class="text-slate-800 font-semibold text-sm">View Proof Roll</span>
-  <button onclick="window.print()"
-    class="ml-auto px-4 py-2 bg-slate-700 text-white text-xs rounded-xl hover:bg-slate-600 transition font-medium">
-    <i class="fa-solid fa-print mr-1.5"></i>Print / PDF
-  </button>
+  <span style="color:#cbd5e1;">›</span>
+  <span style="color:#1e293b;font-size:13px;font-weight:700;">{{ wtg.name }}</span>
+  <div style="margin-left:auto;display:flex;gap:8px;">
+    <a href="{{ url_for('proof_roll_form', test_id=test.id) }}"
+       style="display:flex;align-items:center;gap:5px;padding:8px 14px;background:#f0f9ff;border:1px solid #bfdbfe;border-radius:10px;font-size:12px;font-weight:700;color:#2563eb;text-decoration:none;">
+      <i class="fa-solid fa-plus"></i> New Record
+    </a>
+    <button onclick="window.print()"
+      style="display:flex;align-items:center;gap:5px;padding:8px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;font-size:12px;font-weight:700;color:#475569;cursor:pointer;">
+      <i class="fa-solid fa-print"></i> Print
+    </button>
+  </div>
 </div>
 
-<!-- ══ PRINTABLE DOCUMENT ══════════════════════════════════════════════════ -->
-<div class="max-w-3xl mx-auto" id="printable">
+<!-- ══ PRINTABLE CONTENT ══════════════════════════════════════════════════ -->
+<div id="printable">
 
-  <!-- Header -->
-  <div class="bg-gradient-to-r from-blue-900 to-blue-700 text-white rounded-t-2xl p-6 flex items-center justify-between">
+  <!-- Document header -->
+  <div style="background:linear-gradient(135deg,#0f2942,#1e4976);border-radius:16px 16px 0 0;padding:20px 24px;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
     <div>
-      <p class="text-xs text-blue-300 uppercase tracking-wider font-semibold mb-1">CBOP · King Rocks Wind Farm</p>
-      <h1 class="text-2xl font-bold">Proof Roll Record</h1>
-      <p class="text-blue-200 text-sm mt-1">{{ test.display_name }}</p>
+      <p style="color:#93c5fd;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;margin:0 0 5px;">CBOP · King Rocks Wind Farm</p>
+      <h1 style="color:white;font-size:22px;font-weight:800;margin:0 0 4px;">Proof Roll Record</h1>
+      <p style="color:#bfdbfe;font-size:13px;margin:0;">{{ test.display_name }} · {{ area.label }}</p>
     </div>
-    <div class="text-right text-xs text-blue-300 space-y-1">
-      <p>OPER-FRM-057</p>
-      <p>HSEC-MSP-005</p>
-      <p class="text-white font-bold text-sm">{{ wtg.name }}</p>
+    <div style="text-align:right;flex-shrink:0;">
+      <p style="color:#64748b;font-size:10px;margin:0 0 2px;">OPER-FRM-057 / HSEC-MSP-005</p>
+      <p style="color:white;font-size:18px;font-weight:800;margin:0;">{{ wtg.name }}</p>
     </div>
   </div>
 
-  <div class="bg-white border border-slate-200 border-t-0 rounded-b-2xl p-8 space-y-8">
+  <!-- Status Banner -->
+  <div style="padding:14px 20px;display:flex;align-items:center;gap:14px;
+    {% if pr.passed=='yes' %}background:#f0fdf4;border-left:5px solid #16a34a;
+    {% else %}background:#fef2f2;border-left:5px solid #dc2626;{% endif %}
+    border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;">
+    <i class="fa-solid fa-{{ 'circle-check' if pr.passed=='yes' else 'circle-xmark' }}" style="font-size:28px;color:{{ '#16a34a' if pr.passed=='yes' else '#dc2626' }};"></i>
+    <div>
+      <p style="font-size:16px;font-weight:800;margin:0;color:{{ '#15803d' if pr.passed=='yes' else '#991b1b' }};">
+        {{ 'PASSED — Approved to Proceed' if pr.passed=='yes' else 'FAILED — Rectification Required' }}
+      </p>
+      <p style="font-size:12px;color:#64748b;margin:2px 0 0;">
+        {{ test.display_name }} · {{ pr.date.strftime('%d %B %Y') }}
+        {% if pr.entered_at %} · Recorded {{ pr.entered_at.strftime('%d %b %Y %H:%M') }}{% endif %}
+      </p>
+    </div>
+  </div>
 
-    <!-- Status Banner -->
-    <div class="flex items-center gap-4 p-4 rounded-xl
-      {% if pr.passed=='yes' %}bg-green-50 border border-green-200{% else %}bg-red-50 border border-red-200{% endif %}">
-      <i class="fa-solid fa-{{ 'check-circle text-green-600' if pr.passed=='yes' else 'times-circle text-red-500' }} text-2xl"></i>
-      <div>
-        <p class="font-bold {% if pr.passed=='yes' %}text-green-800{% else %}text-red-700{% endif %}">
-          {{ 'PASSED – Approved to Proceed' if pr.passed=='yes' else 'FAILED – Rectification Required' }}
-        </p>
-        <p class="text-xs text-slate-500">{{ test.display_name }} · {{ area.label }}</p>
+  <!-- Content box -->
+  <div style="background:white;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 16px 16px;padding:24px;">
+
+    <!-- Section 1: Record Info -->
+    <div class="view-section">
+      <div class="vs-title"><i class="fa-solid fa-circle-info" style="color:#2563eb;"></i> Section 1 — Record Information</div>
+      <div class="kv-grid">
+        <div class="kv"><div class="kv-label">Location</div><div class="kv-val">{{ pr.location or '–' }}</div></div>
+        <div class="kv"><div class="kv-label">Date</div><div class="kv-val">{{ pr.date.strftime('%d %B %Y') if pr.date else '–' }}</div></div>
+        <div class="kv"><div class="kv-label">Lot Number</div><div class="kv-val">{{ pr.lot_number or '–' }}</div></div>
+        <div class="kv"><div class="kv-label">Pavement Area</div><div class="kv-val">{{ pr.pavement_area or '–' }}</div></div>
+        <div class="kv"><div class="kv-label">Pavement Material</div><div class="kv-val">{{ pr.pavement_material or '–' }}</div></div>
+        <div class="kv"><div class="kv-label">Material Layer</div><div class="kv-val">{{ pr.material_layer or '–' }}</div></div>
       </div>
     </div>
 
-    <!-- Section 1 -->
-    <div>
-      <h2 class="text-sm font-bold text-slate-800 border-b border-slate-200 pb-2 mb-4">Section 1 – Record Information</h2>
-      <div class="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
-        {% for label, val in [
-          ('Location', pr.location),
-          ('Date', pr.date.strftime('%d %B %Y') if pr.date else '–'),
-          ('Pavement Area', pr.pavement_area or '–'),
-          ('Pavement Material', pr.pavement_material or '–'),
-          ('Material Layer', pr.material_layer or '–'),
-          ('Lot Number', pr.lot_number or '–'),
-        ] %}
-        <div>
-          <p class="text-xs text-slate-400 font-semibold uppercase tracking-wide">{{ label }}</p>
-          <p class="text-slate-800 font-medium mt-0.5">{{ val }}</p>
+    <!-- Section 2: Equipment -->
+    <div class="view-section">
+      <div class="vs-title"><i class="fa-solid fa-truck" style="color:#b45309;"></i> Section 2 — Equipment Used</div>
+      {% set eq_rows = pr.equipment_rows %}
+      {% if eq_rows %}
+      <div style="border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+        <table class="eq-table">
+          <thead>
+            <tr>
+              <th>Equipment</th>
+              <th>Mass (Tonnes)</th>
+              <th>Value</th>
+              <th>No. of Passes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for eq in eq_rows %}
+            <tr>
+              <td style="font-weight:600;">{{ eq.equipment_name or '–' }}</td>
+              <td>{{ eq.mass_tonnes or '–' }}</td>
+              <td>{{ eq.value or '–' }}</td>
+              <td>{{ eq.passes or '–' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <!-- Backward compat: show old fixed fields if no new rows -->
+      <div style="border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+        <table class="eq-table">
+          <thead><tr><th>Equipment</th><th>Spec</th><th>Value</th><th>Passes</th></tr></thead>
+          <tbody>
+            {% if pr.tandem_tonnes_per_wheel or pr.tandem_passes %}
+            <tr>
+              <td style="font-weight:600;">Tandem Water Cart</td>
+              <td style="color:#64748b;font-size:12px;">Tonnes / Wheel</td>
+              <td>{{ pr.tandem_tonnes_per_wheel or '–' }}</td>
+              <td>{{ pr.tandem_passes or '–' }}</td>
+            </tr>
+            {% endif %}
+            {% if pr.vibrating_mass_tonnes or pr.vibrating_passes %}
+            <tr>
+              <td style="font-weight:600;">Heavy Vibrating Roller</td>
+              <td style="color:#64748b;font-size:12px;">Mass (Tonnes)</td>
+              <td>{{ pr.vibrating_mass_tonnes or '–' }}</td>
+              <td>{{ pr.vibrating_passes or '–' }}</td>
+            </tr>
+            {% endif %}
+            {% if pr.other_equipment %}
+            <tr>
+              <td style="font-weight:600;">{{ pr.other_equipment }}</td>
+              <td>–</td>
+              <td>{{ pr.other_value or '–' }}</td>
+              <td>{{ pr.other_passes or '–' }}</td>
+            </tr>
+            {% endif %}
+            {% if not pr.tandem_tonnes_per_wheel and not pr.vibrating_mass_tonnes and not pr.other_equipment %}
+            <tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:16px;">No equipment recorded</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Section 3: Photos -->
+    {% if pr.pr_photos %}
+    <div class="view-section">
+      <div class="vs-title"><i class="fa-solid fa-camera" style="color:#0d9488;"></i> Section 3 — Site Photos ({{ pr.pr_photos|length }})</div>
+      <div class="photo-grid">
+        {% for ph in pr.pr_photos %}
+        <div class="photo-card no-print" onclick="openLb('{{ ph.image_data }}')">
+          <img src="{{ ph.image_data }}" alt="Site photo {{ loop.index }}" loading="lazy"/>
+        </div>
+        <!-- Print version -->
+        <div style="display:none;" class="print-photo">
+          <img src="{{ ph.image_data }}" alt="Site photo {{ loop.index }}" style="width:100%;border-radius:8px;"/>
         </div>
         {% endfor %}
       </div>
-    </div>
-
-    <!-- Section 2 -->
-    <div>
-      <h2 class="text-sm font-bold text-slate-800 border-b border-slate-200 pb-2 mb-4">Section 2 – Equipment</h2>
-      <table class="w-full text-sm border border-slate-200 rounded-xl overflow-hidden">
-        <thead class="bg-slate-50">
-          <tr class="border-b border-slate-200 text-xs text-slate-600 font-semibold">
-            <th class="text-left px-4 py-2">Equipment</th>
-            <th class="text-left px-4 py-2">Spec</th>
-            <th class="text-center px-4 py-2">Value</th>
-            <th class="text-center px-4 py-2">Passes</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-slate-100">
-          <tr>
-            <td class="px-4 py-2.5 font-medium">Tandem Water Cart</td>
-            <td class="px-4 py-2.5 text-slate-500 text-xs">Tonnes / Wheel</td>
-            <td class="px-4 py-2.5 text-center">{{ pr.tandem_tonnes_per_wheel or '–' }}</td>
-            <td class="px-4 py-2.5 text-center">{{ pr.tandem_passes or '–' }}</td>
-          </tr>
-          <tr>
-            <td class="px-4 py-2.5 font-medium">Heavy Vibrating Roller</td>
-            <td class="px-4 py-2.5 text-slate-500 text-xs">Mass (Tonnes)</td>
-            <td class="px-4 py-2.5 text-center">{{ pr.vibrating_mass_tonnes or '–' }}</td>
-            <td class="px-4 py-2.5 text-center">{{ pr.vibrating_passes or '–' }}</td>
-          </tr>
-          {% if pr.other_equipment %}
-          <tr>
-            <td class="px-4 py-2.5 font-medium">{{ pr.other_equipment }}</td>
-            <td class="px-4 py-2.5 text-slate-500 text-xs">–</td>
-            <td class="px-4 py-2.5 text-center">{{ pr.other_value or '–' }}</td>
-            <td class="px-4 py-2.5 text-center">{{ pr.other_passes or '–' }}</td>
-          </tr>
-          {% endif %}
-        </tbody>
-      </table>
-    </div>
-
-    <!-- Section 3 -->
-    {% if pr.comments %}
-    <div>
-      <h2 class="text-sm font-bold text-slate-800 border-b border-slate-200 pb-2 mb-4">Section 3 – Comments</h2>
-      <p class="text-sm text-slate-700 whitespace-pre-wrap bg-slate-50 rounded-xl p-4">{{ pr.comments }}</p>
+      <p style="font-size:11px;color:#94a3b8;margin-top:8px;"><i class="fa-solid fa-hand-pointer"></i> Tap a photo to enlarge</p>
     </div>
     {% endif %}
 
-    <!-- Section 4 -->
+    <!-- Section 4: Comments -->
+    {% if pr.comments %}
+    <div class="view-section">
+      <div class="vs-title"><i class="fa-solid fa-comment-dots" style="color:#475569;"></i> Section 4 — Comments</div>
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:14px 16px;font-size:14px;color:#374151;white-space:pre-wrap;line-height:1.6;">{{ pr.comments }}</div>
+    </div>
+    {% endif %}
+
+    <!-- Section 5: Rectification -->
     {% if pr.rectification_method %}
-    <div>
-      <h2 class="text-sm font-bold text-slate-800 border-b border-slate-200 pb-2 mb-4">Section 4 – Rectification</h2>
-      <div class="grid grid-cols-2 gap-4 text-sm">
-        <div class="col-span-2">
-          <p class="text-xs text-slate-400 font-semibold uppercase">Method of Rectification</p>
-          <p class="text-slate-700 mt-1 whitespace-pre-wrap">{{ pr.rectification_method }}</p>
+    <div class="view-section">
+      <div class="vs-title"><i class="fa-solid fa-wrench" style="color:#7c3aed;"></i> Section 5 — Rectification</div>
+      <div class="kv-grid" style="margin-bottom:10px;">
+        <div class="kv">
+          <div class="kv-label">Rectification Date</div>
+          <div class="kv-val">{{ pr.rectification_date.strftime('%d %B %Y') if pr.rectification_date else '–' }}</div>
         </div>
-        <div>
-          <p class="text-xs text-slate-400 font-semibold uppercase">Rectification Date</p>
-          <p class="text-slate-700 mt-1">{{ pr.rectification_date.strftime('%d %B %Y') if pr.rectification_date else '–' }}</p>
+        <div class="kv">
+          <div class="kv-label">Final Result</div>
+          <div>
+            <span style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;font-size:13px;font-weight:700;
+              {% if pr.passed=='yes' %}background:#dcfce7;color:#15803d;{% else %}background:#fee2e2;color:#b91c1c;{% endif %}">
+              <i class="fa-solid fa-{{ 'check' if pr.passed=='yes' else 'xmark' }}"></i>
+              {{ 'PASSED' if pr.passed=='yes' else 'FAILED' }}
+            </span>
+          </div>
         </div>
-        <div>
-          <p class="text-xs text-slate-400 font-semibold uppercase">Passed</p>
-          <span class="inline-flex items-center gap-1.5 mt-1 px-3 py-1 rounded-full text-xs font-bold
-            {{ 'bg-green-100 text-green-800' if pr.passed=='yes' else 'bg-red-100 text-red-800' }}">
-            {{ '✓ YES' if pr.passed=='yes' else '✗ NO' }}
-          </span>
-        </div>
+      </div>
+      <div class="kv">
+        <div class="kv-label">Method of Rectification</div>
+        <div style="background:#faf5ff;border:1px solid #e9d5ff;border-radius:10px;padding:12px 14px;font-size:14px;color:#374151;white-space:pre-wrap;margin-top:6px;">{{ pr.rectification_method }}</div>
       </div>
     </div>
     {% endif %}
 
-    <!-- Section 5 – Signatures -->
+    <!-- Section 6: Signatures -->
     {% if pr.signatories %}
-    <div>
-      <h2 class="text-sm font-bold text-slate-800 border-b border-slate-200 pb-2 mb-4">Section 5 – Acknowledgement & Approval</h2>
-      <div class="space-y-4">
+    <div class="view-section">
+      <div class="vs-title"><i class="fa-solid fa-pen-nib" style="color:#1e40af;"></i> Section 6 — Acknowledgement &amp; Approval</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;">
         {% for sig in pr.signatories %}
-        <div class="flex items-start gap-4 p-4 bg-slate-50 rounded-xl border border-slate-200">
-          <div class="w-8 h-8 bg-blue-700 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-            {{ loop.index }}
+        <div class="sig-box">
+          <div style="padding:10px 14px;display:flex;align-items:center;gap:8px;background:{{ '#eff6ff' if sig.role=='tcs_rep' else '#f0fdf4' }};border-bottom:1px solid {{ '#dbeafe' if sig.role=='tcs_rep' else '#dcfce7' }};">
+            <div style="width:26px;height:26px;border-radius:50%;background:{{ '#1d4ed8' if sig.role=='tcs_rep' else '#16a34a' }};color:white;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;flex-shrink:0;">{{ loop.index }}</div>
+            <p style="font-size:12px;font-weight:700;color:{{ '#1e40af' if sig.role=='tcs_rep' else '#15803d' }};margin:0;">
+              {{ 'Lucas TCS Representative' if sig.role=='tcs_rep' else 'Client Representative' }}
+            </p>
           </div>
-          <div class="flex-1 grid grid-cols-3 gap-4 text-sm">
-            <div>
-              <p class="text-xs text-slate-400 font-semibold uppercase">Name</p>
-              <p class="text-slate-800 font-medium">{{ sig.name or '–' }}</p>
-            </div>
-            <div>
-              <p class="text-xs text-slate-400 font-semibold uppercase">Company</p>
-              <p class="text-slate-700">{{ sig.company or '–' }}</p>
-            </div>
-            <div>
-              <p class="text-xs text-slate-400 font-semibold uppercase">Date</p>
-              <p class="text-slate-700">{{ sig.signed_date.strftime('%d %b %Y') if sig.signed_date else '–' }}</p>
-            </div>
+          <div class="sig-row">
+            <div class="kv"><div class="kv-label">Name</div><div class="kv-val" style="font-size:13px;">{{ sig.name or '–' }}</div></div>
+            <div class="kv"><div class="kv-label">Company</div><div class="kv-val" style="font-size:13px;">{{ sig.company or '–' }}</div></div>
+            <div class="kv"><div class="kv-label">Date</div><div class="kv-val" style="font-size:13px;">{{ sig.signed_date.strftime('%d %b %Y') if sig.signed_date else '–' }}</div></div>
           </div>
           {% if sig.signature_data and sig.signature_data.startswith('data:') %}
-          <div class="border border-slate-200 rounded-lg bg-white p-1" style="min-width:120px">
-            <img src="{{ sig.signature_data }}" alt="Signature" class="h-12 object-contain"/>
+          <div class="sig-img-wrap">
+            <p style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8;margin:0 0 6px;">Signature</p>
+            <img src="{{ sig.signature_data }}" alt="Signature" style="max-height:60px;max-width:100%;object-contain;"/>
           </div>
           {% endif %}
         </div>
@@ -171,23 +257,34 @@
     </div>
     {% endif %}
 
-    <!-- Section 6 -->
-    <div class="border border-slate-200 rounded-xl p-4 bg-slate-50 text-xs text-slate-500 space-y-1">
-      <div class="flex gap-4"><span class="font-semibold w-28">QSE Activity:</span><span>No QSE Activity Required</span></div>
-      <div class="flex gap-4"><span class="font-semibold w-28">Filing:</span><span>Completed Record filed within site QA Documentation</span></div>
+    <!-- QSE / Filing info -->
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:12px 16px;font-size:11px;color:#64748b;display:grid;gap:4px;">
+      <div style="display:flex;gap:8px;"><span style="font-weight:700;min-width:90px;">QSE Activity:</span><span>No QSE Activity Required</span></div>
+      <div style="display:flex;gap:8px;"><span style="font-weight:700;min-width:90px;">Filing:</span><span>Completed Record filed within site QA Documentation</span></div>
+      <div style="display:flex;gap:8px;"><span style="font-weight:700;min-width:90px;">Form Ref:</span><span>OPER-FRM-057 · Uncontrolled When Printed</span></div>
     </div>
 
-    <div class="text-center text-xs text-slate-400 pt-4 border-t border-slate-100">
-      Uncontrolled When Printed · OPER-FRM-057 · King Rocks Wind Farm
-    </div>
-  </div>
+  </div><!-- /content box -->
+</div><!-- /printable -->
+
+<!-- Photo lightbox -->
+<div id="lb" onclick="closeLb()">
+  <button id="lb-close" onclick="closeLb()"><i class="fa-solid fa-xmark"></i></button>
+  <img id="lb-img" src="" alt="Photo"/>
 </div>
 
-<style>
-@media print {
-  aside, header, footer, .no-print { display: none !important; }
-  .ml-64 { margin-left: 0 !important; }
-  #printable { max-width: 100%; }
+{% endblock %}
+
+{% block scripts %}
+<script>
+function openLb(src) {
+  document.getElementById('lb-img').src = src;
+  document.getElementById('lb').classList.add('open');
 }
-</style>
+function closeLb() {
+  document.getElementById('lb').classList.remove('open');
+  document.getElementById('lb-img').src = '';
+}
+document.addEventListener('keydown', e => { if (e.key==='Escape') closeLb(); });
+</script>
 {% endblock %}

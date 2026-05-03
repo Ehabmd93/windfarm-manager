@@ -8,7 +8,9 @@ from werkzeug.security import check_password_hash
 from werkzeug.utils import secure_filename
 import json as _json
 from models import (db, User, WTG, Area, QATest, TestRecord,
-                    ProofRollRecord, ProofRollSignatory, TestPhoto,
+                    ProofRollRecord, ProofRollSignatory,
+                    ProofRollEquipment, ProofRollPhoto,
+                    TestPhoto,
                     ITPRecord, ITPItemStatus, ITPItemDocument,
                     FoundationStage, FoundationStageTemplate, FoundationDocument, FOUNDATION_STAGES,
                     CustomTrackingField, ProgressWidget)
@@ -55,6 +57,7 @@ if not _db_url:
     _db_url = f"sqlite:///{os.path.join(BASE_DIR, 'windfarm.db')}"
 app.config['SQLALCHEMY_DATABASE_URI'] = _db_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['MAX_CONTENT_LENGTH'] = 64 * 1024 * 1024   # 64 MB — allows multiple photo uploads
 app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024   # 32 MB uploads
 
 # ── File upload dirs ─────────────────────────────────────────────────────────
@@ -240,13 +243,6 @@ def proof_roll_form(test_id):
             pavement_material     = request.form.get('pavement_material',''),
             material_layer        = request.form.get('material_layer',''),
             lot_number            = request.form.get('lot_number',''),
-            tandem_tonnes_per_wheel = float(request.form['tandem_tonnes']) if request.form.get('tandem_tonnes') else None,
-            tandem_passes           = int(request.form['tandem_passes'])   if request.form.get('tandem_passes')  else None,
-            vibrating_mass_tonnes   = float(request.form['vibrating_mass']) if request.form.get('vibrating_mass') else None,
-            vibrating_passes        = int(request.form['vibrating_passes']) if request.form.get('vibrating_passes') else None,
-            other_equipment       = request.form.get('other_equipment',''),
-            other_value           = request.form.get('other_value',''),
-            other_passes          = int(request.form['other_passes']) if request.form.get('other_passes') else None,
             comments              = request.form.get('comments',''),
             rectification_method  = request.form.get('rectification_method',''),
             rectification_date    = rect_date,
@@ -254,15 +250,46 @@ def proof_roll_form(test_id):
             entered_by            = current_user.id,
         )
         db.session.add(pr)
-        db.session.flush()
+        db.session.flush()  # get pr.id
 
-        # Signatories (up to 4)
-        for i in range(1, 5):
-            name    = request.form.get(f'sig_name_{i}','').strip()
-            company = request.form.get(f'sig_company_{i}','').strip()
-            sig_data= request.form.get(f'sig_data_{i}','').strip()
-            sig_date= request.form.get(f'sig_date_{i}','').strip()
-            role    = request.form.get(f'sig_role_{i}','').strip()
+        # ── Equipment rows (dynamic, array inputs) ──────────────────────
+        names   = request.form.getlist('equip_name[]')
+        masses  = request.form.getlist('equip_mass[]')
+        values  = request.form.getlist('equip_value[]')
+        passes_ = request.form.getlist('equip_passes[]')
+        for i, ename in enumerate(names):
+            ename = ename.strip()
+            if not ename:
+                continue
+            eq = ProofRollEquipment(
+                proof_roll_id  = pr.id,
+                equipment_name = ename,
+                mass_tonnes    = masses[i].strip()  if i < len(masses)  else '',
+                value          = values[i].strip()  if i < len(values)  else '',
+                passes         = passes_[i].strip() if i < len(passes_) else '',
+                sort_order     = i,
+            )
+            db.session.add(eq)
+
+        # ── Photos (compressed base64 from JS) ───────────────────────────
+        photo_data_list = request.form.getlist('photo_data[]')
+        for img_data in photo_data_list:
+            img_data = img_data.strip()
+            if img_data and img_data.startswith('data:image'):
+                ph = ProofRollPhoto(
+                    proof_roll_id = pr.id,
+                    image_data    = img_data,
+                    uploaded_by   = current_user.id,
+                )
+                db.session.add(ph)
+
+        # ── Signatories (2: TCS rep + Client rep) ───────────────────────
+        for i in range(1, 3):
+            name     = request.form.get(f'sig_name_{i}','').strip()
+            company  = request.form.get(f'sig_company_{i}','').strip()
+            sig_data = request.form.get(f'sig_data_{i}','').strip()
+            sig_date = request.form.get(f'sig_date_{i}','').strip()
+            role     = request.form.get(f'sig_role_{i}','').strip()
             if name:
                 sig = ProofRollSignatory(
                     proof_roll_id  = pr.id,
@@ -282,7 +309,7 @@ def proof_roll_form(test_id):
 
         db.session.commit()
         flash('Proof Roll Record saved successfully!', 'success')
-        return redirect(url_for('wtg_detail', wtg_id=wtg.id))
+        return redirect(url_for('view_proof_roll', pr_id=pr.id))
 
     return render_template('proof_roll.html',
                            test=test, area=area, wtg=wtg,
