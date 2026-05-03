@@ -152,7 +152,8 @@ class ProofRollRecord(db.Model):
     entered_at      = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     signatories     = db.relationship('ProofRollSignatory',  backref='proof_roll',     lazy=True, cascade='all,delete')
     equipment_rows  = db.relationship('ProofRollEquipment',  backref='proof_roll_rec', lazy=True, cascade='all,delete')
-    pr_photos       = db.relationship('ProofRollPhoto',      backref='proof_roll_rec', lazy=True, cascade='all,delete')
+    pr_photos       = db.relationship('ProofRollPhoto',      backref='proof_roll_rec',      lazy=True, cascade='all,delete')
+    rect_photos     = db.relationship('ProofRollRectPhoto',  backref='proof_roll_rect_rec', lazy=True, cascade='all,delete')
 
 class ProofRollSignatory(db.Model):
     __tablename__ = 'proof_roll_signatories'
@@ -176,8 +177,18 @@ class ProofRollEquipment(db.Model):
     sort_order      = db.Column(db.Integer, default=0)
 
 class ProofRollPhoto(db.Model):
-    """Photos taken on-site during a proof roll — stored as compressed base64."""
+    """Site photos taken during a proof roll — stored as compressed base64."""
     __tablename__ = 'proof_roll_photos'
+    id              = db.Column(db.Integer, primary_key=True)
+    proof_roll_id   = db.Column(db.Integer, db.ForeignKey('proof_roll_records.id'), nullable=False)
+    image_data      = db.Column(db.Text)          # base64 data URI (compressed JPEG)
+    caption         = db.Column(db.String(200), default='')
+    taken_at        = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    uploaded_by     = db.Column(db.Integer, db.ForeignKey('users.id'))
+
+class ProofRollRectPhoto(db.Model):
+    """Rectification photos — evidence of works done to fix failed areas."""
+    __tablename__ = 'proof_roll_rect_photos'
     id              = db.Column(db.Integer, primary_key=True)
     proof_roll_id   = db.Column(db.Integer, db.ForeignKey('proof_roll_records.id'), nullable=False)
     image_data      = db.Column(db.Text)          # base64 data URI (compressed JPEG)

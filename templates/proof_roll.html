@@ -255,6 +255,21 @@
           </div>
         </div>
       </div>
+
+      <!-- Rectification photos -->
+      <div>
+        <label class="fl" style="color:#7c3aed;">Rectification Photos <span style="color:#94a3b8;font-size:10px;font-weight:400;text-transform:none;">(evidence of works done)</span></label>
+        <input type="file" id="rect-photo-file" accept="image/*" capture="environment" multiple
+               style="position:absolute;opacity:0;width:1px;height:1px;pointer-events:none;"
+               onchange="handleRectPhotos(this)"/>
+        <label for="rect-photo-file" class="photo-pick" style="border-color:#c4b5fd;background:#faf5ff;color:#7c3aed;">
+          <i class="fa-solid fa-camera" style="font-size:26px;margin-bottom:2px;"></i>
+          <span>Take Rectification Photo</span>
+          <span style="font-size:11px;font-weight:400;color:#9333ea;">Photo evidence of rectification works</span>
+        </label>
+        <div id="rect-photo-grid" class="photo-grid"></div>
+        <div id="rect-photo-inputs"></div>
+      </div>
     </div>
   </div>
 
@@ -453,6 +468,47 @@ function redrawPhotos() {
 function delPhoto(i) {
   photos.splice(i, 1);
   redrawPhotos();
+}
+
+// ═══ Rectification Photo Capture ══════════════════════════════════════════
+
+const rectPhotos = [];
+
+function handleRectPhotos(input) {
+  Array.from(input.files).forEach(file => {
+    if (!file.type.startsWith('image/')) return;
+    const r = new FileReader();
+    r.onload = e => compress(e.target.result, blob => {
+      rectPhotos.push(blob);
+      redrawRectPhotos();
+    });
+    r.readAsDataURL(file);
+  });
+  input.value = '';
+}
+
+function redrawRectPhotos() {
+  const grid = document.getElementById('rect-photo-grid');
+  grid.innerHTML = '';
+  rectPhotos.forEach((d, i) => {
+    const div = document.createElement('div');
+    div.className = 'photo-thumb';
+    div.innerHTML = `<img src="${d}" alt="Rect photo ${i+1}"/>
+      <button type="button" class="photo-del" onclick="delRectPhoto(${i})"><i class="fa-solid fa-xmark"></i></button>`;
+    grid.appendChild(div);
+  });
+  const hc = document.getElementById('rect-photo-inputs');
+  hc.innerHTML = '';
+  rectPhotos.forEach(d => {
+    const inp = document.createElement('input');
+    inp.type = 'hidden'; inp.name = 'rect_photo_data[]'; inp.value = d;
+    hc.appendChild(inp);
+  });
+}
+
+function delRectPhoto(i) {
+  rectPhotos.splice(i, 1);
+  redrawRectPhotos();
 }
 
 

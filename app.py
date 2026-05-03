@@ -9,7 +9,7 @@ from werkzeug.utils import secure_filename
 import json as _json
 from models import (db, User, WTG, Area, QATest, TestRecord,
                     ProofRollRecord, ProofRollSignatory,
-                    ProofRollEquipment, ProofRollPhoto,
+                    ProofRollEquipment, ProofRollPhoto, ProofRollRectPhoto,
                     TestPhoto,
                     ITPRecord, ITPItemStatus, ITPItemDocument,
                     FoundationStage, FoundationStageTemplate, FoundationDocument, FOUNDATION_STAGES,
@@ -271,17 +271,25 @@ def proof_roll_form(test_id):
             )
             db.session.add(eq)
 
-        # ── Photos (compressed base64 from JS) ───────────────────────────
-        photo_data_list = request.form.getlist('photo_data[]')
-        for img_data in photo_data_list:
+        # ── Site photos (compressed base64 from JS) ─────────────────────
+        for img_data in request.form.getlist('photo_data[]'):
             img_data = img_data.strip()
             if img_data and img_data.startswith('data:image'):
-                ph = ProofRollPhoto(
+                db.session.add(ProofRollPhoto(
                     proof_roll_id = pr.id,
                     image_data    = img_data,
                     uploaded_by   = current_user.id,
-                )
-                db.session.add(ph)
+                ))
+
+        # ── Rectification photos ─────────────────────────────────────────
+        for img_data in request.form.getlist('rect_photo_data[]'):
+            img_data = img_data.strip()
+            if img_data and img_data.startswith('data:image'):
+                db.session.add(ProofRollRectPhoto(
+                    proof_roll_id = pr.id,
+                    image_data    = img_data,
+                    uploaded_by   = current_user.id,
+                ))
 
         # ── Signatories (2: TCS rep + Client rep) ───────────────────────
         for i in range(1, 3):
@@ -325,6 +333,16 @@ def view_proof_roll(pr_id):
     area = test.area
     wtg  = area.wtg
     return render_template('proof_roll_view.html', pr=pr, test=test, area=area, wtg=wtg)
+
+# ─── PDF export — branded, printable ────────────────────────────────────────
+@app.route('/proof-roll/<int:pr_id>/pdf')
+@login_required
+def proof_roll_pdf(pr_id):
+    pr   = ProofRollRecord.query.get_or_404(pr_id)
+    test = pr.qa_test
+    area = test.area
+    wtg  = area.wtg
+    return render_template('proof_roll_pdf.html', pr=pr, test=test, area=area, wtg=wtg)
 
 # ─── API: QA status JSON ──────────────────────────────────────────────────────
 @app.route('/api/wtg/<int:wtg_id>/status')

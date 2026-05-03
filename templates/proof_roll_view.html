@@ -46,15 +46,15 @@
   </a>
   <span style="color:#cbd5e1;">›</span>
   <span style="color:#1e293b;font-size:13px;font-weight:700;">{{ wtg.name }}</span>
-  <div style="margin-left:auto;display:flex;gap:8px;">
+  <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;">
+    <a href="{{ url_for('proof_roll_pdf', pr_id=pr.id) }}" target="_blank"
+       style="display:flex;align-items:center;gap:5px;padding:8px 14px;background:linear-gradient(135deg,#0f2942,#1e4976);border-radius:10px;font-size:12px;font-weight:700;color:white;text-decoration:none;box-shadow:0 2px 8px rgba(15,41,66,.3);">
+      <i class="fa-solid fa-file-pdf"></i> Export PDF
+    </a>
     <a href="{{ url_for('proof_roll_form', test_id=test.id) }}"
        style="display:flex;align-items:center;gap:5px;padding:8px 14px;background:#f0f9ff;border:1px solid #bfdbfe;border-radius:10px;font-size:12px;font-weight:700;color:#2563eb;text-decoration:none;">
       <i class="fa-solid fa-plus"></i> New Record
     </a>
-    <button onclick="window.print()"
-      style="display:flex;align-items:center;gap:5px;padding:8px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;font-size:12px;font-weight:700;color:#475569;cursor:pointer;">
-      <i class="fa-solid fa-print"></i> Print
-    </button>
   </div>
 </div>
 
@@ -223,6 +223,20 @@
       <div class="kv">
         <div class="kv-label">Method of Rectification</div>
         <div style="background:#faf5ff;border:1px solid #e9d5ff;border-radius:10px;padding:12px 14px;font-size:14px;color:#374151;white-space:pre-wrap;margin-top:6px;">{{ pr.rectification_method }}</div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Rectification Photos -->
+    {% if pr.rect_photos %}
+    <div class="view-section">
+      <div class="vs-title"><i class="fa-solid fa-camera" style="color:#7c3aed;"></i> Rectification Photos ({{ pr.rect_photos|length }})</div>
+      <div class="photo-grid">
+        {% for ph in pr.rect_photos %}
+        <div class="photo-card no-print" onclick="openLb('{{ ph.image_data }}')">
+          <img src="{{ ph.image_data }}" alt="Rectification photo {{ loop.index }}" loading="lazy"/>
+        </div>
+        {% endfor %}
       </div>
     </div>
     {% endif %}
