@@ -117,25 +117,16 @@
         <span>All WTGs</span>
       </a>
 
-      <!-- QA Work — collapsible -->
+      <!-- QA Work -->
       <div class="nav-section" style="color:#f59e0b;">QA Work</div>
-      <button id="qa-toggle" onclick="toggleQA()"
-        class="sidebar-link w-full text-left {% if request.endpoint in ['proof_roll_form','view_proof_roll','test_record'] %}active{% endif %}"
-        style="background:none;border:1px solid transparent;cursor:pointer;width:100%;">
-        <i class="fa-solid fa-flask-vial" style="width:16px;color:#fbbf24;"></i>
-        <span>Geo Testing</span>
-        <i id="qa-arrow" class="fa-solid fa-chevron-down qa-toggle-arrow {% if request.endpoint in ['proof_roll_form','view_proof_roll','test_record'] %}open{% endif %}"></i>
-      </button>
-      <div id="qa-submenu" class="qa-submenu {% if request.endpoint in ['proof_roll_form','view_proof_roll','test_record'] %}open{% endif %}">
-        <a href="{{ url_for('dashboard') }}" class="sub-link {% if request.endpoint in ['proof_roll_form','view_proof_roll'] %}active{% endif %}">
-          <i class="fa-solid fa-file-circle-check" style="color:#fbbf24;font-size:11px;"></i>
-          <span>Proof Rolls</span>
-        </a>
-        <a href="{{ url_for('dashboard') }}" class="sub-link {% if request.endpoint=='test_record' %}active{% endif %}">
-          <i class="fa-solid fa-microscope" style="color:#fbbf24;font-size:11px;"></i>
-          <span>Test Records</span>
-        </a>
-      </div>
+      <a href="{{ url_for('dashboard') }}" class="sidebar-link {% if request.endpoint in ['proof_roll_form','view_proof_roll'] %}active{% endif %}">
+        <i class="fa-solid fa-file-circle-check" style="width:16px;color:#fbbf24;"></i>
+        <span>Proof Rolling</span>
+      </a>
+      <a href="{{ url_for('dashboard') }}" class="sidebar-link {% if request.endpoint=='test_record' %}active{% endif %}">
+        <i class="fa-solid fa-microscope" style="width:16px;color:#fbbf24;"></i>
+        <span>Geo Testing Records</span>
+      </a>
 
       <!-- Inspection -->
       <div class="nav-section" style="color:#a78bfa;">Inspection</div>
@@ -269,21 +260,6 @@
       setTimeout(() => { loader.classList.remove('done'); loader.style.width='0%'; }, 500);
     });
 
-    // ── QA submenu toggle ────────────────────────────────────────────────
-    function toggleQA() {
-      const menu  = document.getElementById('qa-submenu');
-      const arrow = document.getElementById('qa-arrow');
-      menu.classList.toggle('open');
-      arrow.classList.toggle('open');
-    }
-
-    // Keep open on page load if a QA page is active
-    window.addEventListener('DOMContentLoaded', () => {
-      const menu = document.getElementById('qa-submenu');
-      if (menu && menu.classList.contains('open')) {
-        document.getElementById('qa-arrow')?.classList.add('open');
-      }
-    });
   </script>
   {% block scripts %}{% endblock %}
 </body>
