@@ -39,10 +39,39 @@
     .badge-blue   { @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800; }
     .progress-bar { transition: width 0.8s ease; }
     body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
+
+    /* ── Page loading bar ───────────────────────────────────────────────── */
+    #page-loader {
+      position:fixed;top:0;left:0;height:3px;width:0%;z-index:9999;
+      background:linear-gradient(90deg,#0ea5e9,#6366f1,#0ea5e9);
+      background-size:200% 100%;
+      transition:width 0.3s ease;
+      animation:shimmer 1.2s infinite linear;
+      box-shadow:0 0 10px rgba(14,165,233,0.7);
+    }
+    #page-loader.loading { width:85%; }
+    #page-loader.done    { width:100%;opacity:0;transition:width 0.2s ease,opacity 0.3s ease 0.1s; }
+    @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+    /* ── Collapsible QA sub-menu ────────────────────────────────────────── */
+    .qa-submenu { overflow:hidden; max-height:0; transition:max-height 0.3s ease; }
+    .qa-submenu.open { max-height:200px; }
+    .sub-link {
+      display:flex;align-items:center;gap:10px;padding:7px 12px 7px 36px;
+      border-radius:8px;color:#64748b;font-size:12px;font-weight:500;
+      text-decoration:none;transition:all 0.15s;
+    }
+    .sub-link:hover { background:rgba(255,255,255,0.06);color:#e2e8f0; }
+    .sub-link.active { background:rgba(251,191,36,0.12);color:#fbbf24;font-weight:600; }
+    .qa-toggle-arrow { transition:transform 0.3s ease;margin-left:auto;font-size:10px;color:#475569; }
+    .qa-toggle-arrow.open { transform:rotate(180deg); }
   </style>
   {% block head %}{% endblock %}
 </head>
 <body class="h-full bg-slate-50 flex">
+
+  <!-- ── Page loading bar ──────────────────────────────────────────────── -->
+  <div id="page-loader"></div>
 
   <!-- ── Sidebar ─────────────────────────────────────────────────────── -->
   <aside style="width:240px;min-height:100vh;background:#0d1f35;display:flex;flex-direction:column;position:fixed;left:0;top:0;z-index:30;box-shadow:4px 0 24px rgba(0,0,0,0.25);">
@@ -88,16 +117,25 @@
         <span>All WTGs</span>
       </a>
 
-      <!-- QA Work -->
+      <!-- QA Work — collapsible -->
       <div class="nav-section" style="color:#f59e0b;">QA Work</div>
-      <a href="#" class="sidebar-link {% if request.endpoint in ['proof_roll_form','view_proof_roll'] %}active{% endif %}">
-        <i class="fa-solid fa-file-circle-check" style="width:16px;color:#fbbf24;"></i>
-        <span>Proof Rolls</span>
-      </a>
-      <a href="#" class="sidebar-link {% if request.endpoint=='test_record' %}active{% endif %}">
-        <i class="fa-solid fa-clipboard-check" style="width:16px;color:#fbbf24;"></i>
-        <span>Test Records</span>
-      </a>
+      <button id="qa-toggle" onclick="toggleQA()"
+        class="sidebar-link w-full text-left {% if request.endpoint in ['proof_roll_form','view_proof_roll','test_record'] %}active{% endif %}"
+        style="background:none;border:1px solid transparent;cursor:pointer;width:100%;">
+        <i class="fa-solid fa-flask-vial" style="width:16px;color:#fbbf24;"></i>
+        <span>Geo Testing</span>
+        <i id="qa-arrow" class="fa-solid fa-chevron-down qa-toggle-arrow {% if request.endpoint in ['proof_roll_form','view_proof_roll','test_record'] %}open{% endif %}"></i>
+      </button>
+      <div id="qa-submenu" class="qa-submenu {% if request.endpoint in ['proof_roll_form','view_proof_roll','test_record'] %}open{% endif %}">
+        <a href="{{ url_for('dashboard') }}" class="sub-link {% if request.endpoint in ['proof_roll_form','view_proof_roll'] %}active{% endif %}">
+          <i class="fa-solid fa-file-circle-check" style="color:#fbbf24;font-size:11px;"></i>
+          <span>Proof Rolls</span>
+        </a>
+        <a href="{{ url_for('dashboard') }}" class="sub-link {% if request.endpoint=='test_record' %}active{% endif %}">
+          <i class="fa-solid fa-microscope" style="color:#fbbf24;font-size:11px;"></i>
+          <span>Test Records</span>
+        </a>
+      </div>
 
       <!-- Inspection -->
       <div class="nav-section" style="color:#a78bfa;">Inspection</div>
@@ -199,10 +237,53 @@
   </div>
 
   <script>
-    // Auto-hide flash after 5s
+    // ── Auto-hide flash after 5s ─────────────────────────────────────────
     setTimeout(() => {
       document.querySelectorAll('[data-flash]').forEach(el => el.remove());
     }, 5000);
+
+    // ── Page loading bar ─────────────────────────────────────────────────
+    const loader = document.getElementById('page-loader');
+
+    // Show bar when any link or form is clicked
+    document.addEventListener('click', e => {
+      const link = e.target.closest('a');
+      if (link && link.href && !link.href.startsWith('#')
+          && !link.target && !link.href.startsWith('javascript')
+          && link.origin === location.origin) {
+        startLoader();
+      }
+    });
+    document.addEventListener('submit', () => startLoader());
+
+    function startLoader() {
+      loader.classList.remove('done');
+      loader.style.opacity = '1';
+      loader.classList.add('loading');
+    }
+
+    // Complete bar when page finishes loading
+    window.addEventListener('load', () => {
+      loader.classList.remove('loading');
+      loader.classList.add('done');
+      setTimeout(() => { loader.classList.remove('done'); loader.style.width='0%'; }, 500);
+    });
+
+    // ── QA submenu toggle ────────────────────────────────────────────────
+    function toggleQA() {
+      const menu  = document.getElementById('qa-submenu');
+      const arrow = document.getElementById('qa-arrow');
+      menu.classList.toggle('open');
+      arrow.classList.toggle('open');
+    }
+
+    // Keep open on page load if a QA page is active
+    window.addEventListener('DOMContentLoaded', () => {
+      const menu = document.getElementById('qa-submenu');
+      if (menu && menu.classList.contains('open')) {
+        document.getElementById('qa-arrow')?.classList.add('open');
+      }
+    });
   </script>
   {% block scripts %}{% endblock %}
 </body>
