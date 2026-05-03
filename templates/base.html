@@ -65,6 +65,28 @@
     .sub-link.active { background:rgba(251,191,36,0.12);color:#fbbf24;font-weight:600; }
     .qa-toggle-arrow { transition:transform 0.3s ease;margin-left:auto;font-size:10px;color:#475569; }
     .qa-toggle-arrow.open { transform:rotate(180deg); }
+
+    /* ── Mobile responsive sidebar ──────────────────────────────────────── */
+    /* Sidebar slides off-screen on mobile; main takes full width */
+    @media (max-width: 767px) {
+      #sidebar {
+        transform: translateX(-100%);
+        transition: transform 0.28s cubic-bezier(0.4,0,0.2,1);
+        z-index: 200 !important;
+      }
+      #sidebar.open { transform: translateX(0); }
+      #main-wrap  { margin-left: 0 !important; }
+      #sidebar-overlay {
+        display: none;
+        position: fixed; inset: 0;
+        background: rgba(0,0,0,0.45);
+        z-index: 199;
+        backdrop-filter: blur(2px);
+      }
+      #sidebar-overlay.open { display: block; }
+      #mob-menu-btn { display: flex !important; }
+    }
+    #mob-menu-btn { display: none; }
   </style>
   {% block head %}{% endblock %}
 </head>
@@ -73,8 +95,11 @@
   <!-- ── Page loading bar ──────────────────────────────────────────────── -->
   <div id="page-loader"></div>
 
+  <!-- ── Mobile overlay (tap to close sidebar) ──────────────────────── -->
+  <div id="sidebar-overlay" onclick="closeSidebar()"></div>
+
   <!-- ── Sidebar ─────────────────────────────────────────────────────── -->
-  <aside style="width:240px;min-height:100vh;background:#0d1f35;display:flex;flex-direction:column;position:fixed;left:0;top:0;z-index:30;box-shadow:4px 0 24px rgba(0,0,0,0.25);">
+  <aside id="sidebar" style="width:240px;min-height:100vh;background:#0d1f35;display:flex;flex-direction:column;position:fixed;left:0;top:0;z-index:30;box-shadow:4px 0 24px rgba(0,0,0,0.25);">
 
     <!-- Logo -->
     <div style="padding:20px 16px 16px;border-bottom:1px solid rgba(255,255,255,0.07);">
@@ -187,15 +212,22 @@
   </aside>
 
   <!-- ── Main ─────────────────────────────────────────────────────────── -->
-  <div style="margin-left:240px;" class="flex-1 flex flex-col min-h-screen">
+  <div id="main-wrap" style="margin-left:240px;" class="flex-1 flex flex-col min-h-screen">
     <!-- Top bar -->
-    <header class="bg-white border-b border-slate-200 px-8 py-4 flex items-center justify-between sticky top-0 z-20">
-      <div>
-        <h1 class="text-lg font-bold text-slate-800">{% block page_title %}Dashboard{% endblock %}</h1>
-        <p class="text-xs text-slate-500">King Rocks Wind Farm · CBOP · {% block page_sub %}{% endblock %}</p>
-      </div>
+    <header class="bg-white border-b border-slate-200 px-4 md:px-8 py-3 md:py-4 flex items-center justify-between sticky top-0 z-20">
       <div class="flex items-center gap-3">
-        <span class="text-xs text-slate-400">{{ now.strftime('%d %b %Y') if now else '' }}</span>
+        <!-- Hamburger (mobile only) -->
+        <button id="mob-menu-btn" onclick="openSidebar()"
+          style="width:38px;height:38px;border-radius:10px;border:1.5px solid #e2e8f0;background:white;color:#475569;font-size:16px;cursor:pointer;align-items:center;justify-content:center;flex-shrink:0;">
+          <i class="fa-solid fa-bars"></i>
+        </button>
+        <div>
+          <h1 class="text-base md:text-lg font-bold text-slate-800 leading-tight">{% block page_title %}Dashboard{% endblock %}</h1>
+          <p class="text-xs text-slate-500 hidden sm:block">King Rocks Wind Farm · CBOP · {% block page_sub %}{% endblock %}</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 md:gap-3">
+        <span class="text-xs text-slate-400 hidden md:block">{{ now.strftime('%d %b %Y') if now else '' }}</span>
         {% if current_user.is_authenticated %}
         <span class="badge-blue capitalize">{{ current_user.role }}</span>
         {% endif %}
@@ -203,7 +235,7 @@
     </header>
 
     <!-- Flash messages -->
-    <div class="px-8 pt-4">
+    <div class="px-4 md:px-8 pt-4">
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% for category, msg in messages %}
           <div class="mb-3 flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium
@@ -218,7 +250,7 @@
     </div>
 
     <!-- Page content -->
-    <main class="flex-1 px-8 py-6">
+    <main class="flex-1 px-4 md:px-8 py-4 md:py-6">
       {% block content %}{% endblock %}
     </main>
 
@@ -258,6 +290,24 @@
       loader.classList.remove('loading');
       loader.classList.add('done');
       setTimeout(() => { loader.classList.remove('done'); loader.style.width='0%'; }, 500);
+    });
+
+    // ── Mobile sidebar ────────────────────────────────────────────────────
+    function openSidebar() {
+      document.getElementById('sidebar').classList.add('open');
+      document.getElementById('sidebar-overlay').classList.add('open');
+      document.body.style.overflow = 'hidden';
+    }
+    function closeSidebar() {
+      document.getElementById('sidebar').classList.remove('open');
+      document.getElementById('sidebar-overlay').classList.remove('open');
+      document.body.style.overflow = '';
+    }
+    // Close sidebar when any nav link is tapped (mobile UX)
+    document.querySelectorAll('#sidebar a').forEach(a => {
+      a.addEventListener('click', () => {
+        if (window.innerWidth < 768) closeSidebar();
+      });
     });
 
   </script>
