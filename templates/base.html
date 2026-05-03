@@ -123,72 +123,89 @@
     <!-- Nav -->
     <nav style="flex:1;padding:12px 10px;overflow-y:auto;">
 
-      <!-- Overview -->
+      <!-- Home & Map -->
       <a href="{{ url_for('dashboard') }}" class="sidebar-link {% if request.endpoint=='dashboard' %}active{% endif %}">
-        <i class="fa-solid fa-gauge-high" style="width:16px;color:#60a5fa;"></i>
-        <span>Dashboard</span>
+        <i class="fa-solid fa-house" style="width:16px;color:#60a5fa;"></i>
+        <span>Home</span>
       </a>
-      <a href="{{ url_for('map_view') }}" class="sidebar-link {% if request.endpoint=='map_view' %}active{% endif %}"
-         style="background:rgba(16,185,129,0.1);border-color:rgba(16,185,129,0.2);margin-top:4px;">
+      <a href="{{ url_for('map_view') }}" class="sidebar-link {% if request.endpoint=='map_view' %}active{% endif %}" style="margin-top:3px;">
         <i class="fa-solid fa-map" style="width:16px;color:#34d399;"></i>
-        <span style="color:#6ee7b7;font-weight:600;">Live Map</span>
-        <span style="margin-left:auto;font-size:9px;background:#059669;color:white;padding:2px 6px;border-radius:10px;font-weight:700;">LIVE</span>
+        <span>Map</span>
       </a>
-
-      <!-- Turbines -->
-      <div class="nav-section" style="color:#3b82f6;">Turbines</div>
-      <a href="{{ url_for('dashboard') }}#wtg-grid" class="sidebar-link {% if request.endpoint=='dashboard' and not loop is defined %}active{% endif %}">
+      <a href="{{ url_for('dashboard') }}#wtg-grid" class="sidebar-link" style="margin-top:3px;">
         <i class="fa-solid fa-tower-broadcast" style="width:16px;color:#60a5fa;"></i>
         <span>All WTGs</span>
       </a>
 
-      <!-- QA Work -->
-      <div class="nav-section" style="color:#f59e0b;">QA Work</div>
-      <a href="{{ url_for('proof_roll_index') }}" class="sidebar-link {% if request.endpoint in ['proof_roll_index','proof_roll_form','view_proof_roll'] %}active{% endif %}">
-        <i class="fa-solid fa-file-circle-check" style="width:16px;color:#fbbf24;"></i>
-        <span>Proof Rolling</span>
-      </a>
-      <a href="{{ url_for('dashboard') }}" class="sidebar-link {% if request.endpoint=='test_record' %}active{% endif %}">
-        <i class="fa-solid fa-microscope" style="width:16px;color:#fbbf24;"></i>
-        <span>Geo Testing Records</span>
-      </a>
+      <!-- Modules -->
+      <div class="nav-section" style="color:#94a3b8;margin-top:18px;">Modules</div>
 
-      <!-- Inspection -->
-      <div class="nav-section" style="color:#a78bfa;">Inspection</div>
-      <a href="{{ url_for('itp_index') }}" class="sidebar-link {% if request.endpoint in ('itp_index','itp_detail') %}active{% endif %}">
-        <i class="fa-solid fa-clipboard-list" style="width:16px;color:#c4b5fd;"></i>
-        <span>ITPs</span>
-      </a>
-      <a href="{{ url_for('itp_export') }}" class="sidebar-link {% if request.endpoint == 'itp_export' %}active{% endif %}">
-        <i class="fa-solid fa-file-arrow-down" style="width:16px;color:#a78bfa;"></i>
-        <span>ITP Export</span>
-      </a>
+      <!-- Daily Report — coming soon -->
+      <div class="sidebar-link" style="cursor:default;opacity:0.55;">
+        <i class="fa-solid fa-clipboard-user" style="width:16px;color:#38bdf8;"></i>
+        <span>Daily Report</span>
+        <span style="margin-left:auto;font-size:9px;background:rgba(56,189,248,0.15);color:#38bdf8;padding:2px 6px;border-radius:8px;font-weight:700;white-space:nowrap;">SOON</span>
+      </div>
+
+      <!-- QA — collapsible -->
+      <div>
+        <button onclick="toggleQANav()" id="qa-nav-btn"
+          class="sidebar-link {% if request.endpoint in ['proof_roll_index','proof_roll_form','view_proof_roll','itp_index','itp_detail','itp_export','progress_tracker'] %}active{% endif %}"
+          style="width:100%;text-align:left;background:none;border:none;cursor:pointer;margin-top:3px;">
+          <i class="fa-solid fa-shield-halved" style="width:16px;color:#34d399;"></i>
+          <span>QA</span>
+          <i id="qa-nav-arrow" class="fa-solid fa-chevron-down qa-toggle-arrow"
+             style="{% if request.endpoint in ['proof_roll_index','proof_roll_form','view_proof_roll','itp_index','itp_detail','itp_export','progress_tracker'] %}transform:rotate(180deg){% endif %}"></i>
+        </button>
+        <div class="qa-submenu {% if request.endpoint in ['proof_roll_index','proof_roll_form','view_proof_roll','itp_index','itp_detail','itp_export','progress_tracker'] %}open{% endif %}" id="qa-nav-sub">
+          <a href="{{ url_for('proof_roll_index') }}" class="sub-link {% if request.endpoint in ['proof_roll_index','proof_roll_form','view_proof_roll'] %}active{% endif %}">
+            <i class="fa-solid fa-file-circle-check" style="width:14px;"></i> Proof Rolling
+          </a>
+          <a href="{{ url_for('dashboard') }}" class="sub-link {% if request.endpoint=='test_record' %}active{% endif %}">
+            <i class="fa-solid fa-microscope" style="width:14px;"></i> Geo Testing Records
+          </a>
+          <a href="{{ url_for('itp_index') }}" class="sub-link {% if request.endpoint in ('itp_index','itp_detail','itp_export') %}active{% endif %}">
+            <i class="fa-solid fa-clipboard-list" style="width:14px;"></i> ITPs
+          </a>
+          <a href="{{ url_for('progress_tracker') }}" class="sub-link {% if request.endpoint=='progress_tracker' %}active{% endif %}">
+            <i class="fa-solid fa-chart-line" style="width:14px;"></i> Analytics
+          </a>
+        </div>
+      </div>
+
+      <!-- Daily Site Capture — coming soon -->
+      <div class="sidebar-link" style="cursor:default;opacity:0.55;margin-top:3px;">
+        <i class="fa-solid fa-camera-retro" style="width:16px;color:#a78bfa;"></i>
+        <span>Daily Site Capture</span>
+        <span style="margin-left:auto;font-size:9px;background:rgba(167,139,250,0.15);color:#a78bfa;padding:2px 6px;border-radius:8px;font-weight:700;white-space:nowrap;">SOON</span>
+      </div>
+
+      <!-- Roster — coming soon -->
+      <div class="sidebar-link" style="cursor:default;opacity:0.55;margin-top:3px;">
+        <i class="fa-solid fa-users" style="width:16px;color:#c084fc;"></i>
+        <span>Roster</span>
+        <span style="margin-left:auto;font-size:9px;background:rgba(192,132,252,0.15);color:#c084fc;padding:2px 6px;border-radius:8px;font-weight:700;white-space:nowrap;">SOON</span>
+      </div>
 
       <!-- Foundation -->
-      <div class="nav-section" style="color:#fb923c;">Foundation</div>
+      <div class="nav-section" style="color:#fb923c;margin-top:18px;">Site Works</div>
       <a href="{{ url_for('foundation_index') }}" class="sidebar-link {% if request.endpoint == 'foundation_index' %}active{% endif %}">
         <i class="fa-solid fa-layer-group" style="width:16px;color:#fb923c;"></i>
         <span>Foundation Tracker</span>
       </a>
-      {% if current_user.role == 'admin' %}
-      <a href="{{ url_for('foundation_stage_settings') }}" class="sidebar-link {% if request.endpoint == 'foundation_stage_settings' %}active{% endif %}">
-        <i class="fa-solid fa-sliders" style="width:16px;color:#fdba74;"></i>
-        <span>Stage Settings</span>
-      </a>
-      {% endif %}
-
-      <!-- Analytics -->
-      <div class="nav-section" style="color:#22d3ee;">Analytics</div>
-      <a href="{{ url_for('progress_tracker') }}" class="sidebar-link {% if request.endpoint=='progress_tracker' %}active{% endif %}">
-        <i class="fa-solid fa-chart-line" style="width:16px;color:#22d3ee;"></i>
-        <span>Progress Tracker</span>
-      </a>
-      {% if current_user.is_authenticated and current_user.role in ['engineer','manager'] %}
-      <a href="{{ url_for('custom_fields') }}" class="sidebar-link {% if request.endpoint=='custom_fields' %}active{% endif %}">
+      {% if current_user.is_authenticated and current_user.role in ['engineer','manager','admin'] %}
+      <a href="{{ url_for('custom_fields') }}" class="sidebar-link {% if request.endpoint=='custom_fields' %}active{% endif %}" style="margin-top:3px;">
         <i class="fa-solid fa-sliders" style="width:16px;color:#94a3b8;"></i>
         <span>Custom Fields</span>
       </a>
       {% endif %}
+      {% if current_user.role == 'admin' %}
+      <a href="{{ url_for('foundation_stage_settings') }}" class="sidebar-link {% if request.endpoint == 'foundation_stage_settings' %}active{% endif %}" style="margin-top:3px;">
+        <i class="fa-solid fa-gear" style="width:16px;color:#fdba74;"></i>
+        <span>Stage Settings</span>
+      </a>
+      {% endif %}
+
     </nav>
 
     <!-- User -->
@@ -291,6 +308,15 @@
       loader.classList.add('done');
       setTimeout(() => { loader.classList.remove('done'); loader.style.width='0%'; }, 500);
     });
+
+    // ── QA nav submenu ────────────────────────────────────────────────────
+    function toggleQANav() {
+      const sub   = document.getElementById('qa-nav-sub');
+      const arrow = document.getElementById('qa-nav-arrow');
+      const isOpen = sub.classList.contains('open');
+      sub.classList.toggle('open', !isOpen);
+      arrow.classList.toggle('open', !isOpen);
+    }
 
     // ── Mobile sidebar ────────────────────────────────────────────────────
     function openSidebar() {

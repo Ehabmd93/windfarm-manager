@@ -1,176 +1,490 @@
 {% extends 'base.html' %}
-{% block title %}Dashboard – King Rocks Wind Farm QA{% endblock %}
-{% block page_title %}QA Dashboard{% endblock %}
-{% block page_sub %}Geotechnical Works – {{ wtgs|length }} Turbines{% endblock %}
+{% block title %}Home — King Rocks Wind Farm QA{% endblock %}
+{% block page_title %}Home{% endblock %}
+{% block page_sub %}{{ now.strftime('%A, %d %B %Y') if now else '' }}{% endblock %}
+
+{% block head %}
+<style>
+/* ── Entrance animations ─────────────────────────────────── */
+@keyframes fadeInUp {
+  from { opacity:0; transform:translateY(28px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+@keyframes fadeIn {
+  from { opacity:0; }
+  to   { opacity:1; }
+}
+@keyframes shimmer-badge {
+  0%   { background-position: 200% 0; }
+  100% { background-position:-200% 0; }
+}
+@keyframes float {
+  0%,100% { transform:translateY(0); }
+  50%      { transform:translateY(-6px); }
+}
+
+/* ── Welcome banner ──────────────────────────────────────── */
+.welcome-banner {
+  background: linear-gradient(135deg,#0a1628 0%,#0f2942 40%,#0d3460 100%);
+  border-radius: 22px;
+  padding: 32px 36px;
+  position: relative;
+  overflow: hidden;
+  opacity: 0;
+  animation: fadeIn 0.7s ease 0.05s forwards;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.2);
+}
+.welcome-banner::before {
+  content:'';
+  position:absolute; top:-60px; right:-60px;
+  width:260px; height:260px;
+  background:radial-gradient(circle,rgba(14,165,233,0.12) 0%,transparent 70%);
+  border-radius:50%;
+}
+.welcome-banner::after {
+  content:'';
+  position:absolute; bottom:-80px; right:120px;
+  width:200px; height:200px;
+  background:radial-gradient(circle,rgba(99,102,241,0.08) 0%,transparent 70%);
+  border-radius:50%;
+}
+.wb-stat {
+  text-align:center;
+  padding: 0 20px;
+  border-left: 1px solid rgba(255,255,255,0.08);
+}
+.wb-stat:first-child { border-left:none; }
+
+/* ── Hub cards grid ──────────────────────────────────────── */
+.hub-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+@media (max-width:1100px) { .hub-grid { grid-template-columns: repeat(2,1fr); } }
+@media (max-width:600px)  { .hub-grid { grid-template-columns: 1fr; } }
+
+.hub-card {
+  border-radius: 20px;
+  padding: 26px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.22s cubic-bezier(0.34,1.56,0.64,1),
+              box-shadow 0.22s ease;
+  opacity: 0;
+  animation: fadeInUp 0.55s ease forwards;
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.hub-card:hover {
+  transform: translateY(-6px) scale(1.01);
+  box-shadow: 0 20px 50px rgba(0,0,0,0.25);
+}
+.hub-card.soon { cursor:not-allowed; }
+.hub-card.soon:hover { transform: translateY(-2px); box-shadow: none; }
+
+/* Glossy inner highlight */
+.hub-card::before {
+  content:'';
+  position:absolute; top:0; left:0; right:0;
+  height:50%;
+  background: linear-gradient(180deg,rgba(255,255,255,0.06) 0%,transparent 100%);
+  pointer-events:none;
+}
+
+/* Staggered entrance */
+.hub-card:nth-child(1) { animation-delay:0.15s; }
+.hub-card:nth-child(2) { animation-delay:0.25s; }
+.hub-card:nth-child(3) { animation-delay:0.35s; }
+.hub-card:nth-child(4) { animation-delay:0.45s; }
+
+.hub-icon {
+  width:56px; height:56px;
+  border-radius:16px;
+  background: rgba(255,255,255,0.12);
+  display:flex; align-items:center; justify-content:center;
+  margin-bottom:18px;
+  transition: transform 0.3s ease;
+}
+.hub-card:hover .hub-icon { transform: scale(1.08); }
+.hub-icon i { font-size:24px; color:white; }
+
+.hub-title { color:white; font-size:17px; font-weight:800; margin-bottom:6px; line-height:1.2; }
+.hub-desc  { color:rgba(255,255,255,0.5); font-size:12px; line-height:1.6; }
+
+/* Coming Soon shimmer badge */
+.soon-badge {
+  display:inline-block;
+  font-size:9px; font-weight:800;
+  padding:3px 10px; border-radius:20px;
+  letter-spacing:0.08em; text-transform:uppercase;
+  color:rgba(255,255,255,0.65);
+  border:1px solid rgba(255,255,255,0.18);
+  background:linear-gradient(90deg,
+    rgba(255,255,255,0.06) 25%,
+    rgba(255,255,255,0.15) 50%,
+    rgba(255,255,255,0.06) 75%);
+  background-size:200% 100%;
+  animation: shimmer-badge 2.4s infinite linear;
+}
+
+/* Active badge */
+.active-badge {
+  display:inline-block;
+  font-size:9px; font-weight:800;
+  padding:3px 10px; border-radius:20px;
+  letter-spacing:0.08em; text-transform:uppercase;
+}
+
+/* ── QA sub-panel (inside the QA card area) ──────────────── */
+.qa-panel {
+  overflow:hidden;
+  max-height:0; opacity:0;
+  transition: max-height 0.45s cubic-bezier(0.4,0,0.2,1),
+              opacity 0.3s ease;
+}
+.qa-panel.open { max-height:300px; opacity:1; }
+
+.qa-sub-btn {
+  display:flex; align-items:center; gap:10px;
+  background:#16271f;
+  border:1px solid rgba(52,211,153,0.18);
+  padding:14px 16px;
+  border-radius:14px;
+  text-decoration:none;
+  transition: all 0.18s ease;
+}
+.qa-sub-btn:hover {
+  background:#1d3326;
+  border-color:rgba(52,211,153,0.4);
+  transform:translateX(4px);
+}
+.qa-sub-btn i { font-size:16px; flex-shrink:0; }
+.qa-sub-title { color:white; font-size:12px; font-weight:700; line-height:1.2; }
+.qa-sub-desc  { color:#475569; font-size:10px; margin-top:1px; }
+
+/* ── WTG grid ────────────────────────────────────────────── */
+.wtg-section {
+  opacity:0;
+  animation: fadeInUp 0.55s ease 0.55s forwards;
+}
+.wtg-card {
+  background:white;
+  border-radius:16px;
+  border:1px solid #f1f5f9;
+  padding:20px;
+  text-decoration:none;
+  display:block;
+  transition: all 0.2s cubic-bezier(0.34,1.2,0.64,1);
+  box-shadow:0 1px 4px rgba(0,0,0,0.05);
+}
+.wtg-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 28px rgba(0,0,0,0.1);
+  border-color:#e0e7ff;
+}
+</style>
+{% endblock %}
 
 {% block content %}
-<!-- ── Summary Cards ──────────────────────────────────────────────── -->
-<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-  <div class="card flex items-center gap-4">
-    <div class="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
-      <i class="fa-solid fa-tower-broadcast text-blue-600 text-xl"></i>
-    </div>
+
+<!-- ══ WELCOME BANNER ═════════════════════════════════════════════════ -->
+<div class="welcome-banner mb-8">
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:20px;position:relative;z-index:1;">
+
+    <!-- Left: greeting -->
     <div>
-      <p class="text-2xl font-bold text-slate-800">{{ total }}</p>
-      <p class="text-xs text-slate-500 font-medium">Total WTGs</p>
+      <div style="display:flex;align-items:center;gap:8px;color:#38bdf8;font-size:13px;font-weight:600;margin-bottom:10px;">
+        <i class="fa-solid fa-wind"></i>
+        King Rocks Wind Farm · CBOP
+      </div>
+      <h1 style="color:white;font-size:30px;font-weight:900;line-height:1.15;margin-bottom:8px;">
+        <span id="greeting-text">Welcome back</span>, Ehab <span style="animation:float 3s ease-in-out infinite;display:inline-block;">👋</span>
+      </h1>
+      <p style="color:#64748b;font-size:13px;">
+        <i class="fa-regular fa-clock" style="margin-right:5px;"></i>
+        <span id="live-time"></span> &nbsp;·&nbsp; {{ now.strftime('%A, %d %B %Y') if now else '' }}
+      </p>
     </div>
-  </div>
-  <div class="card flex items-center gap-4">
-    <div class="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
-      <i class="fa-solid fa-circle-check text-green-600 text-xl"></i>
-    </div>
-    <div>
-      <p class="text-2xl font-bold text-slate-800">{{ complete }}</p>
-      <p class="text-xs text-slate-500 font-medium">Complete</p>
-    </div>
-  </div>
-  <div class="card flex items-center gap-4">
-    <div class="w-12 h-12 bg-yellow-100 rounded-xl flex items-center justify-center">
-      <i class="fa-solid fa-spinner text-yellow-600 text-xl"></i>
-    </div>
-    <div>
-      <p class="text-2xl font-bold text-slate-800">{{ in_prog }}</p>
-      <p class="text-xs text-slate-500 font-medium">In Progress</p>
-    </div>
-  </div>
-  <div class="card flex items-center gap-4">
-    <div class="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center">
-      <i class="fa-solid fa-circle-xmark text-red-500 text-xl"></i>
-    </div>
-    <div>
-      <p class="text-2xl font-bold text-slate-800">{{ not_started }}</p>
-      <p class="text-xs text-slate-500 font-medium">Not Started</p>
+
+    <!-- Right: quick stats -->
+    <div style="display:flex;align-items:center;gap:0;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:16px 8px;flex-wrap:wrap;gap:4px;">
+      <div class="wb-stat">
+        <div style="color:white;font-size:26px;font-weight:900;line-height:1;">{{ total }}</div>
+        <div style="color:#475569;font-size:11px;font-weight:600;margin-top:3px;">WTGs</div>
+      </div>
+      <div class="wb-stat">
+        <div style="color:#34d399;font-size:26px;font-weight:900;line-height:1;">{{ complete }}</div>
+        <div style="color:#475569;font-size:11px;font-weight:600;margin-top:3px;">Complete</div>
+      </div>
+      <div class="wb-stat">
+        <div style="color:#fbbf24;font-size:26px;font-weight:900;line-height:1;">{{ in_prog }}</div>
+        <div style="color:#475569;font-size:11px;font-weight:600;margin-top:3px;">In Progress</div>
+      </div>
+      <div class="wb-stat">
+        {% set total_pct = (wtgs | map(attribute='completion_pct') | sum / wtgs|length) | round | int %}
+        <div style="color:#60a5fa;font-size:26px;font-weight:900;line-height:1;">{{ total_pct }}%</div>
+        <div style="color:#475569;font-size:11px;font-weight:600;margin-top:3px;">Overall</div>
+      </div>
     </div>
   </div>
 </div>
 
-<!-- ── Overall Progress ───────────────────────────────────────────── -->
-{% set total_pct = (wtgs | map(attribute='completion_pct') | sum / wtgs|length) | round | int %}
-<div class="card mb-8">
-  <div class="flex items-center justify-between mb-3">
-    <h2 class="font-bold text-slate-800">Overall Project Completion</h2>
-    <span class="text-2xl font-bold text-blue-700">{{ total_pct }}%</span>
+<!-- ══ 4 HUB CARDS ════════════════════════════════════════════════════ -->
+<div class="hub-grid mb-8">
+
+  <!-- ① Daily Report -->
+  <div class="hub-card soon" style="background:linear-gradient(145deg,#0f2650,#1a3a6b);">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:18px;">
+      <div class="hub-icon"><i class="fa-solid fa-clipboard-user"></i></div>
+      <span class="soon-badge">Coming Soon</span>
+    </div>
+    <div class="hub-title">Daily Report</div>
+    <div class="hub-desc">Log daily site activities, progress updates and workforce summaries.</div>
+    <div style="margin-top:18px;display:flex;align-items:center;gap:6px;color:rgba(255,255,255,0.2);font-size:11px;font-weight:600;">
+      <i class="fa-solid fa-lock" style="font-size:10px;"></i> Feature in development
+    </div>
   </div>
-  <div class="w-full bg-slate-100 rounded-full h-4 overflow-hidden">
-    <div class="progress-bar h-4 rounded-full
-      {% if total_pct == 100 %}bg-green-500{% elif total_pct > 50 %}bg-blue-500{% else %}bg-yellow-500{% endif %}"
-      style="width: {{ total_pct }}%"></div>
+
+  <!-- ② QA — expandable card -->
+  <div style="display:flex;flex-direction:column;gap:0;">
+    <div class="hub-card" id="qa-hub-card" onclick="toggleQAHub()"
+         style="background:linear-gradient(145deg,#0d2318,#14472a);animation-delay:0.25s;">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:18px;">
+        <div class="hub-icon" style="background:rgba(52,211,153,0.15);">
+          <i class="fa-solid fa-shield-halved" style="color:#34d399;"></i>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span class="active-badge" style="background:rgba(52,211,153,0.15);color:#34d399;border:1px solid rgba(52,211,153,0.25);">Active</span>
+          <i id="qa-hub-arrow" class="fa-solid fa-chevron-down" style="color:rgba(255,255,255,0.4);font-size:12px;transition:transform 0.35s ease;"></i>
+        </div>
+      </div>
+      <div class="hub-title">QA Management</div>
+      <div class="hub-desc">Quality assurance records, testing, inspections and project analytics.</div>
+      <div style="margin-top:18px;display:flex;align-items:center;gap:6px;color:rgba(52,211,153,0.6);font-size:11px;font-weight:600;">
+        <i class="fa-solid fa-hand-pointer" style="font-size:10px;"></i> Tap to open
+      </div>
+    </div>
+
+    <!-- QA Sub-panel -->
+    <div class="qa-panel" id="qa-hub-panel">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;">
+
+        <a href="{{ url_for('proof_roll_index') }}" class="qa-sub-btn">
+          <i class="fa-solid fa-file-circle-check" style="color:#34d399;"></i>
+          <div>
+            <div class="qa-sub-title">Proof Rolling</div>
+            <div class="qa-sub-desc">Records &amp; tests</div>
+          </div>
+        </a>
+
+        <a href="{{ url_for('dashboard') }}" class="qa-sub-btn">
+          <i class="fa-solid fa-microscope" style="color:#6ee7b7;"></i>
+          <div>
+            <div class="qa-sub-title">Geo Testing</div>
+            <div class="qa-sub-desc">DCP &amp; compaction</div>
+          </div>
+        </a>
+
+        <a href="{{ url_for('itp_index') }}" class="qa-sub-btn">
+          <i class="fa-solid fa-clipboard-list" style="color:#a7f3d0;"></i>
+          <div>
+            <div class="qa-sub-title">ITPs</div>
+            <div class="qa-sub-desc">Inspection test plans</div>
+          </div>
+        </a>
+
+        <a href="{{ url_for('progress_tracker') }}" class="qa-sub-btn">
+          <i class="fa-solid fa-chart-line" style="color:#34d399;"></i>
+          <div>
+            <div class="qa-sub-title">Analytics</div>
+            <div class="qa-sub-desc">Progress &amp; trends</div>
+          </div>
+        </a>
+
+      </div>
+    </div>
   </div>
-  <div class="flex justify-between text-xs text-slate-400 mt-2">
-    <span>0%</span><span>Geotechnical Works</span><span>100%</span>
+
+  <!-- ③ Daily Site Capture -->
+  <div class="hub-card soon" style="background:linear-gradient(145deg,#1a0f3f,#2d1f6b);animation-delay:0.35s;">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:18px;">
+      <div class="hub-icon" style="background:rgba(167,139,250,0.15);">
+        <i class="fa-solid fa-camera-retro" style="color:#a78bfa;"></i>
+      </div>
+      <span class="soon-badge">Coming Soon</span>
+    </div>
+    <div class="hub-title">Daily Site Capture</div>
+    <div class="hub-desc">Photo and video documentation of daily site conditions and progress.</div>
+    <div style="margin-top:18px;display:flex;align-items:center;gap:6px;color:rgba(255,255,255,0.2);font-size:11px;font-weight:600;">
+      <i class="fa-solid fa-lock" style="font-size:10px;"></i> Feature in development
+    </div>
   </div>
+
+  <!-- ④ Roster -->
+  <div class="hub-card soon" style="background:linear-gradient(145deg,#220f3f,#3b1a6b);animation-delay:0.45s;">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:18px;">
+      <div class="hub-icon" style="background:rgba(192,132,252,0.15);">
+        <i class="fa-solid fa-users" style="color:#c084fc;"></i>
+      </div>
+      <span class="soon-badge">Coming Soon</span>
+    </div>
+    <div class="hub-title">Roster</div>
+    <div class="hub-desc">Workforce scheduling, crew management and site attendance tracking.</div>
+    <div style="margin-top:18px;display:flex;align-items:center;gap:6px;color:rgba(255,255,255,0.2);font-size:11px;font-weight:600;">
+      <i class="fa-solid fa-lock" style="font-size:10px;"></i> Feature in development
+    </div>
+  </div>
+
 </div>
 
-<!-- ── WTG Grid ───────────────────────────────────────────────────── -->
-<div id="wtg-grid">
-  <div class="flex items-center justify-between mb-4">
-    <h2 class="font-bold text-slate-800 text-lg">Wind Turbine Generators</h2>
-    <div class="flex gap-2 text-xs">
+<!-- ══ PROJECT PROGRESS ════════════════════════════════════════════════ -->
+<div class="wtg-section">
+
+  {% set total_pct = (wtgs | map(attribute='completion_pct') | sum / wtgs|length) | round | int %}
+  <div class="card mb-6">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+      <div>
+        <h2 style="font-weight:800;color:#0f172a;font-size:15px;">Overall Project Completion</h2>
+        <p style="color:#94a3b8;font-size:12px;margin-top:2px;">King Rocks Wind Farm — Geotechnical Works</p>
+      </div>
+      <span style="font-size:28px;font-weight:900;color:#2563eb;">{{ total_pct }}%</span>
+    </div>
+    <div style="width:100%;background:#f1f5f9;border-radius:99px;height:14px;overflow:hidden;">
+      <div class="progress-bar" style="height:14px;border-radius:99px;
+        background:{% if total_pct==100 %}linear-gradient(90deg,#16a34a,#22c55e){% elif total_pct>50 %}linear-gradient(90deg,#1d4ed8,#3b82f6){% else %}linear-gradient(90deg,#d97706,#fbbf24){% endif %};
+        width:{{ total_pct }}%;"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:11px;color:#cbd5e1;">
+      <span>0%</span>
+      <span style="display:flex;gap:16px;">
+        <span><span style="color:#22c55e;">●</span> {{ complete }} complete</span>
+        <span><span style="color:#fbbf24;">●</span> {{ in_prog }} in progress</span>
+        <span><span style="color:#fca5a5;">●</span> {{ not_started }} not started</span>
+      </span>
+      <span>100%</span>
+    </div>
+  </div>
+
+  <!-- WTG Grid -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+    <h2 style="font-weight:800;color:#0f172a;font-size:16px;">
+      <i class="fa-solid fa-tower-broadcast" style="color:#3b82f6;margin-right:8px;font-size:14px;"></i>
+      Wind Turbine Generators
+    </h2>
+    <div style="display:flex;gap:8px;font-size:11px;">
       <span class="badge-green">● Complete</span>
       <span class="badge-yellow">● In Progress</span>
       <span class="badge-red">● Not Started</span>
     </div>
   </div>
 
-  <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+  <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;" id="wtg-grid">
+    <style>
+      @media(min-width:640px)  { #wtg-grid { grid-template-columns:repeat(3,1fr); } }
+      @media(min-width:1024px) { #wtg-grid { grid-template-columns:repeat(4,1fr); } }
+      @media(min-width:1280px) { #wtg-grid { grid-template-columns:repeat(5,1fr); } }
+    </style>
     {% for wtg in wtgs %}
     {% set pct = wtg.completion_pct %}
-    <a href="{{ url_for('wtg_detail', wtg_id=wtg.id) }}"
-       class="card hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 group cursor-pointer text-decoration-none">
-      <!-- WTG Icon -->
-      <div class="flex items-center justify-between mb-3">
-        <div class="w-10 h-10 rounded-xl flex items-center justify-center
-          {% if pct == 100 %}bg-green-100{% elif pct > 0 %}bg-yellow-100{% else %}bg-red-100{% endif %}">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" width="22" height="22"
-            fill="{% if pct == 100 %}#16a34a{% elif pct > 0 %}#ca8a04{% else %}#f87171{% endif %}">
-            <polygon points="18,38 22,38 21,16 19,16"/>
-            <rect x="17" y="13" width="6" height="3.5" rx="1"/>
-            <ellipse cx="20" cy="7" rx="2" ry="6" transform="rotate(-15,20,13)"/>
-            <ellipse cx="20" cy="7" rx="2" ry="6" transform="rotate(105,20,13)"/>
-            <ellipse cx="20" cy="7" rx="2" ry="6" transform="rotate(225,20,13)"/>
-          </svg>
+    <a href="{{ url_for('wtg_detail', wtg_id=wtg.id) }}" class="wtg-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <div style="width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;
+          background:{% if pct==100 %}#dcfce7{% elif pct>0 %}#fef9c3{% else %}#fee2e2{% endif %};">
+          <i class="fa-solid fa-wind" style="font-size:15px;
+            color:{% if pct==100 %}#16a34a{% elif pct>0 %}#ca8a04{% else %}#ef4444{% endif %};"></i>
         </div>
-        <span class="text-xs font-bold
-          {% if pct == 100 %}text-green-600{% elif pct > 0 %}text-yellow-600{% else %}text-red-400{% endif %}">
+        <span style="font-size:12px;font-weight:800;
+          color:{% if pct==100 %}#16a34a{% elif pct>0 %}#ca8a04{% else %}#ef4444{% endif %};">
           {{ pct }}%
         </span>
       </div>
-
-      <!-- Name -->
-      <h3 class="font-bold text-slate-800 text-sm group-hover:text-blue-700 transition-colors">{{ wtg.name }}</h3>
-      <p class="text-xs text-slate-400 mb-3">King Rocks WF</p>
-
-      <!-- Progress bar -->
-      <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-        <div class="progress-bar h-2 rounded-full
-          {% if pct == 100 %}bg-green-500{% elif pct > 0 %}bg-yellow-500{% else %}bg-red-300{% endif %}"
-          style="width: {{ pct }}%"></div>
+      <div style="font-weight:800;color:#0f172a;font-size:13px;margin-bottom:2px;">{{ wtg.name }}</div>
+      <div style="color:#94a3b8;font-size:10px;margin-bottom:12px;">King Rocks WF</div>
+      <div style="width:100%;background:#f1f5f9;border-radius:99px;height:5px;overflow:hidden;">
+        <div class="progress-bar" style="height:5px;border-radius:99px;
+          background:{% if pct==100 %}#22c55e{% elif pct>0 %}#eab308{% else %}#fca5a5{% endif %};
+          width:{{ pct }}%;"></div>
       </div>
-
-      <!-- Area dots -->
-      <div class="flex gap-1 mt-3">
+      <div style="display:flex;gap:3px;margin-top:10px;">
         {% for area in wtg.areas %}
-        <div class="flex-1 h-1.5 rounded-full
-          {% if area.completion_pct == 100 %}bg-green-500
-          {% elif area.completion_pct > 0 %}bg-yellow-400
-          {% else %}bg-red-300{% endif %}"
-          title="{{ area.label }}: {{ area.completion_pct }}%"></div>
+        <div title="{{ area.label }}: {{ area.completion_pct }}%"
+             style="flex:1;height:4px;border-radius:99px;
+             background:{% if area.completion_pct==100 %}#22c55e{% elif area.completion_pct>0 %}#fbbf24{% else %}#fca5a5{% endif %};"></div>
         {% endfor %}
       </div>
-      <div class="flex gap-1 mt-1">
-        <span class="text-xs text-slate-300 truncate" style="font-size:9px">H·C·B·BF</span>
-      </div>
-
-      <div class="mt-3 text-xs text-blue-600 font-medium group-hover:underline">
-        View details <i class="fa-solid fa-arrow-right text-xs"></i>
+      <div style="margin-top:10px;font-size:11px;color:#3b82f6;font-weight:600;">
+        View details <i class="fa-solid fa-arrow-right" style="font-size:10px;"></i>
       </div>
     </a>
     {% endfor %}
   </div>
+
 </div>
 
-<!-- ── Test Matrix Legend ─────────────────────────────────────────── -->
-<div class="card mt-8">
-  <h2 class="font-bold text-slate-800 mb-4">Test Matrix Reference</h2>
-  <div class="overflow-x-auto">
-    <table class="w-full text-xs">
-      <thead>
-        <tr class="border-b border-slate-200">
-          <th class="text-left py-2 pr-4 text-slate-600 font-semibold">Test</th>
-          <th class="text-center py-2 px-3 font-semibold" style="color:#ef4444">Hardstand</th>
-          <th class="text-center py-2 px-3 font-semibold" style="color:#22c55e">Crane Pad</th>
-          <th class="text-center py-2 px-3 font-semibold" style="color:#eab308">Boom Pad</th>
-          <th class="text-center py-2 px-3 font-semibold" style="color:#3b82f6">Blade Fingers</th>
-        </tr>
-      </thead>
-      <tbody class="divide-y divide-slate-100">
-        {% set matrix = [
-          ('DCP Test', True, True, True, True),
-          ('Subgrade Compaction', True, True, True, True),
-          ('Subbase Compaction', True, True, True, False),
-          ('Basecourse Compaction', True, True, True, True),
-          ('Proof Roll – Foundation', True, True, False, True),
-          ('Proof Roll – Subgrade', True, True, False, True),
-          ('Proof Roll – Subbase', True, True, False, False),
-          ('Proof Roll – Basecourse', True, True, False, True),
-          ('Plate Load Test', True, False, False, False),
-        ] %}
-        {% for row in matrix %}
-        <tr class="hover:bg-slate-50">
-          <td class="py-2 pr-4 font-medium text-slate-700">{{ row[0] }}</td>
-          {% for val in row[1:] %}
-          <td class="py-2 px-3 text-center">
-            {% if val %}
-              <i class="fa-solid fa-check text-green-500"></i>
-            {% else %}
-              <i class="fa-solid fa-minus text-slate-200"></i>
-            {% endif %}
-          </td>
-          {% endfor %}
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Live clock ────────────────────────────────────────────────────────
+function updateClock() {
+  const now  = new Date();
+  const h    = String(now.getHours()).padStart(2,'0');
+  const m    = String(now.getMinutes()).padStart(2,'0');
+  const s    = String(now.getSeconds()).padStart(2,'0');
+  const el   = document.getElementById('live-time');
+  if (el) el.textContent = `${h}:${m}:${s}`;
+}
+updateClock();
+setInterval(updateClock, 1000);
+
+// ── Time-based greeting ───────────────────────────────────────────────
+const hour = new Date().getHours();
+const greet = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+const greetEl = document.getElementById('greeting-text');
+if (greetEl) greetEl.textContent = greet;
+
+// ── QA Hub card toggle ────────────────────────────────────────────────
+function toggleQAHub() {
+  const panel = document.getElementById('qa-hub-panel');
+  const arrow = document.getElementById('qa-hub-arrow');
+  const card  = document.getElementById('qa-hub-card');
+  const isOpen = panel.classList.contains('open');
+
+  panel.classList.toggle('open', !isOpen);
+  arrow.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(180deg)';
+  card.querySelector('.hub-desc').textContent = isOpen
+    ? 'Quality assurance records, testing, inspections and project analytics.'
+    : 'Select a QA module below.';
+}
+
+// ── Ripple effect on hub cards ────────────────────────────────────────
+document.querySelectorAll('.hub-card:not(.soon)').forEach(card => {
+  card.addEventListener('click', function(e) {
+    const ripple = document.createElement('span');
+    const rect   = card.getBoundingClientRect();
+    const size   = Math.max(rect.width, rect.height);
+    ripple.style.cssText = `
+      position:absolute;
+      width:${size}px; height:${size}px;
+      left:${e.clientX - rect.left - size/2}px;
+      top:${e.clientY - rect.top  - size/2}px;
+      background:rgba(255,255,255,0.12);
+      border-radius:50%;
+      transform:scale(0);
+      animation:ripple-anim 0.5s ease forwards;
+      pointer-events:none;
+    `;
+    const style = document.createElement('style');
+    style.textContent = `
+      @keyframes ripple-anim {
+        to { transform:scale(2.5); opacity:0; }
+      }
+    `;
+    document.head.appendChild(style);
+    card.appendChild(ripple);
+    setTimeout(() => ripple.remove(), 600);
+  });
+});
+</script>
 {% endblock %}

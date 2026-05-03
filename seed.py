@@ -189,6 +189,13 @@ def seed(app):
         # ── Idempotent defaults (run even if DB already has users) ───────────
         _seed_defaults(app)
 
+        # ── One-time renames on existing DB ──────────────────────────
+        _eng = User.query.filter_by(email='engineer@cbop.com').first()
+        if _eng and _eng.name != 'Ehab':
+            _eng.name = 'Ehab'
+            db.session.commit()
+            print("✅ Renamed engineer → Ehab")
+
         # Only seed users/WTGs if empty
         if User.query.first():
             print("Database already seeded.")
@@ -196,7 +203,7 @@ def seed(app):
 
         # ── Users ──────────────────────────────────────
         users = [
-            User(name='Alex Engineer',   email='engineer@cbop.com',   password=generate_password_hash('engineer123'),   role='engineer',   company='CBOP'),
+            User(name='Ehab',            email='engineer@cbop.com',   password=generate_password_hash('engineer123'),   role='engineer',   company='CBOP'),
             User(name='Sam Supervisor',  email='supervisor@cbop.com', password=generate_password_hash('supervisor123'), role='supervisor', company='CBOP'),
             User(name='Morgan Manager',  email='manager@cbop.com',    password=generate_password_hash('manager123'),    role='manager',    company='CBOP'),
             User(name='Client Rep',      email='client@client.com',   password=generate_password_hash('client123'),    role='client',     company='Client'),
