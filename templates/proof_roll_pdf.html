@@ -54,23 +54,10 @@ body { font-family: Arial, Helvetica, sans-serif; background:#e8edf2; min-height
 }
 .hdr-logo-box {
   background:#ffffff;
-  padding:14px 20px;
-  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px;
-  border-right:4px solid #f59e0b;
-  min-width:130px;
-}
-.lucas-logo {
-  font-size:22px; font-weight:900; color:#0f2942; letter-spacing:2px; line-height:1;
-}
-.lucas-sub {
-  font-size:8px; font-weight:700; color:#64748b; letter-spacing:1.5px; text-transform:uppercase;
-}
-.lucas-tcs {
-  display:flex; align-items:center; gap:0; margin-top:3px;
-}
-.tcs-badge {
-  background:#0f2942; color:#f59e0b; font-size:10px; font-weight:900;
-  padding:2px 5px; border-radius:3px; letter-spacing:1px;
+  padding:12px 18px;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  border-right:4px solid #3d9945;
+  min-width:180px;
 }
 
 .hdr-title-box {
@@ -247,15 +234,12 @@ body { font-family: Arial, Helvetica, sans-serif; background:#e8edf2; min-height
   <!-- ══ COMPANY HEADER ═══════════════════════════════════════════ -->
   <div class="doc-header">
 
-    <!-- Logo box -->
+    <!-- Logo box — Lucas TCS logo (replace lucas_logo.svg with your PNG for exact match) -->
     <div class="hdr-logo-box">
-      <div class="lucas-logo">LUCAS</div>
-      <div class="lucas-tcs">
-        <span class="tcs-badge">TCS</span>
-      </div>
-      <div class="lucas-sub" style="margin-top:6px;">Technical</div>
-      <div class="lucas-sub">Construction</div>
-      <div class="lucas-sub">Services</div>
+      <img src="{{ url_for('static', filename='img/lucas_logo.png') }}"
+           onerror="this.src='{{ url_for('static', filename='img/lucas_logo.svg') }}'"
+           alt="Lucas Total Contract Solutions"
+           style="width:190px; height:auto; display:block;"/>
     </div>
 
     <!-- Title box -->
@@ -535,7 +519,11 @@ body { font-family: Arial, Helvetica, sans-serif; background:#e8edf2; min-height
 
     <!-- ── Document footer ── -->
     <div class="doc-footer">
-      <div class="footer-logo">LUCAS<span style="color:#f59e0b;font-size:10px;font-weight:700;margin-left:2px;">TCS</span></div>
+      <div class="footer-logo">
+      <img src="{{ url_for('static', filename='img/lucas_logo.png') }}"
+           onerror="this.src='{{ url_for('static', filename='img/lucas_logo.svg') }}'"
+           alt="Lucas TCS" style="height:26px;width:auto;display:block;"/>
+    </div>
       <div class="footer-center">
         King Rocks Wind Farm QA Manager &nbsp;·&nbsp; CBOP<br/>
         <strong>Uncontrolled When Printed</strong> &nbsp;·&nbsp; Generated {{ pr.entered_at.strftime('%d %b %Y') if pr.entered_at else '' }}
