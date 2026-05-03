@@ -1,0 +1,158 @@
+{% extends 'base.html' %}
+{% block title %}Proof Rolling — King Rocks WF{% endblock %}
+{% block page_title %}Proof Rolling{% endblock %}
+{% block page_sub %}All WTGs · Select a turbine to view or record proof rolls{% endblock %}
+
+{% block content %}
+
+<!-- ── Stats Bar ──────────────────────────────────────────────────────── -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+  <div class="bg-white rounded-2xl border border-slate-100 p-5 flex items-center gap-4 shadow-sm">
+    <div class="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center">
+      <i class="fa-solid fa-file-circle-check text-blue-600 text-xl"></i>
+    </div>
+    <div>
+      <p class="text-2xl font-bold text-slate-800">{{ total_records }}</p>
+      <p class="text-xs text-slate-500 font-medium">Total Records</p>
+    </div>
+  </div>
+  <div class="bg-white rounded-2xl border border-slate-100 p-5 flex items-center gap-4 shadow-sm">
+    <div class="w-12 h-12 rounded-xl bg-green-50 flex items-center justify-center">
+      <i class="fa-solid fa-circle-check text-green-600 text-xl"></i>
+    </div>
+    <div>
+      <p class="text-2xl font-bold text-green-700">{{ total_passed }}</p>
+      <p class="text-xs text-slate-500 font-medium">Passed</p>
+    </div>
+  </div>
+  <div class="bg-white rounded-2xl border border-slate-100 p-5 flex items-center gap-4 shadow-sm">
+    <div class="w-12 h-12 rounded-xl bg-red-50 flex items-center justify-center">
+      <i class="fa-solid fa-circle-xmark text-red-500 text-xl"></i>
+    </div>
+    <div>
+      <p class="text-2xl font-bold text-red-600">{{ total_failed }}</p>
+      <p class="text-xs text-slate-500 font-medium">Failed / Rectified</p>
+    </div>
+  </div>
+  <div class="bg-white rounded-2xl border border-slate-100 p-5 flex items-center gap-4 shadow-sm">
+    <div class="w-12 h-12 rounded-xl bg-amber-50 flex items-center justify-center">
+      <i class="fa-solid fa-clock text-amber-500 text-xl"></i>
+    </div>
+    <div>
+      <p class="text-2xl font-bold text-amber-600">{{ total_pending }}</p>
+      <p class="text-xs text-slate-500 font-medium">Pending</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── WTG Grid ───────────────────────────────────────────────────────── -->
+<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+{% for entry in summary %}
+{% set wtg = entry.wtg %}
+
+{# ── Count totals for this WTG ── #}
+{% set ns = namespace(wpass=0, wfail=0, wpend=0, wtotal=0) %}
+{% for a in entry.areas %}
+  {% for t in a.tests %}
+    {% set ns.wtotal = ns.wtotal + 1 %}
+    {% if t.status == 'yes' %}{% set ns.wpass = ns.wpass + 1 %}
+    {% elif t.status == 'no' %}{% set ns.wfail = ns.wfail + 1 %}
+    {% else %}{% set ns.wpend = ns.wpend + 1 %}{% endif %}
+  {% endfor %}
+{% endfor %}
+
+{# ── Card ── #}
+<div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
+
+  <!-- Card Header -->
+  <div class="px-5 py-4 flex items-center justify-between border-b border-slate-100"
+       style="background:linear-gradient(135deg,#0f2942,#1e4976);">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center">
+        <i class="fa-solid fa-tower-broadcast text-white text-sm"></i>
+      </div>
+      <div>
+        <p class="text-white font-bold text-base">{{ wtg.name }}</p>
+        <p class="text-blue-300 text-xs">{{ entry.areas|length }} area(s) · {{ ns.wtotal }} proof roll type(s)</p>
+      </div>
+    </div>
+    <!-- Overall badge -->
+    {% if ns.wpend == 0 and ns.wfail == 0 and ns.wpass > 0 %}
+      <span class="text-xs font-bold px-2.5 py-1 rounded-full bg-green-400/20 text-green-300 border border-green-400/30">
+        <i class="fa-solid fa-check mr-1"></i>All Pass
+      </span>
+    {% elif ns.wfail > 0 %}
+      <span class="text-xs font-bold px-2.5 py-1 rounded-full bg-red-400/20 text-red-300 border border-red-400/30">
+        <i class="fa-solid fa-xmark mr-1"></i>{{ ns.wfail }} Failed
+      </span>
+    {% else %}
+      <span class="text-xs font-bold px-2.5 py-1 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/30">
+        <i class="fa-solid fa-clock mr-1"></i>{{ ns.wpend }} Pending
+      </span>
+    {% endif %}
+  </div>
+
+  <!-- Area Rows -->
+  <div class="divide-y divide-slate-50">
+  {% for a in entry.areas %}
+    <div class="px-5 py-3">
+      <!-- Area label -->
+      <p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+        <i class="fa-solid fa-layer-group mr-1 text-amber-400"></i>{{ a.area.label }}
+      </p>
+      <!-- Test rows -->
+      <div class="space-y-1.5">
+      {% for t in a.tests %}
+        {% set label = t.test.display_name.replace('Proof Roll – ','').replace('Proof Roll – ','') %}
+        <div class="flex items-center justify-between rounded-lg px-3 py-2
+          {% if t.status == 'yes' %}bg-green-50 border border-green-100
+          {% elif t.status == 'no' %}bg-red-50 border border-red-100
+          {% else %}bg-slate-50 border border-slate-100{% endif %}">
+
+          <div class="flex items-center gap-2">
+            {% if t.status == 'yes' %}
+              <i class="fa-solid fa-circle-check text-green-500 text-sm"></i>
+            {% elif t.status == 'no' %}
+              <i class="fa-solid fa-circle-xmark text-red-500 text-sm"></i>
+            {% else %}
+              <i class="fa-regular fa-circle text-slate-300 text-sm"></i>
+            {% endif %}
+            <span class="text-sm font-medium
+              {% if t.status == 'yes' %}text-green-800
+              {% elif t.status == 'no' %}text-red-800
+              {% else %}text-slate-600{% endif %}">
+              {{ label }}
+            </span>
+            {% if t.count > 0 %}
+              <span class="text-xs text-slate-400">({{ t.count }} record{% if t.count > 1 %}s{% endif %})</span>
+            {% endif %}
+          </div>
+
+          <div class="flex items-center gap-2">
+            {% if t.latest %}
+              <a href="{{ url_for('view_proof_roll', pr_id=t.latest.id) }}"
+                 class="text-xs px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 border border-blue-100 hover:bg-blue-100 transition font-medium">
+                <i class="fa-solid fa-eye mr-1"></i>View
+              </a>
+            {% endif %}
+            <a href="{{ url_for('proof_roll_form', test_id=t.test.id) }}"
+               class="text-xs px-2.5 py-1 rounded-lg
+               {% if t.status == 'yes' %}bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200
+               {% else %}bg-amber-500 text-white border border-amber-600 hover:bg-amber-600{% endif %}
+               transition font-medium">
+              <i class="fa-solid fa-{% if t.latest %}plus{% else %}pen{% endif %} mr-1"></i>
+              {% if t.latest %}New{% else %}Start{% endif %}
+            </a>
+          </div>
+        </div>
+      {% endfor %}
+      </div>
+    </div>
+  {% endfor %}
+  </div>
+
+</div><!-- end card -->
+{% endfor %}
+</div><!-- end grid -->
+
+{% endblock %}

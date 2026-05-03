@@ -183,6 +183,41 @@ def test_record(test_id):
     return render_template('test_record.html', test=test, area=area, wtg=wtg, today=date.today().isoformat())
 
 # ─── Proof Roll Form ──────────────────────────────────────────────────────────
+@app.route('/proof-rolls')
+@login_required
+def proof_roll_index():
+    """Proof Rolling landing page — shows all WTGs with proof roll status."""
+    wtgs = WTG.query.order_by(WTG.name).all()
+    summary = []
+    total_records = total_passed = total_failed = total_pending = 0
+
+    for wtg in wtgs:
+        wtg_entry = {'wtg': wtg, 'areas': []}
+        for area in sorted(wtg.areas, key=lambda a: ['hardstand','crane_pad','boom_pad','blade_fingers'].index(a.area_type) if a.area_type in ['hardstand','crane_pad','boom_pad','blade_fingers'] else 99):
+            pr_tests = [t for t in area.tests if t.test_type.startswith('proof_roll')]
+            if not pr_tests:
+                continue
+            area_rows = []
+            for test in pr_tests:
+                recs   = test.proof_rolls
+                latest = recs[-1] if recs else None
+                status = latest.passed if latest else 'pending'
+                area_rows.append({'test': test, 'count': len(recs), 'latest': latest, 'status': status})
+                total_records += len(recs)
+                total_passed  += sum(1 for r in recs if r.passed == 'yes')
+                total_failed  += sum(1 for r in recs if r.passed == 'no')
+                total_pending += (1 if not recs else 0)
+            wtg_entry['areas'].append({'area': area, 'tests': area_rows})
+        summary.append(wtg_entry)
+
+    return render_template('proof_roll_index.html',
+                           summary=summary,
+                           total_records=total_records,
+                           total_passed=total_passed,
+                           total_failed=total_failed,
+                           total_pending=total_pending)
+
+
 @app.route('/test/<int:test_id>/proof-roll', methods=['GET','POST'])
 @login_required
 def proof_roll_form(test_id):
