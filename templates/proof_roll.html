@@ -73,6 +73,7 @@
 
   /* Extra bottom padding so sticky bar doesn't cover content */
   .page-bottom-pad { height:80px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
 </style>
 {% endblock %}
 
@@ -361,7 +362,7 @@
   <a href="{{ url_for('proof_roll_index') }}" class="btn-cancel">
     <i class="fa-solid fa-xmark"></i> Cancel
   </a>
-  <button type="submit" form="prForm" class="btn-save" id="save-btn" onclick="prepSave(this)">
+  <button type="submit" form="prForm" class="btn-save" id="save-btn">
     <i class="fa-solid fa-floppy-disk"></i> Save Proof Roll Record
   </button>
 </div>
@@ -540,25 +541,37 @@ function clearSig(idx) {
 }
 
 
-// ═══ Submit ════════════════════════════════════════════════════════════════
-
-function prepSave(btn) {
-  // Quick validation
-  const passed = document.querySelector('input[name=passed]:checked');
-  if (!passed) {
-    alert('Please select PASSED or FAILED before saving.');
-    return false;
-  }
-  btn.disabled = true;
-  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving…';
-}
-
-
 // ═══ Init ══════════════════════════════════════════════════════════════════
 
 document.addEventListener('DOMContentLoaded', () => {
   initSig(1);
   initSig(2);
+
+  // ── Form submit: validate then show spinner AFTER submission is queued ──
+  const form = document.getElementById('prForm');
+  const btn  = document.getElementById('save-btn');
+
+  form.addEventListener('submit', function(e) {
+    const passed = document.querySelector('input[name=passed]:checked');
+    if (!passed) {
+      e.preventDefault();
+      // Shake the result section to draw attention
+      const sec = document.getElementById('lbl-pass');
+      if (sec) {
+        sec.style.outline = '2px solid #ef4444';
+        setTimeout(() => sec.style.outline = '', 2500);
+      }
+      alert('Please select PASSED or FAILED before saving.');
+      return;
+    }
+
+    // Validation passed — let the browser submit, then update button visuals
+    // Using requestAnimationFrame so disabling happens AFTER the submit fires
+    requestAnimationFrame(() => {
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin" style="animation:spin 0.8s linear infinite;"></i> Saving…';
+    });
+  });
 });
 </script>
 {% endblock %}
