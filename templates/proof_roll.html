@@ -35,6 +35,12 @@
   .photo-thumb { aspect-ratio:1; border-radius:10px; overflow:hidden; position:relative; background:#f1f5f9; }
   .photo-thumb img { width:100%; height:100%; object-fit:cover; }
   .photo-del { position:absolute; top:4px; right:4px; width:24px; height:24px; border-radius:50%; background:rgba(220,38,38,.85); color:white; font-size:11px; display:flex; align-items:center; justify-content:center; cursor:pointer; border:none; }
+  /* Upload-in-progress / error overlay on each photo thumb */
+  .ph-overlay { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; font-size:11px; font-weight:700; text-align:center; padding:6px; border-radius:10px; }
+  .ph-overlay.uploading { background:rgba(0,0,0,.55); color:white; }
+  .ph-overlay.uploading i { font-size:20px; margin-bottom:2px; }
+  .ph-overlay.error { background:rgba(220,38,38,.75); color:white; }
+  .ph-overlay.error i { font-size:18px; }
 
   /* Result radio */
   .result-opt { display:flex; align-items:center; gap:10px; padding:13px 14px; border-radius:10px; border:2px solid #e2e8f0; cursor:pointer; background:white; transition:all .15s; }
@@ -413,103 +419,124 @@ function delRow(btn) {
 }
 
 
-// ═══ Photo Capture & Compression ══════════════════════════════════════════
+// ═══ Photo Capture — AJAX Upload ══════════════════════════════════════════
+//
+// Each photo is compressed then immediately POSTed to /proof-roll/upload-photo
+// as its own small JSON request.  The form submit only carries the returned IDs,
+// so the final POST is tiny regardless of how many photos are taken.
 
-const photos = [];   // array of compressed base64 data-URIs
+// {dataUri, id, status}  status: 'uploading' | 'ok' | 'error'
+const photos     = [];
+const rectPhotos = [];
+let   pendingUploads = 0;   // prevents submit while photos are in-flight
 
-function handlePhotos(input) {
-  Array.from(input.files).forEach(file => {
-    if (!file.type.startsWith('image/')) return;
-    const r = new FileReader();
-    r.onload = e => compress(e.target.result, blob => {
-      photos.push(blob);
-      redrawPhotos();
-    });
-    r.readAsDataURL(file);
+// ── Compress a data-URI to ≤ 900 px JPEG at 72 % quality ──────────────────
+function compress(src) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      const MAX = 900;
+      let w = img.width, h = img.height;
+      if (w > h && w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
+      else if (h > MAX)     { w = Math.round(w * MAX / h); h = MAX; }
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      resolve(c.toDataURL('image/jpeg', 0.72));
+    };
+    img.src = src;
   });
-  input.value = '';
 }
 
-function compress(src, cb) {
-  const img = new Image();
-  img.onload = () => {
-    const MAX = 1280;
-    let w = img.width, h = img.height;
-    if (w > h && w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
-    else if (h > MAX) { w = Math.round(w * MAX / h); h = MAX; }
-    const c = document.createElement('canvas');
-    c.width = w; c.height = h;
-    c.getContext('2d').drawImage(img, 0, 0, w, h);
-    cb(c.toDataURL('image/jpeg', 0.78));
-  };
-  img.src = src;
+// ── Upload one photo entry to the server ──────────────────────────────────
+async function uploadEntry(entry, photoType) {
+  pendingUploads++;
+  try {
+    const resp = await fetch('/proof-roll/upload-photo', {
+      method:  'POST',
+      headers: {'Content-Type': 'application/json'},
+      body:    JSON.stringify({ photo_type: photoType, image_data: entry.dataUri }),
+    });
+    if (!resp.ok) throw new Error('Server error ' + resp.status);
+    const json = await resp.json();
+    entry.id     = json.id;
+    entry.status = 'ok';
+  } catch (err) {
+    entry.status = 'error';
+    console.error('Photo upload failed:', err);
+  } finally {
+    pendingUploads--;
+  }
 }
 
-function redrawPhotos() {
-  const grid = document.getElementById('photo-grid');
+// ── Render photo grid and update hidden ID inputs ─────────────────────────
+function renderGrid(arr, gridId, inputsId, delFn) {
+  const grid = document.getElementById(gridId);
   grid.innerHTML = '';
-  photos.forEach((d, i) => {
+  arr.forEach((p, i) => {
     const div = document.createElement('div');
     div.className = 'photo-thumb';
-    div.innerHTML = `<img src="${d}" alt="Photo ${i+1}"/>
-      <button type="button" class="photo-del" onclick="delPhoto(${i})"><i class="fa-solid fa-xmark"></i></button>`;
+    const overlay =
+      p.status === 'uploading' ? `<div class="ph-overlay uploading"><i class="fa-solid fa-spinner fa-spin"></i><span>Uploading…</span></div>` :
+      p.status === 'error'     ? `<div class="ph-overlay error"><i class="fa-solid fa-triangle-exclamation"></i><span>Failed — tap × to remove</span></div>` : '';
+    div.innerHTML = `<img src="${p.dataUri}" alt="Photo ${i+1}"/>${overlay}
+      <button type="button" class="photo-del" onclick="${delFn}(${i})"><i class="fa-solid fa-xmark"></i></button>`;
     grid.appendChild(div);
   });
-  // Update hidden inputs
-  const hc = document.getElementById('photo-inputs');
+  // Hidden ID inputs for form submission (only include successfully uploaded)
+  const hc = document.getElementById(inputsId);
   hc.innerHTML = '';
-  photos.forEach(d => {
-    const inp = document.createElement('input');
-    inp.type = 'hidden'; inp.name = 'photo_data[]'; inp.value = d;
-    hc.appendChild(inp);
+  arr.forEach(p => {
+    if (p.id) {
+      const inp = document.createElement('input');
+      inp.type = 'hidden';
+      inp.name = inputsId === 'photo-inputs' ? 'photo_id[]' : 'rect_photo_id[]';
+      inp.value = p.id;
+      hc.appendChild(inp);
+    }
   });
 }
 
-function delPhoto(i) {
-  photos.splice(i, 1);
-  redrawPhotos();
+function redrawPhotos()     { renderGrid(photos,     'photo-grid',      'photo-inputs',      'delPhoto'); }
+function redrawRectPhotos() { renderGrid(rectPhotos, 'rect-photo-grid', 'rect-photo-inputs', 'delRectPhoto'); }
+
+// ── Handle file-input change ──────────────────────────────────────────────
+function handlePhotos(input) {
+  const files = Array.from(input.files).filter(f => f.type.startsWith('image/'));
+  input.value = '';
+  files.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = async e => {
+      const dataUri = await compress(e.target.result);
+      const entry   = { dataUri, id: null, status: 'uploading' };
+      photos.push(entry);
+      redrawPhotos();
+      await uploadEntry(entry, 'site');
+      redrawPhotos();
+    };
+    reader.readAsDataURL(file);
+  });
 }
-
-// ═══ Rectification Photo Capture ══════════════════════════════════════════
-
-const rectPhotos = [];
 
 function handleRectPhotos(input) {
-  Array.from(input.files).forEach(file => {
-    if (!file.type.startsWith('image/')) return;
-    const r = new FileReader();
-    r.onload = e => compress(e.target.result, blob => {
-      rectPhotos.push(blob);
-      redrawRectPhotos();
-    });
-    r.readAsDataURL(file);
-  });
+  const files = Array.from(input.files).filter(f => f.type.startsWith('image/'));
   input.value = '';
-}
-
-function redrawRectPhotos() {
-  const grid = document.getElementById('rect-photo-grid');
-  grid.innerHTML = '';
-  rectPhotos.forEach((d, i) => {
-    const div = document.createElement('div');
-    div.className = 'photo-thumb';
-    div.innerHTML = `<img src="${d}" alt="Rect photo ${i+1}"/>
-      <button type="button" class="photo-del" onclick="delRectPhoto(${i})"><i class="fa-solid fa-xmark"></i></button>`;
-    grid.appendChild(div);
-  });
-  const hc = document.getElementById('rect-photo-inputs');
-  hc.innerHTML = '';
-  rectPhotos.forEach(d => {
-    const inp = document.createElement('input');
-    inp.type = 'hidden'; inp.name = 'rect_photo_data[]'; inp.value = d;
-    hc.appendChild(inp);
+  files.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = async e => {
+      const dataUri = await compress(e.target.result);
+      const entry   = { dataUri, id: null, status: 'uploading' };
+      rectPhotos.push(entry);
+      redrawRectPhotos();
+      await uploadEntry(entry, 'rect');
+      redrawRectPhotos();
+    };
+    reader.readAsDataURL(file);
   });
 }
 
-function delRectPhoto(i) {
-  rectPhotos.splice(i, 1);
-  redrawRectPhotos();
-}
+function delPhoto(i)     { photos.splice(i, 1);     redrawPhotos(); }
+function delRectPhoto(i) { rectPhotos.splice(i, 1); redrawRectPhotos(); }
 
 
 // ═══ Result Radio Highlight ════════════════════════════════════════════════
@@ -611,18 +638,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const passed = document.querySelector('input[name=passed]:checked');
     if (!passed) {
       e.preventDefault();
-      // Shake the result section to draw attention
       const sec = document.getElementById('lbl-pass');
-      if (sec) {
-        sec.style.outline = '2px solid #ef4444';
-        setTimeout(() => sec.style.outline = '', 2500);
-      }
+      if (sec) { sec.style.outline = '2px solid #ef4444'; setTimeout(() => sec.style.outline = '', 2500); }
       alert('Please select PASSED or FAILED before saving.');
       return;
     }
 
+    // Block submit if photos are still uploading
+    if (pendingUploads > 0) {
+      e.preventDefault();
+      alert(`Please wait — ${pendingUploads} photo${pendingUploads > 1 ? 's are' : ' is'} still uploading.`);
+      return;
+    }
+
     // Validation passed — let the browser submit, then update button visuals
-    // Using requestAnimationFrame so disabling happens AFTER the submit fires
     requestAnimationFrame(() => {
       btn.disabled = true;
       btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin" style="animation:spin 0.8s linear infinite;"></i> Saving…';

@@ -10,6 +10,7 @@ import json as _json
 from models import (db, User, WTG, Area, QATest, TestRecord,
                     ProofRollRecord, ProofRollSignatory,
                     ProofRollEquipment, ProofRollPhoto, ProofRollRectPhoto,
+                    TempPhotoUpload,
                     TestPhoto,
                     ITPRecord, ITPItemStatus, ITPItemDocument,
                     FoundationStage, FoundationStageTemplate, FoundationDocument, FOUNDATION_STAGES,
@@ -57,8 +58,7 @@ if not _db_url:
     _db_url = f"sqlite:///{os.path.join(BASE_DIR, 'windfarm.db')}"
 app.config['SQLALCHEMY_DATABASE_URI'] = _db_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['MAX_CONTENT_LENGTH'] = 64 * 1024 * 1024   # 64 MB — allows multiple photo uploads
-app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024   # 32 MB uploads
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024   # 16 MB per request (photos now uploaded individually via AJAX)
 
 # ── File upload dirs ─────────────────────────────────────────────────────────
 # On Railway with a volume mounted at /data, use that; else local static/
@@ -221,6 +221,30 @@ def proof_roll_index():
                            total_pending=total_pending)
 
 
+@app.route('/proof-roll/upload-photo', methods=['POST'])
+@login_required
+def proof_roll_upload_photo():
+    """Receive a single compressed base64 photo, store in temp table, return its ID.
+    Each photo is uploaded immediately when the user picks it so the final form
+    POST only carries text fields — no risk of hitting proxy body-size limits."""
+    payload = request.get_json(force=True, silent=True) or {}
+    photo_type = payload.get('photo_type', 'site')
+    image_data = (payload.get('image_data') or '').strip()
+
+    if not image_data or not image_data.startswith('data:image'):
+        return jsonify({'error': 'invalid image data'}), 400
+
+    tmp = TempPhotoUpload(
+        photo_type  = photo_type,
+        image_data  = image_data,
+        taken_at    = datetime.now(timezone.utc),
+        uploaded_by = current_user.id,
+    )
+    db.session.add(tmp)
+    db.session.commit()
+    return jsonify({'id': tmp.id, 'ok': True})
+
+
 @app.route('/test/<int:test_id>/proof-roll', methods=['GET','POST'])
 @login_required
 def proof_roll_form(test_id):
@@ -271,25 +295,39 @@ def proof_roll_form(test_id):
             )
             db.session.add(eq)
 
-        # ── Site photos (compressed base64 from JS) ─────────────────────
-        for img_data in request.form.getlist('photo_data[]'):
-            img_data = img_data.strip()
-            if img_data and img_data.startswith('data:image'):
+        # ── Site photos (pre-uploaded via AJAX → TempPhotoUpload) ───────
+        site_ids = []
+        for raw in request.form.getlist('photo_id[]'):
+            raw = raw.strip()
+            if raw.isdigit():
+                site_ids.append(int(raw))
+        for ph_id in site_ids:
+            tmp = db.session.get(TempPhotoUpload, ph_id)
+            if tmp and tmp.uploaded_by == current_user.id and tmp.photo_type == 'site':
                 db.session.add(ProofRollPhoto(
                     proof_roll_id = pr.id,
-                    image_data    = img_data,
-                    uploaded_by   = current_user.id,
+                    image_data    = tmp.image_data,
+                    taken_at      = tmp.taken_at,
+                    uploaded_by   = tmp.uploaded_by,
                 ))
+                db.session.delete(tmp)
 
         # ── Rectification photos ─────────────────────────────────────────
-        for img_data in request.form.getlist('rect_photo_data[]'):
-            img_data = img_data.strip()
-            if img_data and img_data.startswith('data:image'):
+        rect_ids = []
+        for raw in request.form.getlist('rect_photo_id[]'):
+            raw = raw.strip()
+            if raw.isdigit():
+                rect_ids.append(int(raw))
+        for ph_id in rect_ids:
+            tmp = db.session.get(TempPhotoUpload, ph_id)
+            if tmp and tmp.uploaded_by == current_user.id and tmp.photo_type == 'rect':
                 db.session.add(ProofRollRectPhoto(
                     proof_roll_id = pr.id,
-                    image_data    = img_data,
-                    uploaded_by   = current_user.id,
+                    image_data    = tmp.image_data,
+                    taken_at      = tmp.taken_at,
+                    uploaded_by   = tmp.uploaded_by,
                 ))
+                db.session.delete(tmp)
 
         # ── Signatories (2: TCS rep + Client rep) ───────────────────────
         for i in range(1, 3):

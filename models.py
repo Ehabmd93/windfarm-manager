@@ -196,6 +196,17 @@ class ProofRollRectPhoto(db.Model):
     taken_at        = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     uploaded_by     = db.Column(db.Integer, db.ForeignKey('users.id'))
 
+class TempPhotoUpload(db.Model):
+    """Staging table — photos uploaded before the proof roll form is saved.
+    One record per photo, linked by owner.  Migrated to ProofRollPhoto /
+    ProofRollRectPhoto on form submit then deleted immediately."""
+    __tablename__ = 'temp_photo_uploads'
+    id           = db.Column(db.Integer, primary_key=True)
+    photo_type   = db.Column(db.String(10), default='site')   # 'site' | 'rect'
+    image_data   = db.Column(db.Text, nullable=False)
+    taken_at     = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    uploaded_by  = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+
 # ─────────────────────────────────────────────
 # TEST PHOTOS
 # ─────────────────────────────────────────────
