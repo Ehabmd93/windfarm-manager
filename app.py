@@ -194,7 +194,7 @@ def proof_roll_index():
     for wtg in wtgs:
         wtg_entry = {'wtg': wtg, 'areas': []}
         for area in sorted(wtg.areas, key=lambda a: ['hardstand','crane_pad','boom_pad','blade_fingers'].index(a.area_type) if a.area_type in ['hardstand','crane_pad','boom_pad','blade_fingers'] else 99):
-            pr_tests = [t for t in area.tests if t.test_type.startswith('proof_roll')]
+            pr_tests = [t for t in area.required_tests if t.test_type.startswith('proof_roll')]
             if not pr_tests:
                 continue
             area_rows = []
