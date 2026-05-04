@@ -208,6 +208,11 @@
         {% endif %}
       </a>
 
+      <a href="{{ url_for('documents_list') }}" class="sidebar-link {% if request.endpoint in ['documents_list','document_upload','document_detail'] %}active{% endif %}" style="margin-top:3px;">
+        <i class="fa-solid fa-file-circle-check" style="width:16px;color:#38bdf8;"></i>
+        <span>Documents</span>
+      </a>
+
       <!-- Modules -->
       <div class="nav-section" style="color:#94a3b8;margin-top:18px;">Modules</div>
 

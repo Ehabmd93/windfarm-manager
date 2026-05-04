@@ -534,6 +534,112 @@ class CustomTrackingField(db.Model):
 # ═══════════════════════════════════════════════
 # PROGRESS TRACKER WIDGETS  (dashboard)
 # ═══════════════════════════════════════════════
+# ═══════════════════════════════════════════════
+# DOCUMENTS  (QA document library)
+# ═══════════════════════════════════════════════
+DOCUMENT_CATEGORIES = [
+    ('geo_testing',     'Geo Testing',       'fa-microscope',          '#6ee7b7'),
+    ('proof_rolling',   'Proof Rolling',     'fa-file-circle-check',   '#22c55e'),
+    ('itp',             'ITP / Inspection',  'fa-clipboard-list',      '#a78bfa'),
+    ('foundation',      'Foundation',        'fa-layer-group',         '#fb923c'),
+    ('lab_report',      'Lab Report',        'fa-flask',               '#38bdf8'),
+    ('certificate',     'Certificate',       'fa-certificate',         '#fbbf24'),
+    ('drawing',         'Drawing / Plan',    'fa-pen-ruler',           '#f472b6'),
+    ('correspondence',  'Correspondence',    'fa-envelope',            '#94a3b8'),
+    ('general',         'General',           'fa-file',                '#64748b'),
+]
+
+DOCUMENT_LINK_TYPES = [
+    ('wtg',          'WTG',               'fa-tower-broadcast'),
+    ('qa_test',      'QA Test',           'fa-vial'),
+    ('proof_roll',   'Proof Roll Record', 'fa-file-circle-check'),
+    ('itp_record',   'ITP Record',        'fa-clipboard-list'),
+    ('project',      'Project (General)', 'fa-folder'),
+]
+
+class Document(db.Model):
+    __tablename__ = 'documents'
+    id                = db.Column(db.Integer, primary_key=True)
+    project_id        = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=True)
+    title             = db.Column(db.String(300), nullable=False)
+    description       = db.Column(db.Text)
+    original_filename = db.Column(db.String(300), nullable=False)
+    file_ext          = db.Column(db.String(10), nullable=False)   # pdf, docx, xlsx …
+    file_size         = db.Column(db.Integer, default=0)           # raw bytes
+    file_data         = db.Column(db.Text, nullable=False)         # base64 encoded
+    category          = db.Column(db.String(50), default='general')
+    tags              = db.Column(db.String(500))                  # comma-separated
+    uploaded_by       = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    uploaded_at       = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    is_active         = db.Column(db.Boolean, default=True)
+
+    links    = db.relationship('DocumentLink', backref='document', lazy=True, cascade='all,delete')
+    uploader = db.relationship('User', foreign_keys=[uploaded_by])
+
+    @property
+    def file_size_display(self):
+        s = self.file_size or 0
+        if s < 1024:          return f'{s} B'
+        if s < 1024 * 1024:   return f'{s/1024:.1f} KB'
+        return f'{s/1024/1024:.1f} MB'
+
+    @property
+    def icon_class(self):
+        return {
+            'pdf':'fa-file-pdf','docx':'fa-file-word','doc':'fa-file-word',
+            'xlsx':'fa-file-excel','xls':'fa-file-excel',
+            'jpg':'fa-file-image','jpeg':'fa-file-image','png':'fa-file-image','gif':'fa-file-image',
+            'txt':'fa-file-lines','csv':'fa-file-csv',
+        }.get(self.file_ext.lower(), 'fa-file')
+
+    @property
+    def icon_color(self):
+        return {
+            'pdf':'#ef4444','docx':'#2563eb','doc':'#2563eb',
+            'xlsx':'#16a34a','xls':'#16a34a',
+            'jpg':'#8b5cf6','jpeg':'#8b5cf6','png':'#8b5cf6','gif':'#8b5cf6',
+            'txt':'#64748b','csv':'#0891b2',
+        }.get(self.file_ext.lower(), '#64748b')
+
+    @property
+    def category_label(self):
+        return next((c[1] for c in DOCUMENT_CATEGORIES if c[0]==self.category), self.category.title())
+
+    @property
+    def category_color(self):
+        return next((c[3] for c in DOCUMENT_CATEGORIES if c[0]==self.category), '#64748b')
+
+    @property
+    def can_preview(self):
+        return self.file_ext.lower() in ('pdf','jpg','jpeg','png','gif')
+
+    @property
+    def mime_type(self):
+        return {
+            'pdf':'application/pdf',
+            'docx':'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'doc':'application/msword',
+            'xlsx':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'xls':'application/vnd.ms-excel',
+            'jpg':'image/jpeg','jpeg':'image/jpeg',
+            'png':'image/png','gif':'image/gif',
+            'txt':'text/plain','csv':'text/csv',
+        }.get(self.file_ext.lower(), 'application/octet-stream')
+
+
+class DocumentLink(db.Model):
+    __tablename__ = 'document_links'
+    id          = db.Column(db.Integer, primary_key=True)
+    document_id = db.Column(db.Integer, db.ForeignKey('documents.id'), nullable=False)
+    link_type   = db.Column(db.String(30), nullable=False)  # wtg|qa_test|proof_roll|itp_record|project
+    link_id     = db.Column(db.Integer,    nullable=False)
+    note        = db.Column(db.String(300))
+    linked_by   = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    linked_at   = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    linker      = db.relationship('User', foreign_keys=[linked_by])
+
+
+# ═══════════════════════════════════════════════
 class ProgressWidget(db.Model):
     """User-configured chart/table widgets on the Progress Tracker page."""
     __tablename__ = 'progress_widgets'

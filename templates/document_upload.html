@@ -1,0 +1,165 @@
+{% extends 'base.html' %}
+{% block title %}Upload Document{% endblock %}
+{% block page_title %}Upload Document{% endblock %}
+{% block page_sub %}Add a file to the Document Library{% endblock %}
+
+{% block head %}
+<style>
+#drop-zone {
+  border:2px dashed #c7d2fe; border-radius:18px; padding:48px 24px;
+  text-align:center; transition:all .2s; cursor:pointer; background:#fafafe;
+}
+#drop-zone.over, #drop-zone:hover { border-color:#4f46e5; background:#f5f3ff; }
+#drop-zone.has-file { border-color:#22c55e; background:#f0fdf4; border-style:solid; }
+.form-label { display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:5px;
+  text-transform:uppercase;letter-spacing:.04em; }
+.form-input { width:100%;padding:11px 14px;border:1.5px solid #e2e8f0;border-radius:10px;
+  font-size:14px;color:#0f172a;transition:border-color .15s,box-shadow .15s;outline:none;background:white; }
+.form-input:focus { border-color:#4f46e5;box-shadow:0 0 0 3px rgba(79,70,229,.12); }
+.form-select { appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%2394a3b8' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 14px center;padding-right:40px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="max-width:680px;margin:0 auto;">
+
+  <div style="margin-bottom:20px;">
+    <a href="{{ url_for('documents_list') }}"
+       style="display:inline-flex;align-items:center;gap:6px;color:#64748b;font-size:13px;font-weight:600;text-decoration:none;">
+      <i class="fa-solid fa-arrow-left"></i> Back to Library
+    </a>
+  </div>
+
+  <form method="POST" action="{{ url_for('document_upload') }}" enctype="multipart/form-data" id="upload-form">
+
+    <!-- Drop zone -->
+    <div id="drop-zone" onclick="document.getElementById('file-input').click()">
+      <div id="dz-default">
+        <i class="fa-solid fa-cloud-arrow-up" style="font-size:40px;color:#a5b4fc;margin-bottom:12px;"></i>
+        <div style="font-size:16px;font-weight:700;color:#4f46e5;margin-bottom:6px;">Drop file here or click to browse</div>
+        <div style="font-size:12px;color:#94a3b8;">PDF, Word, Excel, Images, CSV, ZIP — up to 25 MB</div>
+      </div>
+      <div id="dz-file" style="display:none;">
+        <div id="file-icon" style="font-size:40px;margin-bottom:10px;">📄</div>
+        <div id="file-name" style="font-size:15px;font-weight:800;color:#0f172a;margin-bottom:4px;"></div>
+        <div id="file-size" style="font-size:12px;color:#64748b;"></div>
+        <div style="margin-top:12px;">
+          <span style="font-size:12px;color:#22c55e;font-weight:700;">
+            <i class="fa-solid fa-circle-check"></i> File ready to upload
+          </span>
+        </div>
+      </div>
+    </div>
+    <input type="file" id="file-input" name="file" style="display:none;"
+           accept=".pdf,.docx,.doc,.xlsx,.xls,.pptx,.ppt,.jpg,.jpeg,.png,.gif,.bmp,.webp,.txt,.csv,.zip,.dwg,.dxf"
+           onchange="handleFileSelect(this)"/>
+
+    <!-- Form fields -->
+    <div class="card" style="border-radius:20px;padding:28px;margin-top:20px;">
+      <div style="display:grid;gap:16px;">
+
+        <div>
+          <label class="form-label">Document Title <span style="color:#ef4444;">*</span></label>
+          <input type="text" name="title" id="title-input" class="form-input"
+                 placeholder="e.g. WTG02 Hardstand Compaction Results" required/>
+        </div>
+
+        <div>
+          <label class="form-label">Category</label>
+          <select name="category" class="form-input form-select">
+            {% for key, label, icon, color in DOCUMENT_CATEGORIES %}
+            <option value="{{ key }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div>
+          <label class="form-label">Description</label>
+          <textarea name="description" class="form-input" rows="3"
+                    placeholder="Brief description of this document…" style="resize:vertical;"></textarea>
+        </div>
+
+        <div>
+          <label class="form-label">Tags <span style="color:#94a3b8;text-transform:none;font-weight:400;">(comma separated)</span></label>
+          <input type="text" name="tags" class="form-input"
+                 placeholder="e.g. WTG02, hardstand, compaction, 2024"/>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Submit -->
+    <div style="display:flex;justify-content:flex-end;gap:12px;margin-top:20px;">
+      <a href="{{ url_for('documents_list') }}"
+         style="padding:11px 22px;border-radius:12px;border:1.5px solid #e2e8f0;
+                color:#64748b;font-size:13px;font-weight:700;text-decoration:none;">
+        Cancel
+      </a>
+      <button type="submit" id="submit-btn"
+              style="display:inline-flex;align-items:center;gap:8px;padding:11px 28px;
+                     background:linear-gradient(135deg,#4f46e5,#6366f1);color:white;
+                     border:none;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer;
+                     box-shadow:0 4px 14px rgba(79,70,229,.3);transition:all .2s;">
+        <i class="fa-solid fa-cloud-arrow-up"></i>
+        <span id="submit-label">Upload Document</span>
+      </button>
+    </div>
+
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const FILE_ICONS = {
+  pdf:'📕', docx:'📘', doc:'📘', xlsx:'📗', xls:'📗',
+  pptx:'📙', ppt:'📙', jpg:'🖼️', jpeg:'🖼️', png:'🖼️', gif:'🖼️',
+  txt:'📄', csv:'📊', zip:'🗜️', default:'📄'
+};
+
+function handleFileSelect(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const ext = file.name.split('.').pop().toLowerCase();
+  const sizeTxt = file.size < 1048576
+    ? (file.size/1024).toFixed(1)+' KB'
+    : (file.size/1048576).toFixed(2)+' MB';
+
+  document.getElementById('dz-default').style.display = 'none';
+  document.getElementById('dz-file').style.display    = 'block';
+  document.getElementById('drop-zone').classList.add('has-file');
+  document.getElementById('file-icon').textContent   = FILE_ICONS[ext] || FILE_ICONS.default;
+  document.getElementById('file-name').textContent   = file.name;
+  document.getElementById('file-size').textContent   = sizeTxt;
+
+  // Auto-fill title if blank
+  const titleIn = document.getElementById('title-input');
+  if (!titleIn.value) {
+    titleIn.value = file.name.includes('.')
+      ? file.name.substring(0, file.name.lastIndexOf('.'))
+      : file.name;
+  }
+}
+
+// Drag-and-drop
+const dz = document.getElementById('drop-zone');
+dz.addEventListener('dragover',  e => { e.preventDefault(); dz.classList.add('over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('over'));
+dz.addEventListener('drop', e => {
+  e.preventDefault();
+  dz.classList.remove('over');
+  const fi = document.getElementById('file-input');
+  fi.files = e.dataTransfer.files;
+  handleFileSelect(fi);
+});
+
+// Show upload progress
+document.getElementById('upload-form').addEventListener('submit', function() {
+  const btn = document.getElementById('submit-btn');
+  document.getElementById('submit-label').textContent = 'Uploading…';
+  btn.disabled = true;
+  btn.style.opacity = '0.7';
+});
+</script>
+{% endblock %}

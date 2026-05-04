@@ -1,7 +1,7 @@
 import os, json, base64, uuid
 from datetime import datetime, date, timezone
 from flask import (Flask, render_template, request, redirect,
-                   url_for, flash, jsonify, abort, send_from_directory)
+                   url_for, flash, jsonify, abort, send_from_directory, make_response)
 from flask_login import (LoginManager, login_user, logout_user,
                          login_required, current_user)
 from werkzeug.security import check_password_hash
@@ -16,7 +16,9 @@ from models import (db, User, WTG, Area, QATest, TestRecord,
                     TestPhoto,
                     ITPRecord, ITPItemStatus, ITPItemDocument,
                     FoundationStage, FoundationStageTemplate, FoundationDocument, FOUNDATION_STAGES,
-                    CustomTrackingField, ProgressWidget)
+                    CustomTrackingField, ProgressWidget,
+                    Document, DocumentLink,
+                    DOCUMENT_CATEGORIES, DOCUMENT_LINK_TYPES)
 from itp_definitions import ITP_DEFINITIONS, CLIENTS
 from seed import seed
 from kml_parser import get_geojson
@@ -60,7 +62,7 @@ if not _db_url:
     _db_url = f"sqlite:///{os.path.join(BASE_DIR, 'windfarm.db')}"
 app.config['SQLALCHEMY_DATABASE_URI'] = _db_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024   # 16 MB per request (photos now uploaded individually via AJAX)
+app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024   # 32 MB — allows documents up to ~25 MB + photo AJAX uploads
 
 # ── File upload dirs ─────────────────────────────────────────────────────────
 # On Railway with a volume mounted at /data, use that; else local static/
@@ -108,12 +110,14 @@ def load_active_project():
 def inject_now():
     from flask import g
     return {
-        'now':            datetime.now(timezone.utc),
-        'active_project': getattr(g, 'project', None),
-        'user_projects':  getattr(g, 'user_projects', []),
-        'ALL_FEATURES':   ALL_FEATURES,
-        'PROJECT_TYPES':  PROJECT_TYPES,
-        'PROJECT_STATUSES': PROJECT_STATUSES,
+        'now':                datetime.now(timezone.utc),
+        'active_project':     getattr(g, 'project', None),
+        'user_projects':      getattr(g, 'user_projects', []),
+        'ALL_FEATURES':       ALL_FEATURES,
+        'PROJECT_TYPES':      PROJECT_TYPES,
+        'PROJECT_STATUSES':   PROJECT_STATUSES,
+        'DOCUMENT_CATEGORIES': DOCUMENT_CATEGORIES,
+        'DOCUMENT_LINK_TYPES': DOCUMENT_LINK_TYPES,
     }
 
 # ─── Context helpers ─────────────────────────────────────────────────────────
@@ -268,6 +272,258 @@ def project_settings(pid):
         return redirect(url_for('project_settings', pid=pid))
 
     return render_template('project_settings.html', proj=proj, all_users=all_users)
+
+
+# ─── Documents ───────────────────────────────────────────────────────────────
+ALLOWED_DOC_EXTS = {
+    'pdf','docx','doc','xlsx','xls','pptx','ppt',
+    'jpg','jpeg','png','gif','bmp','webp',
+    'txt','csv','zip','dwg','dxf',
+}
+
+def _allowed_doc(filename):
+    return '.' in filename and filename.rsplit('.',1)[1].lower() in ALLOWED_DOC_EXTS
+
+
+@app.route('/documents')
+@login_required
+def documents_list():
+    from flask import g
+    proj = getattr(g, 'project', None)
+    q = Document.query.filter_by(is_active=True)
+    if proj:
+        q = q.filter_by(project_id=proj.id)
+    q = q.order_by(Document.uploaded_at.desc())
+
+    # Filters from query string
+    cat   = request.args.get('cat',  '')
+    ftype = request.args.get('type', '')
+    search = request.args.get('q', '').strip()
+    if cat:    q = q.filter_by(category=cat)
+    if ftype:  q = q.filter(Document.file_ext == ftype.lower())
+    if search: q = q.filter(Document.title.ilike(f'%{search}%'))
+
+    docs = q.all()
+
+    # Stats
+    total_size = sum(d.file_size or 0 for d in docs)
+    cats_used  = list({d.category for d in docs})
+    ext_list   = sorted({d.file_ext.lower() for d in docs})
+    return render_template('documents.html',
+                           docs=docs, total_size=total_size,
+                           cats_used=cats_used, ext_list=ext_list,
+                           active_cat=cat, active_type=ftype, search=search)
+
+
+@app.route('/documents/upload', methods=['GET', 'POST'])
+@login_required
+def document_upload():
+    from flask import g
+    proj = getattr(g, 'project', None)
+    if request.method == 'POST':
+        f = request.files.get('file')
+        if not f or not f.filename:
+            flash('No file selected.', 'danger')
+            return redirect(request.url)
+        if not _allowed_doc(f.filename):
+            flash('File type not allowed.', 'danger')
+            return redirect(request.url)
+
+        raw   = f.read()
+        ext   = f.filename.rsplit('.',1)[1].lower()
+        title = request.form.get('title','').strip() or f.filename.rsplit('.',1)[0]
+
+        doc = Document(
+            project_id        = proj.id if proj else None,
+            title             = title,
+            description       = request.form.get('description','').strip(),
+            original_filename = f.filename,
+            file_ext          = ext,
+            file_size         = len(raw),
+            file_data         = base64.b64encode(raw).decode('utf-8'),
+            category          = request.form.get('category','general'),
+            tags              = request.form.get('tags','').strip(),
+            uploaded_by       = current_user.id,
+        )
+        db.session.add(doc)
+        db.session.commit()
+        flash(f'"{doc.title}" uploaded successfully.', 'success')
+        return redirect(url_for('document_detail', doc_id=doc.id))
+
+    return render_template('document_upload.html')
+
+
+@app.route('/documents/<int:doc_id>')
+@login_required
+def document_detail(doc_id):
+    doc  = Document.query.filter_by(id=doc_id, is_active=True).first_or_404()
+    from flask import g
+    proj = getattr(g, 'project', None)
+
+    # Build link target options
+    wtgs          = WTG.query.filter_by(project_id=proj.id).order_by(WTG.name).all() if proj else []
+    proof_rolls   = (ProofRollRecord.query
+                     .join(QATest).join(Area).join(WTG)
+                     .filter(WTG.project_id == proj.id)
+                     .order_by(ProofRollRecord.date.desc()).all()) if proj else []
+    itp_records   = (ITPRecord.query
+                     .join(WTG, ITPRecord.wtg_id == WTG.id)
+                     .filter(WTG.project_id == proj.id)
+                     .order_by(ITPRecord.created_at.desc()).all()) if proj else []
+
+    # Enrich links with human-readable label
+    link_labels = {}
+    for lnk in doc.links:
+        if lnk.link_type == 'wtg':
+            w = WTG.query.get(lnk.link_id)
+            link_labels[lnk.id] = w.name if w else f'WTG #{lnk.link_id}'
+        elif lnk.link_type == 'proof_roll':
+            pr = ProofRollRecord.query.get(lnk.link_id)
+            link_labels[lnk.id] = (f'Proof Roll – {pr.qa_test.area.wtg.name} '
+                                    f'{pr.qa_test.area.label} ({pr.date})') if pr else f'PR #{lnk.link_id}'
+        elif lnk.link_type == 'itp_record':
+            it  = ITPRecord.query.get(lnk.link_id)
+            wtg = WTG.query.get(it.wtg_id) if it else None
+            link_labels[lnk.id] = f'ITP – {wtg.name} / {it.itp_type}' if (it and wtg) else f'ITP #{lnk.link_id}'
+        elif lnk.link_type == 'qa_test':
+            qt = QATest.query.get(lnk.link_id)
+            link_labels[lnk.id] = (f'{qt.display_name} – {qt.area.wtg.name} '
+                                    f'{qt.area.label}') if qt else f'Test #{lnk.link_id}'
+        else:
+            link_labels[lnk.id] = f'Project link'
+
+    return render_template('document_detail.html', doc=doc,
+                           wtgs=wtgs, proof_rolls=proof_rolls,
+                           itp_records=itp_records, link_labels=link_labels)
+
+
+@app.route('/documents/<int:doc_id>/view')
+@login_required
+def document_view(doc_id):
+    """Serve the raw file inline — used by the PDF/image viewer."""
+    doc = Document.query.filter_by(id=doc_id, is_active=True).first_or_404()
+    raw = base64.b64decode(doc.file_data)
+    resp = make_response(raw)
+    resp.headers['Content-Type'] = doc.mime_type
+    resp.headers['Content-Disposition'] = f'inline; filename="{doc.original_filename}"'
+    resp.headers['Cache-Control'] = 'private, max-age=3600'
+    return resp
+
+
+@app.route('/documents/<int:doc_id>/download')
+@login_required
+def document_download(doc_id):
+    """Force download of the file."""
+    doc = Document.query.filter_by(id=doc_id, is_active=True).first_or_404()
+    raw = base64.b64decode(doc.file_data)
+    resp = make_response(raw)
+    resp.headers['Content-Type'] = doc.mime_type
+    resp.headers['Content-Disposition'] = f'attachment; filename="{doc.original_filename}"'
+    return resp
+
+
+@app.route('/documents/<int:doc_id>/delete', methods=['POST'])
+@login_required
+def document_delete(doc_id):
+    doc = Document.query.filter_by(id=doc_id, is_active=True).first_or_404()
+    if current_user.role not in ('engineer','manager','admin') and doc.uploaded_by != current_user.id:
+        abort(403)
+    doc.is_active = False
+    db.session.commit()
+    flash(f'"{doc.title}" deleted.', 'success')
+    return redirect(url_for('documents_list'))
+
+
+@app.route('/documents/<int:doc_id>/link', methods=['POST'])
+@login_required
+def document_add_link(doc_id):
+    doc       = Document.query.filter_by(id=doc_id, is_active=True).first_or_404()
+    link_type = request.form.get('link_type','').strip()
+    link_id   = request.form.get('link_id','0')
+    note      = request.form.get('note','').strip()
+
+    if not link_type or not link_id or link_id == '0':
+        flash('Please choose a record to link.', 'danger')
+        return redirect(url_for('document_detail', doc_id=doc_id))
+
+    # Prevent duplicates
+    exists = DocumentLink.query.filter_by(document_id=doc.id,
+                                          link_type=link_type,
+                                          link_id=int(link_id)).first()
+    if not exists:
+        db.session.add(DocumentLink(
+            document_id = doc.id,
+            link_type   = link_type,
+            link_id     = int(link_id),
+            note        = note,
+            linked_by   = current_user.id,
+        ))
+        db.session.commit()
+        flash('Link added.', 'success')
+    else:
+        flash('This link already exists.', 'info')
+    return redirect(url_for('document_detail', doc_id=doc_id))
+
+
+@app.route('/documents/links/<int:link_id>/delete', methods=['POST'])
+@login_required
+def document_remove_link(link_id):
+    lnk = DocumentLink.query.get_or_404(link_id)
+    doc_id = lnk.document_id
+    db.session.delete(lnk)
+    db.session.commit()
+    flash('Link removed.', 'success')
+    return redirect(url_for('document_detail', doc_id=doc_id))
+
+
+# ── AJAX: get documents linked to a specific record ──────────────────────────
+@app.route('/api/documents/for/<link_type>/<int:link_id>')
+@login_required
+def api_docs_for_record(link_type, link_id):
+    links = DocumentLink.query.filter_by(link_type=link_type, link_id=link_id).all()
+    result = []
+    for lnk in links:
+        doc = lnk.document
+        if doc and doc.is_active:
+            result.append({
+                'id':       doc.id,
+                'title':    doc.title,
+                'file_ext': doc.file_ext,
+                'file_size':doc.file_size_display,
+                'category': doc.category_label,
+                'cat_color':doc.category_color,
+                'icon':     doc.icon_class,
+                'icon_color':doc.icon_color,
+                'can_preview': doc.can_preview,
+                'note':     lnk.note or '',
+                'link_id':  lnk.id,
+                'view_url': url_for('document_view',    doc_id=doc.id),
+                'dl_url':   url_for('document_download', doc_id=doc.id),
+                'detail_url': url_for('document_detail', doc_id=doc.id),
+            })
+    return jsonify(result)
+
+
+# ── AJAX: search documents in current project (for link-from-record modal) ───
+@app.route('/api/documents/search')
+@login_required
+def api_docs_search():
+    from flask import g
+    proj  = getattr(g, 'project', None)
+    q_str = request.args.get('q','').strip()
+    q     = Document.query.filter_by(is_active=True)
+    if proj:
+        q = q.filter_by(project_id=proj.id)
+    if q_str:
+        q = q.filter(Document.title.ilike(f'%{q_str}%'))
+    docs = q.order_by(Document.uploaded_at.desc()).limit(30).all()
+    return jsonify([{
+        'id': d.id, 'title': d.title,
+        'file_ext': d.file_ext, 'category': d.category_label,
+        'cat_color': d.category_color,
+        'icon': d.icon_class, 'icon_color': d.icon_color,
+        'file_size': d.file_size_display,
+    } for d in docs])
 
 
 # ─── Dashboard ───────────────────────────────────────────────────────────────

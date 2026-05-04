@@ -1,0 +1,363 @@
+{% extends 'base.html' %}
+{% block title %}{{ doc.title }} — Documents{% endblock %}
+{% block page_title %}Document{% endblock %}
+{% block page_sub %}{{ doc.title }}{% endblock %}
+
+{% block head %}
+<style>
+.form-label { display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:5px;
+  text-transform:uppercase;letter-spacing:.04em; }
+.form-input { width:100%;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:10px;
+  font-size:13px;color:#0f172a;transition:border-color .15s;outline:none;background:white; }
+.form-input:focus { border-color:#4f46e5;box-shadow:0 0 0 3px rgba(79,70,229,.12); }
+.form-select { appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%2394a3b8' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 14px center;padding-right:40px; }
+
+.link-row { display:flex;align-items:center;gap:10px;padding:10px 14px;
+  background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;margin-bottom:6px; }
+.link-row:hover { border-color:#c7d2fe;background:#f5f3ff; }
+
+/* Viewer */
+#viewer-frame { width:100%;height:72vh;border:none;border-radius:12px;
+  display:block;background:#f1f5f9; }
+#img-preview  { max-width:100%;max-height:72vh;border-radius:12px;display:block;margin:0 auto;
+  box-shadow:0 8px 32px rgba(0,0,0,.12); }
+
+/* Tab buttons */
+.tab-btn { padding:9px 18px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;
+  border:1.5px solid transparent;transition:all .15s;background:none; }
+.tab-btn.active { background:#4f46e5;color:white;border-color:#4f46e5; }
+.tab-btn:not(.active) { color:#64748b;border-color:#e2e8f0; }
+.tab-btn:not(.active):hover { border-color:#c7d2fe;color:#4f46e5; }
+.tab-pane { display:none; }
+.tab-pane.active { display:block; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="max-width:960px;margin:0 auto;">
+
+  <!-- Back link -->
+  <div style="margin-bottom:18px;">
+    <a href="{{ url_for('documents_list') }}"
+       style="display:inline-flex;align-items:center;gap:6px;color:#64748b;font-size:13px;font-weight:600;text-decoration:none;">
+      <i class="fa-solid fa-arrow-left"></i> Document Library
+    </a>
+  </div>
+
+  <!-- ── Doc header card ─────────────────────────────────────────────────── -->
+  <div class="card" style="border-radius:20px;padding:24px;margin-bottom:20px;">
+    <div style="display:flex;align-items:flex-start;gap:18px;flex-wrap:wrap;">
+
+      <!-- File icon -->
+      <div style="width:64px;height:64px;border-radius:16px;background:{{ doc.icon_color }}18;
+                  display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <i class="fa-solid {{ doc.icon_class }}" style="font-size:28px;color:{{ doc.icon_color }};"></i>
+      </div>
+
+      <!-- Meta -->
+      <div style="flex:1;min-width:0;">
+        <h1 style="font-size:20px;font-weight:900;color:#0f172a;margin-bottom:6px;line-height:1.2;">{{ doc.title }}</h1>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
+          <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:99px;
+                       background:{{ doc.category_color }}18;color:{{ doc.category_color }};
+                       border:1px solid {{ doc.category_color }}30;">{{ doc.category_label }}</span>
+          <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:99px;
+                       background:{{ doc.icon_color }}15;color:{{ doc.icon_color }};
+                       border:1px solid {{ doc.icon_color }}25;">{{ doc.file_ext.upper() }}</span>
+          <span style="font-size:11px;color:#94a3b8;padding:3px 10px;">
+            <i class="fa-solid fa-weight-hanging" style="margin-right:4px;"></i>{{ doc.file_size_display }}
+          </span>
+          <span style="font-size:11px;color:#94a3b8;padding:3px 10px;">
+            <i class="fa-regular fa-calendar" style="margin-right:4px;"></i>{{ doc.uploaded_at.strftime('%d %b %Y, %H:%M') }}
+          </span>
+          {% if doc.uploader %}
+          <span style="font-size:11px;color:#94a3b8;padding:3px 10px;">
+            <i class="fa-regular fa-user" style="margin-right:4px;"></i>{{ doc.uploader.name }}
+          </span>
+          {% endif %}
+        </div>
+        {% if doc.tags %}
+        <div style="display:flex;gap:5px;flex-wrap:wrap;">
+          {% for tag in doc.tags.split(',') %}
+          {% set t = tag.strip() %}{% if t %}
+          <span style="font-size:10px;padding:2px 8px;border-radius:99px;
+                       background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0;">{{ t }}</span>
+          {% endif %}{% endfor %}
+        </div>
+        {% endif %}
+        {% if doc.description %}
+        <p style="font-size:13px;color:#64748b;margin-top:10px;line-height:1.5;">{{ doc.description }}</p>
+        {% endif %}
+      </div>
+
+      <!-- Actions -->
+      <div style="display:flex;flex-direction:column;gap:8px;flex-shrink:0;">
+        <a href="{{ url_for('document_download', doc_id=doc.id) }}"
+           style="display:inline-flex;align-items:center;gap:7px;padding:10px 18px;
+                  background:linear-gradient(135deg,#059669,#10b981);color:white;
+                  border-radius:10px;font-size:13px;font-weight:700;text-decoration:none;
+                  box-shadow:0 3px 10px rgba(5,150,105,.3);">
+          <i class="fa-solid fa-download"></i> Download
+        </a>
+        <a href="{{ url_for('document_view', doc_id=doc.id) }}" target="_blank"
+           style="display:inline-flex;align-items:center;gap:7px;padding:10px 18px;
+                  background:linear-gradient(135deg,#0891b2,#06b6d4);color:white;
+                  border-radius:10px;font-size:13px;font-weight:700;text-decoration:none;
+                  box-shadow:0 3px 10px rgba(8,145,178,.3);">
+          <i class="fa-solid fa-arrow-up-right-from-square"></i> Open / Print
+        </a>
+        {% if current_user.role in ('engineer','manager','admin') or doc.uploaded_by == current_user.id %}
+        <form method="POST" action="{{ url_for('document_delete', doc_id=doc.id) }}"
+              onsubmit="return confirm('Delete this document? This cannot be undone.');">
+          <button type="submit"
+                  style="width:100%;display:inline-flex;align-items:center;justify-content:center;
+                         gap:7px;padding:10px 18px;background:#fff;color:#dc2626;
+                         border:1.5px solid #fecaca;border-radius:10px;font-size:13px;
+                         font-weight:700;cursor:pointer;transition:all .15s;"
+                  onmouseover="this.style.background='#fef2f2'"
+                  onmouseout="this.style.background='#fff'">
+            <i class="fa-solid fa-trash"></i> Delete
+          </button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Tabs: Preview | Links ────────────────────────────────────────────── -->
+  <div style="display:flex;gap:8px;margin-bottom:16px;">
+    <button class="tab-btn active" onclick="showTab('preview', this)">
+      <i class="fa-solid fa-eye" style="margin-right:6px;"></i>Preview
+    </button>
+    <button class="tab-btn" onclick="showTab('links', this)">
+      <i class="fa-solid fa-link" style="margin-right:6px;"></i>
+      Linked Records
+      {% if doc.links %}
+      <span style="background:rgba(79,70,229,.15);color:#4f46e5;font-size:10px;padding:1px 7px;
+                   border-radius:99px;margin-left:4px;">{{ doc.links|length }}</span>
+      {% endif %}
+    </button>
+  </div>
+
+  <!-- ══ TAB: Preview ═══════════════════════════════════════════════════════ -->
+  <div class="tab-pane active" id="tab-preview">
+    <div class="card" style="border-radius:20px;padding:20px;">
+      {% if doc.can_preview %}
+        {% if doc.file_ext.lower() == 'pdf' %}
+        <!-- PDF Viewer -->
+        <div style="text-align:right;margin-bottom:10px;">
+          <a href="{{ url_for('document_view', doc_id=doc.id) }}" target="_blank"
+             style="font-size:12px;color:#4f46e5;font-weight:700;text-decoration:none;">
+            <i class="fa-solid fa-expand"></i> Open Full Screen
+          </a>
+        </div>
+        <iframe id="viewer-frame"
+                src="{{ url_for('document_view', doc_id=doc.id) }}"
+                title="{{ doc.title }}">
+        </iframe>
+        {% else %}
+        <!-- Image viewer -->
+        <div style="text-align:center;padding:10px;">
+          <img id="img-preview" src="{{ url_for('document_view', doc_id=doc.id) }}"
+               alt="{{ doc.title }}"/>
+        </div>
+        {% endif %}
+      {% else %}
+      <!-- Non-previewable file -->
+      <div style="text-align:center;padding:60px 20px;">
+        <div style="width:80px;height:80px;border-radius:20px;background:{{ doc.icon_color }}18;
+                    display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
+          <i class="fa-solid {{ doc.icon_class }}" style="font-size:34px;color:{{ doc.icon_color }};"></i>
+        </div>
+        <h3 style="font-size:16px;font-weight:700;color:#475569;margin-bottom:8px;">Preview not available</h3>
+        <p style="color:#94a3b8;font-size:13px;margin-bottom:20px;">
+          {{ doc.file_ext.upper() }} files cannot be previewed in the browser.
+          Download the file to open it.
+        </p>
+        <a href="{{ url_for('document_download', doc_id=doc.id) }}"
+           style="display:inline-flex;align-items:center;gap:8px;padding:12px 24px;
+                  background:linear-gradient(135deg,#4f46e5,#6366f1);color:white;
+                  border-radius:12px;font-size:13px;font-weight:700;text-decoration:none;">
+          <i class="fa-solid fa-download"></i> Download {{ doc.file_ext.upper() }}
+        </a>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- ══ TAB: Links ══════════════════════════════════════════════════════════ -->
+  <div class="tab-pane" id="tab-links">
+
+    <!-- Existing links -->
+    <div class="card" style="border-radius:20px;padding:24px;margin-bottom:16px;">
+      <h3 style="font-size:15px;font-weight:800;color:#0f172a;margin-bottom:16px;">
+        <i class="fa-solid fa-link" style="color:#4f46e5;margin-right:8px;"></i>
+        Linked Records
+        {% if doc.links %}
+        <span style="font-size:12px;background:#ede9fe;color:#6d28d9;padding:2px 10px;
+                     border-radius:99px;margin-left:6px;">{{ doc.links|length }}</span>
+        {% endif %}
+      </h3>
+
+      {% if not doc.links %}
+      <div style="text-align:center;padding:30px;background:#f8fafc;border-radius:12px;
+                  border:1.5px dashed #e2e8f0;">
+        <i class="fa-solid fa-link" style="font-size:28px;color:#cbd5e1;margin-bottom:10px;"></i>
+        <p style="color:#94a3b8;font-size:13px;font-weight:600;">No links yet</p>
+        <p style="color:#cbd5e1;font-size:12px;">Link this document to WTGs, QA tests, Proof Rolls, or ITPs below.</p>
+      </div>
+      {% else %}
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        {% for lnk in doc.links %}
+        {% set ltype = DOCUMENT_LINK_TYPES | selectattr('0','eq',lnk.link_type) | list | first %}
+        <div class="link-row">
+          <div style="width:34px;height:34px;border-radius:10px;background:#ede9fe;
+                      display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <i class="fa-solid {{ ltype[2] if ltype else 'fa-link' }}" style="color:#6d28d9;font-size:13px;"></i>
+          </div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:13px;font-weight:700;color:#0f172a;">
+              {{ link_labels[lnk.id] }}
+            </div>
+            <div style="font-size:11px;color:#94a3b8;">
+              {{ (ltype[1] if ltype else lnk.link_type)|title }}
+              {% if lnk.note %} · <em>{{ lnk.note }}</em>{% endif %}
+              · Linked {{ lnk.linked_at.strftime('%d %b %Y') }}
+              {% if lnk.linker %} by {{ lnk.linker.name }}{% endif %}
+            </div>
+          </div>
+          <form method="POST" action="{{ url_for('document_remove_link', link_id=lnk.id) }}"
+                onsubmit="return confirm('Remove this link?');" style="flex-shrink:0;">
+            <button type="submit"
+                    style="width:30px;height:30px;border-radius:8px;background:#fef2f2;
+                           border:1px solid #fecaca;color:#dc2626;cursor:pointer;
+                           display:flex;align-items:center;justify-content:center;font-size:11px;">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          </form>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Add new link card -->
+    <div class="card" style="border-radius:20px;padding:24px;">
+      <h3 style="font-size:15px;font-weight:800;color:#0f172a;margin-bottom:6px;">
+        <i class="fa-solid fa-plus-circle" style="color:#22c55e;margin-right:8px;"></i>
+        Link to a Record
+      </h3>
+      <p style="font-size:13px;color:#64748b;margin-bottom:18px;">
+        Connect this document to a WTG, QA test, Proof Roll record, or ITP so it appears as evidence in that section.
+      </p>
+      <form method="POST" action="{{ url_for('document_add_link', doc_id=doc.id) }}">
+        <div style="display:grid;gap:14px;">
+
+          <div>
+            <label class="form-label">Link Type</label>
+            <select name="link_type" id="link-type-sel" class="form-input form-select"
+                    onchange="updateRecordOptions()">
+              <option value="">— Choose type —</option>
+              {% for key, label, icon in DOCUMENT_LINK_TYPES %}
+              {% if key != 'project' %}
+              <option value="{{ key }}">{{ label }}</option>
+              {% endif %}
+              {% endfor %}
+            </select>
+          </div>
+
+          <div id="record-wrap" style="display:none;">
+            <label class="form-label" id="record-label">Record</label>
+            <select name="link_id" id="record-sel" class="form-input form-select">
+              <option value="0">— Choose record —</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="form-label">Note <span style="color:#94a3b8;text-transform:none;font-weight:400;">(optional)</span></label>
+            <input type="text" name="note" class="form-input"
+                   placeholder="e.g. Lab results confirming compaction pass"/>
+          </div>
+
+          <div style="display:flex;justify-content:flex-end;">
+            <button type="submit" id="link-submit-btn" disabled
+                    style="display:inline-flex;align-items:center;gap:8px;padding:11px 24px;
+                           background:linear-gradient(135deg,#4f46e5,#6366f1);color:white;
+                           border:none;border-radius:12px;font-size:13px;font-weight:700;
+                           cursor:pointer;opacity:.45;transition:all .15s;">
+              <i class="fa-solid fa-link"></i> Create Link
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+/* ─── Tab switching ──────────────────────────────────────────────────── */
+function showTab(name, btn) {
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  btn.classList.add('active');
+}
+
+/* ─── Link type → dynamic record options ─────────────────────────────── */
+const WTG_OPTIONS = [
+  {% for wtg in wtgs %}
+  {id: {{ wtg.id }}, name: '{{ wtg.name }}'},
+  {% endfor %}
+];
+const PR_OPTIONS = [
+  {% for pr in proof_rolls %}
+  {id: {{ pr.id }}, name: '{{ pr.qa_test.area.wtg.name }} – {{ pr.qa_test.area.label }} ({{ pr.date }})'},
+  {% endfor %}
+];
+const ITP_OPTIONS = [
+  {% for it in itp_records %}
+  {id: {{ it.id }}, name: '{{ it.wtg.name }} / {{ it.itp_type.replace("_"," ")|title }}'},
+  {% endfor %}
+];
+
+function updateRecordOptions() {
+  const type   = document.getElementById('link-type-sel').value;
+  const wrap   = document.getElementById('record-wrap');
+  const sel    = document.getElementById('record-sel');
+  const lbl    = document.getElementById('record-label');
+  const submit = document.getElementById('link-submit-btn');
+
+  let opts = [];
+  let labelTxt = 'Record';
+
+  if (type === 'wtg')        { opts = WTG_OPTIONS;  labelTxt = 'Wind Turbine (WTG)'; }
+  else if (type === 'proof_roll') { opts = PR_OPTIONS; labelTxt = 'Proof Roll Record'; }
+  else if (type === 'itp_record') { opts = ITP_OPTIONS; labelTxt = 'ITP Record'; }
+
+  if (!type) { wrap.style.display = 'none'; submit.disabled = true; submit.style.opacity = '.45'; return; }
+
+  lbl.textContent = labelTxt;
+  sel.innerHTML   = '<option value="0">— Choose record —</option>';
+  opts.forEach(o => {
+    const opt = document.createElement('option');
+    opt.value       = o.id;
+    opt.textContent = o.name;
+    sel.appendChild(opt);
+  });
+  wrap.style.display = 'block';
+  submit.disabled    = false;
+  submit.style.opacity = '1';
+}
+
+/* Listen to record selection too */
+document.getElementById('record-sel').addEventListener('change', function() {
+  const submit = document.getElementById('link-submit-btn');
+  submit.disabled    = (this.value === '0');
+  submit.style.opacity = submit.disabled ? '.45' : '1';
+});
+</script>
+{% endblock %}

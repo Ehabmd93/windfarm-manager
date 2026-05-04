@@ -1,0 +1,244 @@
+{% extends 'base.html' %}
+{% block title %}Documents — {{ active_project.name if active_project else 'QA Manager' }}{% endblock %}
+{% block page_title %}Documents{% endblock %}
+{% block page_sub %}QA Document Library{% endblock %}
+
+{% block head %}
+<style>
+@keyframes fadeInUp { from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:translateY(0)} }
+
+/* ── doc card ─── */
+.doc-card {
+  background:#fff; border:1.5px solid #e2e8f0; border-radius:16px;
+  padding:18px; transition:all .18s; cursor:pointer; position:relative;
+  animation:fadeInUp .35s ease forwards; opacity:0;
+}
+.doc-card:hover { border-color:#4f46e5; box-shadow:0 8px 28px rgba(79,70,229,.12); transform:translateY(-2px); }
+
+/* ── file type icon badge ─── */
+.file-badge {
+  width:48px; height:48px; border-radius:12px;
+  display:flex; align-items:center; justify-content:center;
+  font-size:20px; flex-shrink:0;
+}
+
+/* ── filters bar ─── */
+.filter-pill {
+  padding:7px 14px; border-radius:10px; font-size:12px; font-weight:700;
+  cursor:pointer; border:1.5px solid #e2e8f0; background:#fff; color:#64748b;
+  transition:all .15s; white-space:nowrap;
+}
+.filter-pill:hover  { border-color:#a5b4fc; color:#4f46e5; }
+.filter-pill.active { background:#4f46e5; color:#fff; border-color:#4f46e5; box-shadow:0 3px 10px rgba(79,70,229,.3); }
+
+/* ── upload drop zone ─── */
+#drop-zone {
+  border:2px dashed #c7d2fe; border-radius:16px; padding:40px;
+  text-align:center; transition:all .2s; cursor:pointer;
+}
+#drop-zone.over  { border-color:#4f46e5; background:#f5f3ff; }
+#drop-zone:hover { border-color:#4f46e5; background:#fafafe; }
+
+/* stat card */
+.stat-chip {
+  background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px;
+  padding:14px 20px; text-align:center; flex:1; min-width:120px;
+}
+
+.empty-state { text-align:center; padding:80px 20px; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- ── Header row ──────────────────────────────────────────────────────── -->
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
+  <div>
+    <h2 style="font-size:22px;font-weight:900;color:#0f172a;">Document Library</h2>
+    <p style="color:#64748b;font-size:13px;margin-top:3px;">
+      {{ docs|length }} document{{ 's' if docs|length != 1 }}
+      {% if active_project %} · {{ active_project.name }}{% endif %}
+    </p>
+  </div>
+  <a href="{{ url_for('document_upload') }}"
+     style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#4f46e5,#6366f1);
+            color:white;padding:11px 22px;border-radius:12px;font-size:13px;font-weight:700;
+            text-decoration:none;box-shadow:0 4px 14px rgba(79,70,229,.4);transition:all .2s;"
+     onmouseover="this.style.transform='translateY(-2px)'"
+     onmouseout="this.style.transform=''">
+    <i class="fa-solid fa-cloud-arrow-up"></i> Upload Document
+  </a>
+</div>
+
+<!-- ── Stats chips ──────────────────────────────────────────────────────── -->
+{% if docs %}
+<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:22px;">
+  <div class="stat-chip">
+    <div style="font-size:22px;font-weight:900;color:#4f46e5;">{{ docs|length }}</div>
+    <div style="font-size:11px;color:#64748b;font-weight:600;margin-top:2px;">Documents</div>
+  </div>
+  <div class="stat-chip">
+    <div style="font-size:22px;font-weight:900;color:#0891b2;">
+      {% set total_mb = (total_size / 1048576) %}
+      {% if total_mb < 1 %}{{ (total_size/1024)|round(1) }} KB{% else %}{{ total_mb|round(1) }} MB{% endif %}
+    </div>
+    <div style="font-size:11px;color:#64748b;font-weight:600;margin-top:2px;">Total Size</div>
+  </div>
+  <div class="stat-chip">
+    <div style="font-size:22px;font-weight:900;color:#059669;">
+      {{ docs | selectattr('links') | list | length }}
+    </div>
+    <div style="font-size:11px;color:#64748b;font-weight:600;margin-top:2px;">Linked</div>
+  </div>
+  <div class="stat-chip">
+    <div style="font-size:22px;font-weight:900;color:#d97706;">{{ cats_used|length }}</div>
+    <div style="font-size:11px;color:#64748b;font-weight:600;margin-top:2px;">Categories</div>
+  </div>
+</div>
+{% endif %}
+
+<!-- ── Filter / search bar ──────────────────────────────────────────────── -->
+<form method="GET" action="{{ url_for('documents_list') }}"
+      style="display:flex;gap:10px;margin-bottom:22px;flex-wrap:wrap;align-items:center;">
+  <div style="flex:1;min-width:200px;position:relative;">
+    <i class="fa-solid fa-magnifying-glass" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:12px;"></i>
+    <input name="q" value="{{ search }}" placeholder="Search documents…"
+           style="width:100%;padding:9px 14px 9px 34px;border:1.5px solid #e2e8f0;border-radius:10px;
+                  font-size:13px;outline:none;transition:border-color .15s;"
+           onfocus="this.style.borderColor='#4f46e5'" onblur="this.style.borderColor='#e2e8f0'"/>
+  </div>
+  <select name="cat" onchange="this.form.submit()"
+          style="padding:9px 32px 9px 12px;border:1.5px solid #e2e8f0;border-radius:10px;
+                 font-size:13px;background:#fff;appearance:none;cursor:pointer;outline:none;">
+    <option value="">All Categories</option>
+    {% for key, label, icon, color in DOCUMENT_CATEGORIES %}
+    <option value="{{ key }}" {% if active_cat==key %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+  <select name="type" onchange="this.form.submit()"
+          style="padding:9px 32px 9px 12px;border:1.5px solid #e2e8f0;border-radius:10px;
+                 font-size:13px;background:#fff;appearance:none;cursor:pointer;outline:none;">
+    <option value="">All Types</option>
+    {% for ext in ext_list %}
+    <option value="{{ ext }}" {% if active_type==ext %}selected{% endif %}>{{ ext.upper() }}</option>
+    {% endfor %}
+  </select>
+  {% if search or active_cat or active_type %}
+  <a href="{{ url_for('documents_list') }}"
+     style="padding:9px 16px;border-radius:10px;border:1.5px solid #fecaca;background:#fef2f2;
+            color:#dc2626;font-size:12px;font-weight:700;text-decoration:none;">
+    <i class="fa-solid fa-xmark"></i> Clear
+  </a>
+  {% endif %}
+  <button type="submit"
+          style="padding:9px 18px;background:#4f46e5;color:white;border:none;border-radius:10px;
+                 font-size:13px;font-weight:700;cursor:pointer;">
+    <i class="fa-solid fa-magnifying-glass"></i>
+  </button>
+</form>
+
+<!-- ── Document grid ────────────────────────────────────────────────────── -->
+{% if not docs %}
+<div class="empty-state">
+  <div style="width:80px;height:80px;background:#f1f5f9;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;">
+    <i class="fa-solid fa-folder-open" style="font-size:32px;color:#cbd5e1;"></i>
+  </div>
+  <h3 style="font-size:18px;font-weight:700;color:#475569;margin-bottom:8px;">No documents yet</h3>
+  <p style="color:#94a3b8;margin-bottom:24px;">
+    {% if search or active_cat or active_type %}No documents match your filters.{% else %}Upload your first document to get started.{% endif %}
+  </p>
+  {% if not (search or active_cat or active_type) %}
+  <a href="{{ url_for('document_upload') }}"
+     style="display:inline-flex;align-items:center;gap:8px;background:#4f46e5;color:white;
+            padding:12px 24px;border-radius:12px;font-size:14px;font-weight:700;text-decoration:none;">
+    <i class="fa-solid fa-cloud-arrow-up"></i> Upload First Document
+  </a>
+  {% endif %}
+</div>
+{% else %}
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;">
+  {% for doc in docs %}
+  <div class="doc-card" style="animation-delay:{{ loop.index0 * 0.05 }}s;"
+       onclick="window.location='{{ url_for('document_detail', doc_id=doc.id) }}'">
+
+    <!-- Top row: icon + actions -->
+    <div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:14px;">
+      <div class="file-badge" style="background:{{ doc.icon_color }}18;">
+        <i class="fa-solid {{ doc.icon_class }}" style="color:{{ doc.icon_color }};"></i>
+      </div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:14px;font-weight:800;color:#0f172a;
+                    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ doc.title }}</div>
+        <div style="font-size:11px;color:#94a3b8;margin-top:2px;">{{ doc.original_filename }}</div>
+      </div>
+      <!-- Quick actions (stop propagation) -->
+      <div style="display:flex;gap:4px;flex-shrink:0;" onclick="event.stopPropagation()">
+        <a href="{{ url_for('document_view', doc_id=doc.id) }}" target="_blank"
+           title="View / Preview"
+           style="width:30px;height:30px;border-radius:7px;background:#f1f5f9;border:1px solid #e2e8f0;
+                  display:flex;align-items:center;justify-content:center;color:#4f46e5;text-decoration:none;
+                  transition:all .15s;"
+           onmouseover="this.style.background='#e0e7ff'" onmouseout="this.style.background='#f1f5f9'">
+          <i class="fa-solid fa-eye" style="font-size:11px;"></i>
+        </a>
+        <a href="{{ url_for('document_download', doc_id=doc.id) }}"
+           title="Download"
+           style="width:30px;height:30px;border-radius:7px;background:#f1f5f9;border:1px solid #e2e8f0;
+                  display:flex;align-items:center;justify-content:center;color:#059669;text-decoration:none;
+                  transition:all .15s;"
+           onmouseover="this.style.background='#dcfce7'" onmouseout="this.style.background='#f1f5f9'">
+          <i class="fa-solid fa-download" style="font-size:11px;"></i>
+        </a>
+      </div>
+    </div>
+
+    <!-- Category badge + file type pill -->
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
+      <span style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:99px;
+                   background:{{ doc.category_color }}18;color:{{ doc.category_color }};
+                   border:1px solid {{ doc.category_color }}30;">
+        {{ doc.category_label }}
+      </span>
+      <span style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:99px;
+                   background:{{ doc.icon_color }}15;color:{{ doc.icon_color }};
+                   border:1px solid {{ doc.icon_color }}25;">
+        {{ doc.file_ext.upper() }}
+      </span>
+      {% if doc.links %}
+      <span style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:99px;
+                   background:rgba(99,102,241,.1);color:#6366f1;border:1px solid rgba(99,102,241,.2);">
+        <i class="fa-solid fa-link" style="font-size:8px;margin-right:3px;"></i>{{ doc.links|length }}
+      </span>
+      {% endif %}
+    </div>
+
+    <!-- Description snippet -->
+    {% if doc.description %}
+    <p style="font-size:12px;color:#64748b;margin-bottom:10px;
+              display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">
+      {{ doc.description }}
+    </p>
+    {% endif %}
+
+    <!-- Footer: size + date + uploader -->
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                padding-top:10px;border-top:1px solid #f1f5f9;margin-top:auto;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div style="width:24px;height:24px;border-radius:50%;background:linear-gradient(135deg,#4f46e5,#6366f1);
+                    display:flex;align-items:center;justify-content:center;color:white;font-size:10px;font-weight:700;">
+          {{ doc.uploader.name[0].upper() if doc.uploader else '?' }}
+        </div>
+        <span style="font-size:11px;color:#94a3b8;">{{ doc.uploader.name if doc.uploader else 'Unknown' }}</span>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:11px;color:#94a3b8;">{{ doc.file_size_display }}</div>
+        <div style="font-size:10px;color:#cbd5e1;margin-top:1px;">{{ doc.uploaded_at.strftime('%d %b %Y') }}</div>
+      </div>
+    </div>
+
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% endblock %}
