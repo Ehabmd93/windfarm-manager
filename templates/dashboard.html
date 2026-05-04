@@ -222,7 +222,7 @@
         <div style="color:#475569;font-size:11px;font-weight:600;margin-top:3px;">In Progress</div>
       </div>
       <div class="wb-stat">
-        {% set total_pct = (wtgs | map(attribute='completion_pct') | sum / wtgs|length) | round | int %}
+        {% set total_pct = ((wtgs | map(attribute='completion_pct') | sum) / (wtgs|length if wtgs|length > 0 else 1)) | round | int %}
         <div style="color:#60a5fa;font-size:26px;font-weight:900;line-height:1;">{{ total_pct }}%</div>
         <div style="color:#475569;font-size:11px;font-weight:600;margin-top:3px;">Overall</div>
       </div>
@@ -341,7 +341,7 @@
 <!-- ══ PROJECT PROGRESS ════════════════════════════════════════════════ -->
 <div class="wtg-section">
 
-  {% set total_pct = (wtgs | map(attribute='completion_pct') | sum / wtgs|length) | round | int %}
+  {% set total_pct = ((wtgs | map(attribute='completion_pct') | sum) / (wtgs|length if wtgs|length > 0 else 1)) | round | int %}
   <div class="card mb-6">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
       <div>

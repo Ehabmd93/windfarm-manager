@@ -64,58 +64,63 @@ AREA_LABELS = {
 }
 
 def _migrate_projects(app):
-    """Add project_id column to wtgs if missing, create King Rocks project, link WTGs."""
-    from sqlalchemy import text, inspect
-    from models import Project, ProjectMember, ProjectFeature, ALL_FEATURES, User
-    with app.app_context():
-        insp = inspect(db.engine)
+    """Add project_id column to wtgs if missing, create King Rocks project, link WTGs.
+    NOTE: called from inside seed()'s app_context — no nested context needed."""
+    from sqlalchemy import text, inspect as sa_inspect
+    from models import Project, ProjectMember, ProjectFeature, ALL_FEATURES, User, WTG
 
-        # 1. Add project_id column to wtgs if not present
-        if 'wtgs' in insp.get_table_names():
-            cols = [c['name'] for c in insp.get_columns('wtgs')]
-            if 'project_id' not in cols:
-                try:
-                    with db.engine.connect() as conn:
-                        conn.execute(text('ALTER TABLE wtgs ADD COLUMN project_id INTEGER'))
-                        conn.commit()
-                    print("✅ Added project_id column to wtgs")
-                except Exception as e:
-                    print(f"ℹ️  project_id column: {e}")
+    # ── 1. Add project_id column to wtgs table if missing ────────────────────
+    insp = sa_inspect(db.engine)
+    if 'wtgs' in insp.get_table_names():
+        cols = [c['name'] for c in insp.get_columns('wtgs')]
+        if 'project_id' not in cols:
+            try:
+                with db.engine.connect() as conn:
+                    conn.execute(text('ALTER TABLE wtgs ADD COLUMN project_id INTEGER'))
+                    conn.commit()
+                print("Added project_id column to wtgs")
+            except Exception as e:
+                print(f"project_id column note: {e}")
 
-        # 2. Create King Rocks Wind Farm project if it doesn't exist
+    # ── 2. Create King Rocks Wind Farm project if it doesn't exist ───────────
+    try:
         kr = Project.query.filter_by(name='King Rocks Wind Farm').first()
-        if not kr:
-            eng = User.query.filter_by(email='engineer@cbop.com').first()
-            kr = Project(
-                name         = 'King Rocks Wind Farm',
-                project_type = 'Wind Farm',
-                location     = 'King Rocks, South Australia',
-                postcode     = '5641',
-                status       = 'active',
-                client_name  = 'CBOP',
-                contract_ref = 'KRWF-2024',
-                color        = '#0f2942',
-                description  = 'King Rocks Wind Farm geotechnical QA management.',
-                created_by   = eng.id if eng else None,
-            )
-            db.session.add(kr)
-            db.session.flush()
+    except Exception:
+        # projects table might not exist yet in an edge case — skip
+        return
 
-            # Add all users as members
-            for user in User.query.all():
-                role = 'lead' if user.role in ('engineer', 'manager') else 'member'
-                db.session.add(ProjectMember(project_id=kr.id, user_id=user.id, proj_role=role))
+    if not kr:
+        eng = User.query.filter_by(email='engineer@cbop.com').first()
+        kr = Project(
+            name         = 'King Rocks Wind Farm',
+            project_type = 'Wind Farm',
+            location     = 'King Rocks, South Australia',
+            postcode     = '5641',
+            status       = 'active',
+            client_name  = 'CBOP',
+            contract_ref = 'KRWF-2024',
+            color        = '#0f2942',
+            description  = 'King Rocks Wind Farm geotechnical QA management.',
+            created_by   = eng.id if eng else None,
+        )
+        db.session.add(kr)
+        db.session.flush()
 
-            # Enable all features
-            for key, *_ in ALL_FEATURES:
-                db.session.add(ProjectFeature(project_id=kr.id, feature_key=key, enabled=True))
+        # Add all existing users as members
+        for user in User.query.all():
+            role = 'lead' if user.role in ('engineer', 'manager') else 'member'
+            db.session.add(ProjectMember(project_id=kr.id, user_id=user.id, proj_role=role))
 
-            db.session.commit()
-            print(f"✅ Created King Rocks Wind Farm project (id={kr.id})")
+        # Enable all features
+        for key, *_ in ALL_FEATURES:
+            db.session.add(ProjectFeature(project_id=kr.id, feature_key=key, enabled=True))
 
-        # 3. Link any WTGs with no project to King Rocks
-        if kr:
-            from models import WTG
+        db.session.commit()
+        print(f"Created King Rocks Wind Farm project (id={kr.id})")
+
+    # ── 3. Link any WTGs with no project to King Rocks ───────────────────────
+    if kr:
+        try:
             unlinked = WTG.query.filter(
                 (WTG.project_id == None) | (WTG.project_id == 0)  # noqa: E711
             ).all()
@@ -123,7 +128,10 @@ def _migrate_projects(app):
                 for wtg in unlinked:
                     wtg.project_id = kr.id
                 db.session.commit()
-                print(f"✅ Linked {len(unlinked)} WTGs to King Rocks project")
+                print(f"Linked {len(unlinked)} WTGs to King Rocks project")
+        except Exception as e:
+            print(f"WTG linking note: {e}")
+            db.session.rollback()
 
 
 def _migrate_itp_schema(app):
@@ -240,7 +248,7 @@ def seed(app):
     with app.app_context():
         _migrate_itp_schema(app)
         db.create_all()  # Creates / updates tables
-        _migrate_projects(app)
+        _migrate_projects(app)   # runs inside the same app_context (no nested context)
 
         # Fix any old 'blade_load_test' records
         old_tests = QATest.query.filter_by(test_type='blade_load_test').all()
@@ -282,8 +290,11 @@ def seed(app):
             return
 
         # ── WTGs & Areas ───────────────────────────────
+        # Find King Rocks project to link WTGs (created earlier by _migrate_projects)
+        from models import Project as _Proj
+        _kr = _Proj.query.filter_by(name='King Rocks Wind Farm').first()
         for wtg_name in WTG_NAMES:
-            wtg = WTG(name=wtg_name)
+            wtg = WTG(name=wtg_name, project_id=_kr.id if _kr else None)
             db.session.add(wtg)
             db.session.flush()
 

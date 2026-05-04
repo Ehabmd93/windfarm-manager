@@ -84,19 +84,24 @@ def load_active_project():
     g.user_projects  = []
     if not current_user.is_authenticated:
         return
-    # Admin/engineer/manager see all active projects; clients see only assigned ones
-    if current_user.role in ('admin', 'manager', 'engineer', 'supervisor'):
-        projects = Project.query.filter_by(is_active=True).order_by(Project.name).all()
-    else:
-        ids = [m.project_id for m in ProjectMember.query.filter_by(user_id=current_user.id).all()]
-        projects = Project.query.filter(Project.id.in_(ids), Project.is_active==True).order_by(Project.name).all()
-    g.user_projects = projects
-    pid = session.get('active_project_id')
-    if pid and any(p.id == pid for p in projects):
-        g.project = next(p for p in projects if p.id == pid)
-    elif projects:
-        g.project = projects[0]
-        session['active_project_id'] = projects[0].id
+    try:
+        # Admin/engineer/manager/supervisor see all active projects; clients see only assigned ones
+        if current_user.role in ('admin', 'manager', 'engineer', 'supervisor'):
+            projects = Project.query.filter_by(is_active=True).order_by(Project.name).all()
+        else:
+            ids = [m.project_id for m in ProjectMember.query.filter_by(user_id=current_user.id).all()]
+            projects = Project.query.filter(Project.id.in_(ids), Project.is_active==True).order_by(Project.name).all()
+        g.user_projects = projects
+        pid = session.get('active_project_id')
+        if pid and any(p.id == pid for p in projects):
+            g.project = next(p for p in projects if p.id == pid)
+        elif projects:
+            g.project = projects[0]
+            session['active_project_id'] = projects[0].id
+    except Exception:
+        # DB not ready yet (migration in progress) — serve page without project context
+        g.project       = None
+        g.user_projects = []
 
 
 @app.context_processor
