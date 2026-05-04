@@ -8,6 +8,8 @@ from werkzeug.security import check_password_hash
 from werkzeug.utils import secure_filename
 import json as _json
 from models import (db, User, WTG, Area, QATest, TestRecord,
+                    Project, ProjectMember, ProjectFeature,
+                    PROJECT_TYPES, PROJECT_STATUSES, ALL_FEATURES,
                     ProofRollRecord, ProofRollSignatory,
                     ProofRollEquipment, ProofRollPhoto, ProofRollRectPhoto,
                     TempPhotoUpload,
@@ -74,14 +76,49 @@ login_manager.login_message_category = 'info'
 def load_user(user_id):
     return db.session.get(User, int(user_id))
 
+@app.before_request
+def load_active_project():
+    """Resolve which project is currently active and expose it as flask.g.project."""
+    from flask import g, session
+    g.project        = None
+    g.user_projects  = []
+    if not current_user.is_authenticated:
+        return
+    # Admin/engineer/manager see all active projects; clients see only assigned ones
+    if current_user.role in ('admin', 'manager', 'engineer', 'supervisor'):
+        projects = Project.query.filter_by(is_active=True).order_by(Project.name).all()
+    else:
+        ids = [m.project_id for m in ProjectMember.query.filter_by(user_id=current_user.id).all()]
+        projects = Project.query.filter(Project.id.in_(ids), Project.is_active==True).order_by(Project.name).all()
+    g.user_projects = projects
+    pid = session.get('active_project_id')
+    if pid and any(p.id == pid for p in projects):
+        g.project = next(p for p in projects if p.id == pid)
+    elif projects:
+        g.project = projects[0]
+        session['active_project_id'] = projects[0].id
+
+
 @app.context_processor
 def inject_now():
-    return {'now': datetime.now(timezone.utc)}
+    from flask import g
+    return {
+        'now':            datetime.now(timezone.utc),
+        'active_project': getattr(g, 'project', None),
+        'user_projects':  getattr(g, 'user_projects', []),
+        'ALL_FEATURES':   ALL_FEATURES,
+        'PROJECT_TYPES':  PROJECT_TYPES,
+        'PROJECT_STATUSES': PROJECT_STATUSES,
+    }
 
 # ─── Context helpers ─────────────────────────────────────────────────────────
 def wtg_summary():
-    wtgs = WTG.query.order_by(WTG.name).all()
-    return wtgs
+    from flask import g
+    proj = getattr(g, 'project', None)
+    q = WTG.query.order_by(WTG.name)
+    if proj:
+        q = q.filter_by(project_id=proj.id)
+    return q.all()
 
 # ─── Auth ────────────────────────────────────────────────────────────────────
 @app.route('/login', methods=['GET','POST'])
@@ -99,6 +136,134 @@ def login():
 def logout():
     logout_user()
     return redirect(url_for('login'))
+
+# ─── Projects ────────────────────────────────────────────────────────────────
+@app.route('/projects')
+@login_required
+def projects_list():
+    from flask import g
+    return render_template('projects.html', projects=g.user_projects)
+
+
+@app.route('/projects/switch/<int:pid>')
+@login_required
+def switch_project(pid):
+    from flask import g, session
+    ids = [p.id for p in g.user_projects]
+    if pid in ids:
+        session['active_project_id'] = pid
+    return redirect(request.referrer or url_for('dashboard'))
+
+
+@app.route('/projects/new', methods=['GET', 'POST'])
+@login_required
+def new_project():
+    if current_user.role not in ('engineer', 'manager', 'admin'):
+        abort(403)
+    all_users = User.query.order_by(User.name).all()
+
+    if request.method == 'POST':
+        # ── Basic info ──
+        start_raw = request.form.get('start_date', '').strip()
+        end_raw   = request.form.get('end_date',   '').strip()
+        proj = Project(
+            name         = request.form.get('name', '').strip(),
+            project_type = request.form.get('project_type', 'Wind Farm'),
+            location     = request.form.get('location', '').strip(),
+            postcode     = request.form.get('postcode', '').strip(),
+            status       = request.form.get('status', 'active'),
+            client_name  = request.form.get('client_name', '').strip(),
+            contract_ref = request.form.get('contract_ref', '').strip(),
+            start_date   = datetime.strptime(start_raw, '%Y-%m-%d').date() if start_raw else None,
+            end_date     = datetime.strptime(end_raw,   '%Y-%m-%d').date() if end_raw   else None,
+            color        = request.form.get('color', '#0f2942'),
+            description  = request.form.get('description', '').strip(),
+            created_by   = current_user.id,
+        )
+        db.session.add(proj)
+        db.session.flush()
+
+        # ── Members ──
+        member_ids  = request.form.getlist('member_ids[]')
+        member_roles = request.form.getlist('member_roles[]')
+        added_ids = set()
+        for uid, role in zip(member_ids, member_roles):
+            if uid and uid not in added_ids:
+                db.session.add(ProjectMember(project_id=proj.id, user_id=int(uid), proj_role=role))
+                added_ids.add(uid)
+        # Always add creator as lead
+        if str(current_user.id) not in added_ids:
+            db.session.add(ProjectMember(project_id=proj.id, user_id=current_user.id, proj_role='lead'))
+
+        # ── Features ──
+        for key, *_ in ALL_FEATURES:
+            enabled = request.form.get(f'feat_{key}') == '1'
+            db.session.add(ProjectFeature(project_id=proj.id, feature_key=key, enabled=enabled))
+
+        db.session.commit()
+        from flask import session as fsession
+        fsession['active_project_id'] = proj.id
+        flash(f'Project "{proj.name}" created successfully!', 'success')
+        return redirect(url_for('dashboard'))
+
+    return render_template('project_new.html', all_users=all_users)
+
+
+@app.route('/projects/<int:pid>/settings', methods=['GET', 'POST'])
+@login_required
+def project_settings(pid):
+    if current_user.role not in ('engineer', 'manager', 'admin'):
+        abort(403)
+    proj      = Project.query.get_or_404(pid)
+    all_users = User.query.order_by(User.name).all()
+
+    if request.method == 'POST':
+        action = request.form.get('action', 'info')
+
+        if action == 'info':
+            start_raw = request.form.get('start_date', '').strip()
+            end_raw   = request.form.get('end_date',   '').strip()
+            proj.name         = request.form.get('name', proj.name).strip()
+            proj.project_type = request.form.get('project_type', proj.project_type)
+            proj.location     = request.form.get('location', '').strip()
+            proj.postcode     = request.form.get('postcode', '').strip()
+            proj.status       = request.form.get('status', proj.status)
+            proj.client_name  = request.form.get('client_name', '').strip()
+            proj.contract_ref = request.form.get('contract_ref', '').strip()
+            proj.color        = request.form.get('color', proj.color)
+            proj.description  = request.form.get('description', '').strip()
+            proj.start_date   = datetime.strptime(start_raw, '%Y-%m-%d').date() if start_raw else None
+            proj.end_date     = datetime.strptime(end_raw,   '%Y-%m-%d').date() if end_raw   else None
+            db.session.commit()
+            flash('Project details updated.', 'success')
+
+        elif action == 'features':
+            for key, *_ in ALL_FEATURES:
+                feat = next((f for f in proj.features if f.feature_key == key), None)
+                enabled = request.form.get(f'feat_{key}') == '1'
+                if feat:
+                    feat.enabled = enabled
+                else:
+                    db.session.add(ProjectFeature(project_id=proj.id, feature_key=key, enabled=enabled))
+            db.session.commit()
+            flash('Project features updated.', 'success')
+
+        elif action == 'team':
+            ProjectMember.query.filter_by(project_id=proj.id).delete()
+            member_ids   = request.form.getlist('member_ids[]')
+            member_roles = request.form.getlist('member_roles[]')
+            added = set()
+            for uid, role in zip(member_ids, member_roles):
+                if uid and uid not in added:
+                    db.session.add(ProjectMember(project_id=proj.id, user_id=int(uid), proj_role=role))
+                    added.add(uid)
+            db.session.commit()
+            flash('Team updated.', 'success')
+
+        return redirect(url_for('project_settings', pid=pid))
+
+    return render_template('project_settings.html', proj=proj, all_users=all_users)
+
 
 # ─── Dashboard ───────────────────────────────────────────────────────────────
 @app.route('/')

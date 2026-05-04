@@ -1,0 +1,154 @@
+{% extends 'base.html' %}
+{% block title %}My Projects — QA Manager{% endblock %}
+{% block page_title %}Projects{% endblock %}
+{% block page_sub %}All projects you have access to{% endblock %}
+
+{% block head %}
+<style>
+@keyframes fadeInUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+.proj-card { opacity:0; animation:fadeInUp .45s ease forwards; border-radius:20px; overflow:hidden;
+  border:1px solid rgba(255,255,255,.06); transition:transform .2s ease,box-shadow .2s ease; }
+.proj-card:hover { transform:translateY(-4px); box-shadow:0 16px 40px rgba(0,0,0,.2); }
+.proj-card:nth-child(1){animation-delay:.1s} .proj-card:nth-child(2){animation-delay:.18s}
+.proj-card:nth-child(3){animation-delay:.26s} .proj-card:nth-child(4){animation-delay:.34s}
+.proj-card:nth-child(5){animation-delay:.42s} .proj-card:nth-child(6){animation-delay:.5s}
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Header row -->
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;flex-wrap:wrap;gap:12px;">
+  <div>
+    <h2 style="font-size:22px;font-weight:900;color:#0f172a;">Your Projects</h2>
+    <p style="color:#64748b;font-size:13px;margin-top:3px;">{{ projects|length }} project{{ 's' if projects|length != 1 else '' }} available</p>
+  </div>
+  {% if current_user.role in ('engineer','manager','admin') %}
+  <a href="{{ url_for('new_project') }}"
+     style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#4f46e5,#6366f1);
+            color:white;padding:11px 22px;border-radius:12px;font-size:13px;font-weight:700;
+            text-decoration:none;box-shadow:0 4px 14px rgba(79,70,229,.4);transition:all .2s;"
+     onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 20px rgba(79,70,229,.5)'"
+     onmouseout="this.style.transform='';this.style.boxShadow='0 4px 14px rgba(79,70,229,.4)'">
+    <i class="fa-solid fa-plus"></i> New Project
+  </a>
+  {% endif %}
+</div>
+
+{% if not projects %}
+<!-- Empty state -->
+<div style="text-align:center;padding:80px 20px;">
+  <div style="width:80px;height:80px;background:#f1f5f9;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;">
+    <i class="fa-solid fa-folder-open" style="font-size:32px;color:#cbd5e1;"></i>
+  </div>
+  <h3 style="font-size:18px;font-weight:700;color:#475569;margin-bottom:8px;">No projects yet</h3>
+  <p style="color:#94a3b8;margin-bottom:24px;">Create your first project to get started.</p>
+  {% if current_user.role in ('engineer','manager','admin') %}
+  <a href="{{ url_for('new_project') }}"
+     style="display:inline-flex;align-items:center;gap:8px;background:#4f46e5;color:white;
+            padding:12px 24px;border-radius:12px;font-size:14px;font-weight:700;text-decoration:none;">
+    <i class="fa-solid fa-plus"></i> Create First Project
+  </a>
+  {% endif %}
+</div>
+
+{% else %}
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:20px;">
+
+  {% for proj in projects %}
+  <div class="proj-card" style="background:linear-gradient(160deg,#0d1f35 0%,#0f2942 100%);">
+
+    <!-- Colour accent top bar -->
+    <div style="height:4px;background:{{ proj.color }};"></div>
+
+    <div style="padding:22px;">
+      <!-- Status + type row -->
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+        <span style="font-size:10px;font-weight:800;padding:3px 10px;border-radius:20px;
+              background:{{ proj.status_color }}22;color:{{ proj.status_color }};
+              border:1px solid {{ proj.status_color }}44;text-transform:uppercase;letter-spacing:.06em;">
+          {{ proj.status_label }}
+        </span>
+        <span style="font-size:10px;color:#475569;font-weight:600;">{{ proj.project_type }}</span>
+        {% if active_project and proj.id == active_project.id %}
+        <span style="margin-left:auto;font-size:9px;font-weight:800;padding:2px 8px;border-radius:20px;
+              background:rgba(34,197,94,.15);color:#34d399;border:1px solid rgba(34,197,94,.25);">ACTIVE</span>
+        {% endif %}
+      </div>
+
+      <!-- Name -->
+      <h3 style="color:white;font-size:18px;font-weight:900;margin-bottom:6px;line-height:1.2;">{{ proj.name }}</h3>
+
+      <!-- Location -->
+      {% if proj.location %}
+      <p style="color:#475569;font-size:12px;margin-bottom:12px;">
+        <i class="fa-solid fa-location-dot" style="margin-right:5px;color:#334155;"></i>
+        {{ proj.location }}{% if proj.postcode %} {{ proj.postcode }}{% endif %}
+      </p>
+      {% endif %}
+
+      <!-- Stats row -->
+      <div style="display:flex;gap:16px;margin-bottom:16px;padding:10px;background:rgba(0,0,0,.2);border-radius:10px;">
+        <div style="text-align:center;flex:1;">
+          <div style="color:white;font-size:18px;font-weight:800;">{{ proj.wtgs|length }}</div>
+          <div style="color:#475569;font-size:10px;font-weight:600;">WTGs</div>
+        </div>
+        <div style="width:1px;background:rgba(255,255,255,.06);"></div>
+        <div style="text-align:center;flex:1;">
+          <div style="color:#34d399;font-size:18px;font-weight:800;">{{ proj.completion_pct }}%</div>
+          <div style="color:#475569;font-size:10px;font-weight:600;">Complete</div>
+        </div>
+        <div style="width:1px;background:rgba(255,255,255,.06);"></div>
+        <div style="text-align:center;flex:1;">
+          <div style="color:#60a5fa;font-size:18px;font-weight:800;">{{ proj.members|length }}</div>
+          <div style="color:#475569;font-size:10px;font-weight:600;">Team</div>
+        </div>
+      </div>
+
+      <!-- Progress bar -->
+      <div style="width:100%;background:rgba(255,255,255,.07);border-radius:99px;height:5px;overflow:hidden;margin-bottom:16px;">
+        <div style="height:5px;border-radius:99px;background:{{ proj.color }};width:{{ proj.completion_pct }}%;transition:width .6s ease;"></div>
+      </div>
+
+      <!-- Enabled features pills -->
+      <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:16px;">
+        {% for key, label, icon, color in ALL_FEATURES %}
+          {% if proj.feature_enabled(key) %}
+          <span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:99px;
+                background:{{ color }}18;color:{{ color }};border:1px solid {{ color }}30;">
+            <i class="fa-solid {{ icon }}" style="margin-right:3px;font-size:8px;"></i>{{ label }}
+          </span>
+          {% endif %}
+        {% endfor %}
+      </div>
+
+      <!-- Action buttons -->
+      <div style="display:flex;gap:8px;">
+        <a href="{{ url_for('switch_project', pid=proj.id) }}"
+           style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;
+                  background:{{ proj.color }};color:white;padding:10px;border-radius:10px;
+                  font-size:12px;font-weight:700;text-decoration:none;transition:opacity .15s;"
+           onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
+          <i class="fa-solid fa-arrow-right-to-bracket"></i>
+          {% if active_project and proj.id == active_project.id %}Go to Dashboard{% else %}Open Project{% endif %}
+        </a>
+        {% if current_user.role in ('engineer','manager','admin') %}
+        <a href="{{ url_for('project_settings', pid=proj.id) }}"
+           style="width:40px;display:flex;align-items:center;justify-content:center;
+                  background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);
+                  border-radius:10px;color:#64748b;text-decoration:none;transition:all .15s;"
+           onmouseover="this.style.background='rgba(255,255,255,.1)';this.style.color='white'"
+           onmouseout="this.style.background='rgba(255,255,255,.06)';this.style.color='#64748b'"
+           title="Project Settings">
+          <i class="fa-solid fa-gear" style="font-size:13px;"></i>
+        </a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+
+</div>
+{% endif %}
+
+{% endblock %}

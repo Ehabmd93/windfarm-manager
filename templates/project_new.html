@@ -1,0 +1,386 @@
+{% extends 'base.html' %}
+{% block title %}New Project — QA Manager{% endblock %}
+{% block page_title %}New Project{% endblock %}
+{% block page_sub %}Project setup wizard{% endblock %}
+
+{% block head %}
+<style>
+@keyframes fadeInUp { from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:translateY(0)} }
+@keyframes slideIn  { from{opacity:0;transform:translateX(30px)} to{opacity:1;transform:translateX(0)} }
+
+.wizard-step { display:none; animation:slideIn .35s ease; }
+.wizard-step.active { display:block; }
+
+.step-pill {
+  width:34px; height:34px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  font-size:13px; font-weight:800; transition:all .3s;
+  flex-shrink:0;
+}
+.step-pill.done    { background:#22c55e; color:white; }
+.step-pill.current { background:#4f46e5; color:white; box-shadow:0 0 0 4px rgba(79,70,229,.25); }
+.step-pill.pending { background:#f1f5f9; color:#94a3b8; }
+
+.form-label  { display:block; font-size:12px; font-weight:700; color:#374151; margin-bottom:5px; text-transform:uppercase; letter-spacing:.04em; }
+.form-input  { width:100%; padding:11px 14px; border:1.5px solid #e2e8f0; border-radius:10px; font-size:14px; color:#0f172a;
+               transition:border-color .15s,box-shadow .15s; outline:none; background:white; }
+.form-input:focus { border-color:#4f46e5; box-shadow:0 0 0 3px rgba(79,70,229,.12); }
+.form-select { appearance:none; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%2394a3b8' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");
+               background-repeat:no-repeat; background-position:right 14px center; padding-right:40px; }
+
+.color-swatch {
+  width:30px; height:30px; border-radius:8px; cursor:pointer; border:3px solid transparent;
+  transition:transform .15s,border-color .15s;
+}
+.color-swatch:hover  { transform:scale(1.15); }
+.color-swatch.picked { border-color:#1e293b; transform:scale(1.1); }
+
+.feat-toggle {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:12px 16px; border-radius:12px;
+  border:1.5px solid #e2e8f0; background:white;
+  transition:border-color .15s,background .15s;
+}
+.feat-toggle.on { border-color:#4f46e5; background:#f5f3ff; }
+
+/* iOS-style toggle */
+.toggle-track {
+  width:40px; height:22px; border-radius:11px; background:#e2e8f0;
+  position:relative; cursor:pointer; transition:background .2s; flex-shrink:0;
+}
+.toggle-track.on { background:#4f46e5; }
+.toggle-thumb {
+  position:absolute; top:3px; left:3px; width:16px; height:16px;
+  border-radius:50%; background:white; box-shadow:0 1px 4px rgba(0,0,0,.2);
+  transition:transform .2s;
+}
+.toggle-track.on .toggle-thumb { transform:translateX(18px); }
+
+.member-row { display:flex; align-items:center; gap:10px; padding:10px 14px;
+  background:#f8fafc; border-radius:10px; border:1px solid #e2e8f0; }
+
+.btn-next { display:inline-flex; align-items:center; gap:8px; padding:12px 28px;
+  background:linear-gradient(135deg,#4f46e5,#6366f1); color:white;
+  border:none; border-radius:12px; font-size:14px; font-weight:700; cursor:pointer;
+  transition:all .2s; box-shadow:0 4px 14px rgba(79,70,229,.35); }
+.btn-next:hover { transform:translateY(-2px); box-shadow:0 8px 20px rgba(79,70,229,.45); }
+.btn-back { display:inline-flex; align-items:center; gap:6px; padding:12px 22px;
+  background:#f1f5f9; color:#475569; border:1.5px solid #e2e8f0;
+  border-radius:12px; font-size:14px; font-weight:600; cursor:pointer; transition:all .15s; }
+.btn-back:hover { background:#e2e8f0; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="max-width:680px;margin:0 auto;opacity:0;animation:fadeInUp .5s ease .05s forwards;">
+
+  <!-- Step indicators -->
+  <div style="display:flex;align-items:center;gap:0;margin-bottom:36px;background:white;border-radius:16px;padding:18px 24px;box-shadow:0 1px 4px rgba(0,0,0,.06);border:1px solid #f1f5f9;">
+    {% set steps = [
+      ('1', 'fa-info-circle',     'Project Details'),
+      ('2', 'fa-users',           'Team'),
+      ('3', 'fa-sliders',         'Features'),
+    ] %}
+    {% for num, icon, label in steps %}
+    <div style="flex:1;display:flex;align-items:center;{% if not loop.last %}flex-direction:row;{% endif %}">
+      <div style="display:flex;align-items:center;gap:10px;flex:1;">
+        <div class="step-pill {% if loop.first %}current{% else %}pending{% endif %}" id="pill-{{ num }}">
+          <i class="fa-solid {{ icon }}" style="font-size:12px;"></i>
+        </div>
+        <div>
+          <div style="font-size:10px;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:.06em;">Step {{ num }}</div>
+          <div style="font-size:13px;font-weight:700;color:#0f172a;" id="pill-lbl-{{ num }}">{{ label }}</div>
+        </div>
+      </div>
+      {% if not loop.last %}
+      <div style="flex:1;height:2px;background:#f1f5f9;border-radius:99px;margin:0 12px;" id="connector-{{ num }}"></div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+
+  <form method="POST" action="{{ url_for('new_project') }}" id="wiz-form">
+
+    <!-- ══ STEP 1: Project Details ══ -->
+    <div class="wizard-step active" id="step-1">
+      <div class="card" style="border-radius:20px;padding:28px;">
+        <h2 style="font-size:18px;font-weight:800;color:#0f172a;margin-bottom:4px;">
+          <i class="fa-solid fa-info-circle" style="color:#4f46e5;margin-right:8px;"></i>Project Details
+        </h2>
+        <p style="color:#94a3b8;font-size:13px;margin-bottom:24px;">Basic information about the project.</p>
+
+        <div style="display:grid;gap:16px;">
+
+          <div>
+            <label class="form-label">Project Name <span style="color:#ef4444;">*</span></label>
+            <input name="name" class="form-input" placeholder="e.g. King Rocks Wind Farm" required/>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div>
+              <label class="form-label">Project Type</label>
+              <select name="project_type" class="form-input form-select">
+                {% for t in PROJECT_TYPES %}
+                <option value="{{ t }}">{{ t }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div>
+              <label class="form-label">Status</label>
+              <select name="status" class="form-input form-select">
+                {% for key, label, color in PROJECT_STATUSES %}
+                <option value="{{ key }}" {% if key=='active' %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr auto;gap:12px;">
+            <div>
+              <label class="form-label">Location</label>
+              <input name="location" class="form-input" placeholder="e.g. South Australia"/>
+            </div>
+            <div>
+              <label class="form-label">Postcode</label>
+              <input name="postcode" class="form-input" placeholder="5000" style="width:100px;"/>
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div>
+              <label class="form-label">Client / Company</label>
+              <input name="client_name" class="form-input" placeholder="e.g. CBOP"/>
+            </div>
+            <div>
+              <label class="form-label">Contract Reference</label>
+              <input name="contract_ref" class="form-input" placeholder="e.g. KRWF-2024"/>
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div>
+              <label class="form-label">Start Date</label>
+              <input type="date" name="start_date" class="form-input"/>
+            </div>
+            <div>
+              <label class="form-label">End Date</label>
+              <input type="date" name="end_date" class="form-input"/>
+            </div>
+          </div>
+
+          <div>
+            <label class="form-label">Project Description</label>
+            <textarea name="description" class="form-input" style="min-height:70px;resize:vertical;"
+              placeholder="Brief description of the project scope…"></textarea>
+          </div>
+
+          <!-- Colour picker -->
+          <div>
+            <label class="form-label">Project Colour</label>
+            <input type="hidden" name="color" id="color-val" value="#0f2942"/>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px;">
+              {% for col in ['#0f2942','#1d4ed8','#0891b2','#059669','#16a34a','#d97706','#dc2626','#7c3aed','#be185d','#374151'] %}
+              <div class="color-swatch {% if col == '#0f2942' %}picked{% endif %}"
+                   style="background:{{ col }};" onclick="pickColor('{{ col }}', this)"></div>
+              {% endfor %}
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;margin-top:16px;">
+        <button type="button" class="btn-next" onclick="goStep(2)">
+          Next: Team <i class="fa-solid fa-arrow-right"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- ══ STEP 2: Team ══ -->
+    <div class="wizard-step" id="step-2">
+      <div class="card" style="border-radius:20px;padding:28px;">
+        <h2 style="font-size:18px;font-weight:800;color:#0f172a;margin-bottom:4px;">
+          <i class="fa-solid fa-users" style="color:#4f46e5;margin-right:8px;"></i>Project Team
+        </h2>
+        <p style="color:#94a3b8;font-size:13px;margin-bottom:20px;">Select team members and their roles.</p>
+
+        <div id="member-list" style="display:flex;flex-direction:column;gap:8px;">
+          {% for user in all_users %}
+          <div class="member-row" id="mrow-{{ user.id }}">
+            <input type="checkbox" id="chk-{{ user.id }}" onchange="toggleMember({{ user.id }})"
+                   style="width:16px;height:16px;accent-color:#4f46e5;cursor:pointer;"
+                   {% if user.id == current_user.id %}checked disabled{% endif %}/>
+            <div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#4f46e5,#6366f1);
+                        display:flex;align-items:center;justify-content:center;color:white;font-size:12px;font-weight:700;flex-shrink:0;">
+              {{ user.name[0].upper() }}
+            </div>
+            <div style="flex:1;">
+              <div style="font-size:13px;font-weight:700;color:#0f172a;">{{ user.name }}</div>
+              <div style="font-size:11px;color:#94a3b8;">{{ user.email }} · {{ user.role|title }}</div>
+            </div>
+            <div id="role-wrap-{{ user.id }}" style="{% if user.id != current_user.id %}display:none;{% endif %}">
+              <input type="hidden" name="member_ids[]" value="{{ user.id }}"
+                     {% if user.id != current_user.id %}disabled{% endif %} id="uid-{{ user.id }}"/>
+              <select name="member_roles[]" class="form-input form-select"
+                      style="padding:6px 30px 6px 10px;font-size:12px;width:110px;"
+                      {% if user.id != current_user.id %}disabled{% endif %} id="role-{{ user.id }}">
+                <option value="lead"   {% if user.id == current_user.id %}selected{% endif %}>Lead</option>
+                <option value="member">Member</option>
+                <option value="viewer">Viewer</option>
+              </select>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;margin-top:16px;">
+        <button type="button" class="btn-back" onclick="goStep(1)">
+          <i class="fa-solid fa-arrow-left"></i> Back
+        </button>
+        <button type="button" class="btn-next" onclick="goStep(3)">
+          Next: Features <i class="fa-solid fa-arrow-right"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- ══ STEP 3: Features ══ -->
+    <div class="wizard-step" id="step-3">
+      <div class="card" style="border-radius:20px;padding:28px;">
+        <h2 style="font-size:18px;font-weight:800;color:#0f172a;margin-bottom:4px;">
+          <i class="fa-solid fa-sliders" style="color:#4f46e5;margin-right:8px;"></i>Project Features
+        </h2>
+        <p style="color:#94a3b8;font-size:13px;margin-bottom:20px;">
+          Choose which tools are available in this project. You can change these anytime.
+        </p>
+
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          {% for key, label, icon, color in ALL_FEATURES %}
+          {% set default_on = key in ('proof_rolling','geo_testing','itp','foundation','progress_tracker') %}
+          <div class="feat-toggle {% if default_on %}on{% endif %}" id="ft-{{ key }}">
+            <div style="display:flex;align-items:center;gap:12px;">
+              <div style="width:38px;height:38px;border-radius:12px;background:{{ color }}18;display:flex;align-items:center;justify-content:center;">
+                <i class="fa-solid {{ icon }}" style="color:{{ color }};font-size:16px;"></i>
+              </div>
+              <div>
+                <div style="font-size:13px;font-weight:700;color:#0f172a;">{{ label }}</div>
+                <div style="font-size:11px;color:#94a3b8;">
+                  {% if key == 'proof_rolling' %}Record and manage proof roll tests
+                  {% elif key == 'geo_testing' %}DCP, compaction and geo test records
+                  {% elif key == 'itp' %}Inspection Test Plans and sign-offs
+                  {% elif key == 'foundation' %}Foundation stage tracking
+                  {% elif key == 'progress_tracker' %}Project analytics and progress charts
+                  {% elif key == 'daily_report' %}Daily site activity reports
+                  {% elif key == 'site_capture' %}Photos and videos of site conditions
+                  {% elif key == 'roster' %}Workforce scheduling and attendance
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+            <div>
+              <input type="hidden" name="feat_{{ key }}" value="0" id="fval-{{ key }}"/>
+              <div class="toggle-track {% if default_on %}on{% endif %}" id="tt-{{ key }}"
+                   onclick="toggleFeat('{{ key }}')">
+                <div class="toggle-thumb"></div>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;">
+        <button type="button" class="btn-back" onclick="goStep(2)">
+          <i class="fa-solid fa-arrow-left"></i> Back
+        </button>
+        <button type="submit" class="btn-next" id="create-btn">
+          <i class="fa-solid fa-rocket"></i> Create Project
+        </button>
+      </div>
+    </div>
+
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentStep = 1;
+
+// ── Step navigation ───────────────────────────────────────────────────
+function goStep(n) {
+  if (n > currentStep && !validateStep(currentStep)) return;
+
+  document.getElementById(`step-${currentStep}`).classList.remove('active');
+  document.getElementById(`step-${n}`).classList.add('active');
+
+  // Update pills
+  for (let i = 1; i <= 3; i++) {
+    const pill = document.getElementById(`pill-${i}`);
+    pill.classList.remove('done','current','pending');
+    if (i < n)      pill.classList.add('done');
+    else if (i===n) pill.classList.add('current');
+    else            pill.classList.add('pending');
+  }
+
+  currentStep = n;
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+function validateStep(n) {
+  if (n === 1) {
+    const name = document.querySelector('[name=name]').value.trim();
+    if (!name) {
+      document.querySelector('[name=name]').focus();
+      document.querySelector('[name=name]').style.borderColor = '#ef4444';
+      setTimeout(() => document.querySelector('[name=name]').style.borderColor = '', 2000);
+      return false;
+    }
+  }
+  return true;
+}
+
+// ── Colour picker ─────────────────────────────────────────────────────
+function pickColor(col, el) {
+  document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('picked'));
+  el.classList.add('picked');
+  document.getElementById('color-val').value = col;
+}
+
+// ── Team member toggles ───────────────────────────────────────────────
+function toggleMember(uid) {
+  const chk  = document.getElementById(`chk-${uid}`);
+  const wrap = document.getElementById(`role-wrap-${uid}`);
+  const uidInput = document.getElementById(`uid-${uid}`);
+  const roleInput = document.getElementById(`role-${uid}`);
+  const checked = chk.checked;
+  wrap.style.display = checked ? 'block' : 'none';
+  if (uidInput)  uidInput.disabled  = !checked;
+  if (roleInput) roleInput.disabled = !checked;
+}
+
+// ── Feature toggles ───────────────────────────────────────────────────
+function toggleFeat(key) {
+  const track = document.getElementById(`tt-${key}`);
+  const val   = document.getElementById(`fval-${key}`);
+  const card  = document.getElementById(`ft-${key}`);
+  const on    = track.classList.toggle('on');
+  val.value   = on ? '1' : '0';
+  card.classList.toggle('on', on);
+}
+
+// Init feature values (for pre-checked ones)
+document.querySelectorAll('.toggle-track.on').forEach(t => {
+  const key = t.id.replace('tt-','');
+  const val = document.getElementById(`fval-${key}`);
+  if (val) val.value = '1';
+});
+
+// Submit spinner
+document.getElementById('wiz-form').addEventListener('submit', () => {
+  const btn = document.getElementById('create-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Creating…';
+});
+</script>
+{% endblock %}

@@ -28,6 +28,94 @@ class User(UserMixin, db.Model):
         return self.role in ('manager', 'supervisor')
 
 # ─────────────────────────────────────────────
+# PROJECTS  (multi-project support)
+# ─────────────────────────────────────────────
+PROJECT_TYPES = [
+    'Wind Farm', 'Solar Farm', 'Civil Construction', 'Road Works',
+    'Earthworks', 'Mining', 'Infrastructure', 'Other',
+]
+PROJECT_STATUSES = [
+    ('planning',   'Planning',   '#f59e0b'),
+    ('active',     'Active',     '#22c55e'),
+    ('on_hold',    'On Hold',    '#f97316'),
+    ('completed',  'Completed',  '#6366f1'),
+    ('archived',   'Archived',   '#94a3b8'),
+]
+ALL_FEATURES = [
+    ('proof_rolling',    'Proof Rolling',      'fa-file-circle-check', '#22c55e'),
+    ('geo_testing',      'Geo Testing Records','fa-microscope',        '#6ee7b7'),
+    ('itp',              'ITPs',               'fa-clipboard-list',    '#a78bfa'),
+    ('foundation',       'Foundation Tracker', 'fa-layer-group',       '#fb923c'),
+    ('progress_tracker', 'Analytics',          'fa-chart-line',        '#22d3ee'),
+    ('daily_report',     'Daily Report',       'fa-clipboard-user',    '#38bdf8'),
+    ('site_capture',     'Daily Site Capture', 'fa-camera-retro',      '#c084fc'),
+    ('roster',           'Roster',             'fa-users',             '#e879f9'),
+]
+
+class Project(db.Model):
+    __tablename__ = 'projects'
+    id            = db.Column(db.Integer, primary_key=True)
+    name          = db.Column(db.String(200), nullable=False)
+    project_type  = db.Column(db.String(100), default='Wind Farm')
+    location      = db.Column(db.String(300))
+    postcode      = db.Column(db.String(20))
+    status        = db.Column(db.String(30), default='active')
+    client_name   = db.Column(db.String(200))
+    contract_ref  = db.Column(db.String(100))
+    start_date    = db.Column(db.Date)
+    end_date      = db.Column(db.Date)
+    color         = db.Column(db.String(20), default='#0f2942')
+    description   = db.Column(db.Text)
+    created_by    = db.Column(db.Integer, db.ForeignKey('users.id'))
+    created_at    = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    is_active     = db.Column(db.Boolean, default=True)
+
+    members  = db.relationship('ProjectMember',  backref='project', lazy=True, cascade='all,delete')
+    features = db.relationship('ProjectFeature', backref='project', lazy=True, cascade='all,delete')
+    wtgs     = db.relationship('WTG', backref='project', lazy=True)
+
+    @property
+    def status_label(self):
+        return next((s[1] for s in PROJECT_STATUSES if s[0]==self.status), self.status.title())
+
+    @property
+    def status_color(self):
+        return next((s[2] for s in PROJECT_STATUSES if s[0]==self.status), '#94a3b8')
+
+    def feature_enabled(self, key):
+        feat = next((f for f in self.features if f.feature_key == key), None)
+        return feat.enabled if feat else True  # default on
+
+    @property
+    def enabled_features(self):
+        return {f.feature_key: f.enabled for f in self.features}
+
+    @property
+    def completion_pct(self):
+        if not self.wtgs:
+            return 0
+        return round(sum(w.completion_pct for w in self.wtgs) / len(self.wtgs))
+
+
+class ProjectMember(db.Model):
+    __tablename__ = 'project_members'
+    id          = db.Column(db.Integer, primary_key=True)
+    project_id  = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=False)
+    user_id     = db.Column(db.Integer, db.ForeignKey('users.id'),    nullable=False)
+    proj_role   = db.Column(db.String(30), default='member')  # lead | member | viewer
+    added_at    = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    user        = db.relationship('User', backref='project_memberships', lazy='joined')
+
+
+class ProjectFeature(db.Model):
+    __tablename__ = 'project_features'
+    id          = db.Column(db.Integer, primary_key=True)
+    project_id  = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=False)
+    feature_key = db.Column(db.String(50), nullable=False)
+    enabled     = db.Column(db.Boolean, default=True)
+
+
+# ─────────────────────────────────────────────
 # WIND TURBINE GENERATORS
 # ─────────────────────────────────────────────
 class WTG(db.Model):
@@ -37,6 +125,7 @@ class WTG(db.Model):
     easting    = db.Column(db.Float, nullable=True)
     northing   = db.Column(db.Float, nullable=True)
     status     = db.Column(db.String(20), default='in_progress')
+    project_id = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=True)
 
     areas      = db.relationship('Area', backref='wtg', lazy=True, cascade='all,delete')
 

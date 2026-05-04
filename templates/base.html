@@ -101,11 +101,11 @@
   <!-- ── Sidebar ─────────────────────────────────────────────────────── -->
   <aside id="sidebar" style="width:240px;min-height:100vh;background:#0d1f35;display:flex;flex-direction:column;position:fixed;left:0;top:0;z-index:30;box-shadow:4px 0 24px rgba(0,0,0,0.25);">
 
-    <!-- Logo -->
-    <div style="padding:20px 16px 16px;border-bottom:1px solid rgba(255,255,255,0.07);">
-      <div style="display:flex;align-items:center;gap:12px;">
-        <div style="width:42px;height:42px;background:linear-gradient(135deg,#0ea5e9,#0284c7);border-radius:12px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(14,165,233,0.4);flex-shrink:0;">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" width="24" height="24" fill="white">
+    <!-- App logo -->
+    <div style="padding:16px 14px 10px;border-bottom:1px solid rgba(255,255,255,0.07);">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+        <div style="width:36px;height:36px;background:linear-gradient(135deg,#0ea5e9,#0284c7);border-radius:10px;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(14,165,233,0.4);flex-shrink:0;">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" width="20" height="20" fill="white">
             <polygon points="18,38 22,38 21,16 19,16"/>
             <rect x="17" y="13" width="6" height="3.5" rx="1"/>
             <ellipse cx="20" cy="7" rx="2" ry="6" transform="rotate(-15,20,13)"/>
@@ -114,10 +114,74 @@
           </svg>
         </div>
         <div>
-          <p style="color:#f1f5f9;font-weight:700;font-size:14px;line-height:1.2;">King Rocks</p>
-          <p style="color:#64748b;font-size:11px;margin-top:1px;">Wind Farm QA</p>
+          <p style="color:#f1f5f9;font-weight:800;font-size:13px;line-height:1.2;">QA Manager</p>
+          <p style="color:#475569;font-size:10px;margin-top:1px;">Lucas TCS · CBOP</p>
         </div>
       </div>
+
+      <!-- Project Switcher -->
+      {% if active_project %}
+      <div id="proj-switcher-btn" onclick="toggleProjMenu()"
+           style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);
+                  border-radius:10px;padding:8px 10px;cursor:pointer;transition:background .15s;"
+           onmouseover="this.style.background='rgba(255,255,255,0.08)'"
+           onmouseout="this.style.background='rgba(255,255,255,0.05)'">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div style="width:8px;height:8px;border-radius:50%;background:{{ active_project.status_color }};flex-shrink:0;box-shadow:0 0 6px {{ active_project.status_color }};"></div>
+          <span style="color:#e2e8f0;font-size:12px;font-weight:700;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+            {{ active_project.name }}
+          </span>
+          <i id="proj-arrow" class="fa-solid fa-chevron-down" style="color:#475569;font-size:9px;transition:transform .25s;flex-shrink:0;"></i>
+        </div>
+        <div style="color:#475569;font-size:10px;margin-top:3px;padding-left:16px;">
+          {{ active_project.project_type }} · {{ active_project.status_label }}
+        </div>
+      </div>
+
+      <!-- Dropdown -->
+      <div id="proj-dropdown" style="display:none;background:#070f1d;border:1px solid rgba(255,255,255,0.08);border-radius:10px;margin-top:4px;overflow:hidden;max-height:220px;overflow-y:auto;">
+        {% for proj in user_projects %}
+        <a href="{{ url_for('switch_project', pid=proj.id) }}"
+           style="display:block;padding:9px 12px;text-decoration:none;
+                  {% if proj.id == active_project.id %}background:rgba(255,255,255,0.06);{% endif %}
+                  border-bottom:1px solid rgba(255,255,255,0.04);transition:background .15s;"
+           onmouseover="this.style.background='rgba(255,255,255,0.07)'"
+           onmouseout="this.style.background='{% if proj.id == active_project.id %}rgba(255,255,255,0.06){% else %}transparent{% endif %}'">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div style="width:7px;height:7px;border-radius:50%;background:{{ proj.status_color }};flex-shrink:0;"></div>
+            <span style="color:#e2e8f0;font-size:12px;font-weight:600;flex:1;">{{ proj.name }}</span>
+            {% if proj.id == active_project.id %}
+            <i class="fa-solid fa-check" style="color:#34d399;font-size:10px;"></i>
+            {% endif %}
+          </div>
+          <div style="color:#475569;font-size:10px;padding-left:15px;margin-top:1px;">{{ proj.project_type }}</div>
+        </a>
+        {% endfor %}
+        {% if current_user.role in ('engineer','manager','admin') %}
+        <a href="{{ url_for('new_project') }}"
+           style="display:flex;align-items:center;gap:8px;padding:9px 12px;text-decoration:none;
+                  border-top:1px solid rgba(255,255,255,0.07);transition:background .15s;"
+           onmouseover="this.style.background='rgba(255,255,255,0.06)'"
+           onmouseout="this.style.background='transparent'">
+          <div style="width:20px;height:20px;border-radius:6px;background:rgba(99,102,241,0.2);display:flex;align-items:center;justify-content:center;">
+            <i class="fa-solid fa-plus" style="color:#818cf8;font-size:9px;"></i>
+          </div>
+          <span style="color:#818cf8;font-size:12px;font-weight:700;">Add New Project</span>
+        </a>
+        {% endif %}
+      </div>
+      {% else %}
+      <!-- No projects yet -->
+      {% if current_user.role in ('engineer','manager','admin') %}
+      <a href="{{ url_for('new_project') }}"
+         style="display:flex;align-items:center;gap:8px;background:rgba(99,102,241,0.1);border:1px dashed rgba(99,102,241,0.3);border-radius:10px;padding:10px;text-decoration:none;transition:background .15s;"
+         onmouseover="this.style.background='rgba(99,102,241,0.18)'"
+         onmouseout="this.style.background='rgba(99,102,241,0.1)'">
+        <i class="fa-solid fa-plus" style="color:#818cf8;font-size:12px;"></i>
+        <span style="color:#818cf8;font-size:12px;font-weight:700;">Create First Project</span>
+      </a>
+      {% endif %}
+      {% endif %}
     </div>
 
     <!-- Nav -->
@@ -135,6 +199,13 @@
       <a href="{{ url_for('dashboard') }}#wtg-grid" class="sidebar-link" style="margin-top:3px;">
         <i class="fa-solid fa-tower-broadcast" style="width:16px;color:#60a5fa;"></i>
         <span>All WTGs</span>
+      </a>
+      <a href="{{ url_for('projects_list') }}" class="sidebar-link {% if request.endpoint in ['projects_list','new_project','project_settings'] %}active{% endif %}" style="margin-top:3px;">
+        <i class="fa-solid fa-folder-open" style="width:16px;color:#f59e0b;"></i>
+        <span>Projects</span>
+        {% if user_projects %}
+        <span style="margin-left:auto;font-size:9px;font-weight:800;background:rgba(245,158,11,.2);color:#f59e0b;padding:1px 6px;border-radius:99px;">{{ user_projects|length }}</span>
+        {% endif %}
       </a>
 
       <!-- Modules -->
@@ -307,6 +378,26 @@
       loader.classList.remove('loading');
       loader.classList.add('done');
       setTimeout(() => { loader.classList.remove('done'); loader.style.width='0%'; }, 500);
+    });
+
+    // ── Project switcher dropdown ─────────────────────────────────────────
+    function toggleProjMenu() {
+      const dd    = document.getElementById('proj-dropdown');
+      const arrow = document.getElementById('proj-arrow');
+      if (!dd) return;
+      const open = dd.style.display === 'block';
+      dd.style.display = open ? 'none' : 'block';
+      if (arrow) arrow.style.transform = open ? 'rotate(0deg)' : 'rotate(180deg)';
+    }
+    // Close project dropdown when clicking outside
+    document.addEventListener('click', e => {
+      const btn = document.getElementById('proj-switcher-btn');
+      const dd  = document.getElementById('proj-dropdown');
+      if (btn && dd && !btn.contains(e.target) && !dd.contains(e.target)) {
+        dd.style.display = 'none';
+        const arrow = document.getElementById('proj-arrow');
+        if (arrow) arrow.style.transform = 'rotate(0deg)';
+      }
     });
 
     // ── QA nav submenu ────────────────────────────────────────────────────
