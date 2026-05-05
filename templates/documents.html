@@ -5,61 +5,77 @@
 
 {% block head %}
 <style>
-/* ── layout ── */
-.explorer { display:flex; gap:0; background:#fff; border:1px solid #e2e8f0;
-            border-radius:16px; overflow:hidden; min-height:520px; }
+/* ─── Shell ─────────────────────────────────────────────────────────────── */
+.doc-shell   { display:flex; gap:0; background:#fff; border:1px solid #e2e8f0;
+               border-radius:16px; overflow:hidden; min-height:560px; }
 
-/* ── left folder panel ── */
-.folder-panel { width:200px; min-width:160px; background:#f8fafc;
-                border-right:1px solid #e2e8f0; padding:10px 8px; flex-shrink:0; }
-.folder-item  { display:flex; align-items:center; gap:8px; padding:7px 10px;
-                border-radius:8px; cursor:pointer; font-size:13px; font-weight:500;
-                color:#374151; text-decoration:none; transition:background .12s; }
-.folder-item:hover   { background:#ede9fe; color:#4f46e5; }
-.folder-item.active  { background:#4f46e5; color:#fff; font-weight:700; }
-.folder-item .count  { margin-left:auto; font-size:11px; opacity:.65;
-                       background:rgba(0,0,0,.08); padding:1px 6px; border-radius:99px; }
-.folder-section { font-size:10px; font-weight:800; letter-spacing:.08em;
-                  text-transform:uppercase; color:#94a3b8;
-                  padding:14px 10px 4px; }
+/* ─── Left sidebar ──────────────────────────────────────────────────────── */
+.doc-sidebar { width:220px; min-width:180px; background:#f8fafc;
+               border-right:1px solid #e2e8f0; flex-shrink:0;
+               display:flex; flex-direction:column; }
+.sidebar-hdr { padding:14px 14px 8px; font-size:10px; font-weight:800;
+               letter-spacing:.08em; text-transform:uppercase; color:#94a3b8; }
+.sidebar-item{ display:flex; align-items:center; gap:9px; padding:8px 14px;
+               font-size:13px; font-weight:500; color:#374151; cursor:pointer;
+               text-decoration:none; transition:background .1s; border-left:3px solid transparent; }
+.sidebar-item:hover  { background:#ede9fe; color:#4f46e5; }
+.sidebar-item.active { background:#ede9fe; color:#4f46e5; font-weight:700;
+                       border-left-color:#4f46e5; }
+.sidebar-item .cnt   { margin-left:auto; font-size:11px; opacity:.6;
+                       background:rgba(0,0,0,.07); padding:1px 7px; border-radius:99px; }
+.sidebar-item i      { width:16px; text-align:center; font-size:13px; flex-shrink:0; }
 
-/* ── right file list panel ── */
-.file-panel { flex:1; min-width:0; display:flex; flex-direction:column; }
-.file-toolbar { display:flex; align-items:center; gap:10px;
-                padding:12px 16px; border-bottom:1px solid #f1f5f9; flex-wrap:wrap; }
-.file-table   { width:100%; border-collapse:collapse; }
-.file-table th { padding:8px 14px; text-align:left; font-size:11px; font-weight:700;
-                 color:#94a3b8; text-transform:uppercase; letter-spacing:.06em;
-                 background:#fafafa; border-bottom:1px solid #f1f5f9; white-space:nowrap; }
-.file-table td { padding:9px 14px; font-size:13px; color:#374151;
-                 border-bottom:1px solid #f8fafc; vertical-align:middle; }
+/* ─── Right content area ────────────────────────────────────────────────── */
+.doc-content { flex:1; min-width:0; display:flex; flex-direction:column; }
+
+/* Toolbar */
+.doc-toolbar { display:flex; align-items:center; gap:10px; padding:12px 16px;
+               border-bottom:1px solid #f1f5f9; flex-wrap:wrap; background:#fff; }
+
+/* Breadcrumb */
+.breadcrumb  { display:flex; align-items:center; gap:4px; font-size:12px; color:#64748b; }
+.breadcrumb a{ color:#4f46e5; font-weight:600; text-decoration:none; }
+.breadcrumb a:hover { text-decoration:underline; }
+.breadcrumb .sep { color:#cbd5e1; }
+
+/* File table */
+.file-table  { width:100%; border-collapse:collapse; }
+.file-table th{ padding:8px 14px; text-align:left; font-size:10px; font-weight:700;
+                color:#94a3b8; text-transform:uppercase; letter-spacing:.06em;
+                background:#fafafa; border-bottom:1px solid #f1f5f9; white-space:nowrap; }
+.file-table td{ padding:9px 14px; font-size:13px; color:#374151;
+                border-bottom:1px solid #f8fafc; vertical-align:middle; }
 .file-table tr:last-child td { border-bottom:none; }
 .file-table tr:hover td { background:#f8f8ff; cursor:pointer; }
-.file-row-name { display:flex; align-items:center; gap:10px; }
-.file-ext  { font-size:10px; font-weight:800; padding:2px 7px; border-radius:6px;
-             letter-spacing:.04em; }
-.btn-sm { display:inline-flex; align-items:center; gap:5px; padding:5px 12px;
-          border-radius:7px; font-size:12px; font-weight:700; text-decoration:none;
+.file-name   { display:flex; align-items:center; gap:10px; }
+
+/* Folder row in table */
+.folder-row  { }
+.folder-row:hover td { background:#fdf4ff; cursor:pointer; }
+
+/* Buttons */
+.btn-sm { display:inline-flex; align-items:center; gap:5px; padding:6px 13px;
+          border-radius:8px; font-size:12px; font-weight:700; text-decoration:none;
           border:1px solid transparent; transition:all .12s; cursor:pointer; }
 .btn-primary { background:#4f46e5; color:#fff; }
 .btn-primary:hover { background:#4338ca; }
 .btn-ghost   { background:#f1f5f9; color:#64748b; border-color:#e2e8f0; }
-.btn-ghost:hover   { background:#e0e7ff; color:#4f46e5; border-color:#c7d2fe; }
-.search-input { flex:1; min-width:140px; max-width:260px; padding:7px 12px;
-                border:1px solid #e2e8f0; border-radius:8px; font-size:13px;
-                outline:none; transition:border-color .15s; }
-.search-input:focus { border-color:#4f46e5; }
-.link-badge { display:inline-flex; align-items:center; gap:3px; font-size:10px;
-              font-weight:700; padding:2px 7px; border-radius:99px;
-              background:#ede9fe; color:#6d28d9; }
-.empty-files { text-align:center; padding:60px 20px; color:#94a3b8; }
+.btn-ghost:hover   { background:#ede9fe; color:#4f46e5; border-color:#c7d2fe; }
+.search-box  { flex:1; max-width:240px; padding:7px 12px; border:1px solid #e2e8f0;
+               border-radius:8px; font-size:13px; outline:none; transition:border-color .15s; }
+.search-box:focus { border-color:#4f46e5; }
+
+/* Empty state */
+.empty-state { text-align:center; padding:70px 20px; color:#94a3b8; }
+.empty-state i { font-size:40px; margin-bottom:14px; opacity:.25; display:block; }
 </style>
 {% endblock %}
 
 {% block content %}
 
-<!-- ── Top bar ──────────────────────────────────────────────────────────── -->
-<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+<!-- ── Top bar ─────────────────────────────────────────────────────────── -->
+<div style="display:flex;align-items:center;justify-content:space-between;
+            margin-bottom:16px;flex-wrap:wrap;gap:10px;">
   <div>
     <h2 style="font-size:20px;font-weight:900;color:#0f172a;">Document Library</h2>
     <p style="color:#64748b;font-size:13px;margin-top:2px;">
@@ -68,123 +84,183 @@
     </p>
   </div>
   <a href="{{ url_for('document_upload') }}" class="btn-sm btn-primary">
-    <i class="fa-solid fa-cloud-arrow-up"></i> Upload
+    <i class="fa-solid fa-cloud-arrow-up"></i> Upload Document
   </a>
 </div>
 
-<!-- ── Explorer shell ────────────────────────────────────────────────────── -->
-<div class="explorer card" style="padding:0;">
+<!-- ── Explorer shell ─────────────────────────────────────────────────── -->
+<div class="doc-shell card" style="padding:0;">
 
-  <!-- LEFT: folder tree -->
-  <div class="folder-panel">
+  <!-- LEFT sidebar (folder tree) -->
+  <div class="doc-sidebar">
+    <div class="sidebar-hdr">Folders</div>
+
     <a href="{{ url_for('documents_list') }}"
-       class="folder-item {% if not active_cat %}active{% endif %}">
-      <i class="fa-solid fa-folder-open" style="font-size:14px;"></i>
-      All Files
-      <span class="count">{{ all_docs|length }}</span>
+       class="sidebar-item {% if not active_cat %}active{% endif %}">
+      <i class="fa-solid fa-folder-open" style="color:#f59e0b;"></i>
+      All Documents
+      <span class="cnt">{{ all_docs|length }}</span>
     </a>
 
-    <div class="folder-section">Categories</div>
+    <div class="sidebar-hdr" style="margin-top:6px;">By Category</div>
+
     {% for key, label, icon, color in DOCUMENT_CATEGORIES %}
     {% set cnt = all_docs | selectattr('category','eq',key) | list | length %}
-    <a href="{{ url_for('documents_list', cat=key, q=search) }}"
-       class="folder-item {% if active_cat==key %}active{% endif %}">
-      <i class="fa-solid {{ icon }}" style="font-size:12px;color:{{ 'white' if active_cat==key else color }};"></i>
-      <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ label }}</span>
-      {% if cnt %}<span class="count">{{ cnt }}</span>{% endif %}
+    <a href="{{ url_for('documents_list', cat=key) }}"
+       class="sidebar-item {% if active_cat == key %}active{% endif %}">
+      <i class="fa-solid {{ icon }}"
+         style="color:{% if active_cat == key %}#4f46e5{% else %}{{ color }}{% endif %};"></i>
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ label }}</span>
+      {% if cnt %}<span class="cnt">{{ cnt }}</span>{% endif %}
     </a>
     {% endfor %}
   </div>
 
-  <!-- RIGHT: file list -->
-  <div class="file-panel">
+  <!-- RIGHT content panel -->
+  <div class="doc-content">
 
     <!-- Toolbar -->
-    <div class="file-toolbar">
-      <form method="GET" action="{{ url_for('documents_list') }}" style="display:contents;">
+    <div class="doc-toolbar">
+      <!-- Breadcrumb -->
+      <div class="breadcrumb">
+        <a href="{{ url_for('documents_list') }}">
+          <i class="fa-solid fa-house" style="font-size:11px;margin-right:3px;"></i>All
+        </a>
+        {% if active_cat %}
+        <span class="sep">›</span>
+        <span style="color:#0f172a;font-weight:700;">{{ active_cat_label }}</span>
+        {% endif %}
+      </div>
+
+      <!-- Search -->
+      <form method="GET" action="{{ url_for('documents_list') }}"
+            style="display:flex;align-items:center;gap:6px;margin-left:auto;">
         {% if active_cat %}<input type="hidden" name="cat" value="{{ active_cat }}"/>{% endif %}
-        <input name="q" value="{{ search }}" placeholder="Search by name…"
-               class="search-input" autocomplete="off"/>
-        <button type="submit" class="btn-sm btn-ghost">
+        <input name="q" value="{{ search }}" placeholder="Search…" class="search-box" autocomplete="off"/>
+        <button type="submit" class="btn-sm btn-ghost" style="padding:6px 10px;">
           <i class="fa-solid fa-magnifying-glass"></i>
         </button>
         {% if search or active_cat %}
-        <a href="{{ url_for('documents_list') }}" class="btn-sm btn-ghost">
-          <i class="fa-solid fa-xmark"></i> Clear
+        <a href="{{ url_for('documents_list') }}" class="btn-sm btn-ghost" style="padding:6px 10px;">
+          <i class="fa-solid fa-xmark"></i>
         </a>
         {% endif %}
       </form>
-      <span style="margin-left:auto;font-size:12px;color:#94a3b8;">
+
+      <span style="font-size:12px;color:#94a3b8;white-space:nowrap;">
         {{ docs|length }} item{{ 's' if docs|length != 1 }}
-        {% if active_cat %} in <strong>{{ active_cat_label }}</strong>{% endif %}
       </span>
     </div>
 
-    <!-- File table -->
+    <!-- File / folder listing -->
     {% if not docs %}
-    <div class="empty-files">
-      <i class="fa-solid fa-folder-open" style="font-size:36px;margin-bottom:12px;opacity:.3;"></i>
-      <p style="font-size:14px;font-weight:600;">No files found</p>
-      <p style="font-size:12px;margin-top:4px;">
-        {% if search %}No results for "{{ search }}".{% else %}Upload your first document.{% endif %}
+    <div class="empty-state">
+      <i class="fa-solid fa-{% if active_cat %}folder-open{% else %}cloud-arrow-up{% endif %}"></i>
+      <p style="font-size:14px;font-weight:700;margin-bottom:6px;">
+        {% if search %}No results for "{{ search }}"
+        {% elif active_cat %}No files in {{ active_cat_label }}
+        {% else %}Library is empty{% endif %}
+      </p>
+      <p style="font-size:12px;">
+        {% if search %}Try a different search term.
+        {% else %}<a href="{{ url_for('document_upload') }}" style="color:#4f46e5;font-weight:600;">Upload your first document</a>{% endif %}
       </p>
     </div>
+
     {% else %}
     <table class="file-table">
       <thead>
         <tr>
-          <th style="width:42%;">Name</th>
+          <th style="width:44%;">Name</th>
           <th>Category</th>
           <th>Size</th>
           <th>Date</th>
           <th style="text-align:center;">Links</th>
-          <th></th>
+          <th style="width:90px;"></th>
         </tr>
       </thead>
       <tbody>
-        {% for doc in docs %}
-        <tr onclick="window.location='{{ url_for('document_detail', doc_id=doc.id) }}'">
-          <!-- Name -->
+        <!-- Category "folders" only visible on All Documents view -->
+        {% if not active_cat and not search %}
+        {% for key, label, icon, color in DOCUMENT_CATEGORIES %}
+        {% set cnt = all_docs | selectattr('category','eq',key) | list | length %}
+        {% if cnt %}
+        <tr class="folder-row"
+            onclick="window.location='{{ url_for('documents_list', cat=key) }}'">
           <td>
-            <div class="file-row-name">
-              <i class="fa-solid {{ doc.icon_class }}"
-                 style="font-size:18px;color:{{ doc.icon_color }};flex-shrink:0;width:20px;text-align:center;"></i>
-              <div style="min-width:0;">
-                <div style="font-weight:600;color:#0f172a;white-space:nowrap;
-                            overflow:hidden;text-overflow:ellipsis;max-width:260px;">{{ doc.title }}</div>
-                <div style="font-size:11px;color:#94a3b8;white-space:nowrap;
-                            overflow:hidden;text-overflow:ellipsis;max-width:260px;">{{ doc.original_filename }}</div>
+            <div class="file-name">
+              <i class="fa-solid fa-folder" style="font-size:20px;color:{{ color }};width:22px;text-align:center;flex-shrink:0;"></i>
+              <div>
+                <div style="font-weight:700;color:#0f172a;">{{ label }}</div>
+                <div style="font-size:11px;color:#94a3b8;">{{ cnt }} file{{ 's' if cnt != 1 }}</div>
               </div>
             </div>
           </td>
-          <!-- Category -->
+          <td></td>
+          <td style="color:#94a3b8;font-size:12px;">Folder</td>
+          <td></td>
+          <td></td>
+          <td onclick="event.stopPropagation()">
+            <a href="{{ url_for('documents_list', cat=key) }}" class="btn-sm btn-ghost" style="padding:5px 10px;">
+              <i class="fa-solid fa-arrow-right" style="font-size:10px;"></i> Open
+            </a>
+          </td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+
+        <!-- Divider -->
+        {% set loose = all_docs | selectattr('category','eq','general') | list %}
+        {% if docs %}
+        <tr>
+          <td colspan="6" style="padding:4px 14px;background:#f8fafc;">
+            <span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;">
+              All Files
+            </span>
+          </td>
+        </tr>
+        {% endif %}
+        {% endif %}
+
+        <!-- Actual files -->
+        {% for doc in docs %}
+        <tr onclick="window.location='{{ url_for('document_detail', doc_id=doc.id) }}'">
+          <td>
+            <div class="file-name">
+              <i class="fa-solid {{ doc.icon_class }}"
+                 style="font-size:19px;color:{{ doc.icon_color }};width:22px;text-align:center;flex-shrink:0;"></i>
+              <div style="min-width:0;">
+                <div style="font-weight:600;color:#0f172a;white-space:nowrap;
+                            overflow:hidden;text-overflow:ellipsis;max-width:280px;">{{ doc.title }}</div>
+                <div style="font-size:11px;color:#94a3b8;white-space:nowrap;
+                            overflow:hidden;text-overflow:ellipsis;max-width:280px;">{{ doc.original_filename }}</div>
+              </div>
+            </div>
+          </td>
           <td>
             <span style="font-size:11px;font-weight:700;padding:2px 9px;border-radius:99px;
                          background:{{ doc.category_color }}15;color:{{ doc.category_color }};
-                         border:1px solid {{ doc.category_color }}25;">{{ doc.category_label }}</span>
+                         border:1px solid {{ doc.category_color }}25;white-space:nowrap;">{{ doc.category_label }}</span>
           </td>
-          <!-- Size -->
           <td style="color:#64748b;white-space:nowrap;">{{ doc.file_size_display }}</td>
-          <!-- Date -->
           <td style="color:#64748b;white-space:nowrap;">{{ doc.uploaded_at.strftime('%d %b %Y') }}</td>
-          <!-- Links -->
           <td style="text-align:center;">
             {% if doc.links %}
-            <span class="link-badge">
+            <span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:700;
+                         padding:2px 7px;border-radius:99px;background:#ede9fe;color:#6d28d9;">
               <i class="fa-solid fa-link" style="font-size:8px;"></i> {{ doc.links|length }}
             </span>
             {% else %}
-            <span style="color:#e2e8f0;font-size:12px;">—</span>
+            <span style="color:#e2e8f0;">—</span>
             {% endif %}
           </td>
-          <!-- Actions (stop row click) -->
           <td onclick="event.stopPropagation()" style="white-space:nowrap;">
             <a href="{{ url_for('document_view', doc_id=doc.id) }}" target="_blank"
-               class="btn-sm btn-ghost" title="Open / Print" style="margin-right:4px;">
+               class="btn-sm btn-ghost" title="Open / Print" style="padding:5px 9px;margin-right:3px;">
               <i class="fa-solid fa-arrow-up-right-from-square"></i>
             </a>
             <a href="{{ url_for('document_download', doc_id=doc.id) }}"
-               class="btn-sm btn-ghost" title="Download">
+               class="btn-sm btn-ghost" title="Download" style="padding:5px 9px;">
               <i class="fa-solid fa-download"></i>
             </a>
           </td>
@@ -194,7 +270,7 @@
     </table>
     {% endif %}
 
-  </div><!-- /file-panel -->
-</div><!-- /explorer -->
+  </div><!-- /doc-content -->
+</div><!-- /doc-shell -->
 
 {% endblock %}

@@ -1,4 +1,5 @@
-import os, json, base64, uuid
+import os, json, base64, uuid, unicodedata, re
+from urllib.parse import quote as _urlquote
 from datetime import datetime, date, timezone
 from flask import (Flask, render_template, request, redirect,
                    url_for, flash, jsonify, abort, send_from_directory, make_response)
@@ -43,6 +44,18 @@ def create_dirs():
 
 def allowed_image(filename):
     return '.' in filename and filename.rsplit('.',1)[1].lower() in ALLOWED_IMG
+
+def _content_disposition(disposition, filename):
+    """Build a safe Content-Disposition header value.
+    HTTP headers must be ASCII.  Use RFC 5987 filename* for Unicode names."""
+    # ASCII fallback: normalise accents then strip remaining non-ASCII
+    ascii_name = unicodedata.normalize('NFKD', filename).encode('ascii', 'ignore').decode('ascii')
+    ascii_name = re.sub(r'[\\"]', '', ascii_name)          # remove backslash & quote
+    ascii_name = re.sub(r'[^\x20-\x7E]', '_', ascii_name)  # replace any remaining weird bytes
+    ascii_name = ascii_name.strip() or 'download'
+    # RFC 5987 UTF-8 encoded version (modern browsers prefer this)
+    utf8_enc   = _urlquote(filename, safe='')
+    return f"{disposition}; filename=\"{ascii_name}\"; filename*=UTF-8''{utf8_enc}"
 
 app = Flask(__name__)
 
@@ -435,25 +448,25 @@ def document_detail(doc_id):
 @app.route('/documents/<int:doc_id>/view')
 @login_required
 def document_view(doc_id):
-    """Serve the raw file inline — used by the PDF/image viewer."""
+    """Serve the raw file inline (open in browser / print)."""
     doc = Document.query.filter_by(id=doc_id, is_active=True).first_or_404()
     raw = base64.b64decode(doc.file_data)
     resp = make_response(raw)
-    resp.headers['Content-Type'] = doc.mime_type
-    resp.headers['Content-Disposition'] = f'inline; filename="{doc.original_filename}"'
-    resp.headers['Cache-Control'] = 'private, max-age=3600'
+    resp.headers['Content-Type']        = doc.mime_type
+    resp.headers['Content-Disposition'] = _content_disposition('inline', doc.original_filename)
+    resp.headers['Cache-Control']       = 'private, max-age=3600'
     return resp
 
 
 @app.route('/documents/<int:doc_id>/download')
 @login_required
 def document_download(doc_id):
-    """Force download of the file."""
+    """Force-download the file."""
     doc = Document.query.filter_by(id=doc_id, is_active=True).first_or_404()
     raw = base64.b64decode(doc.file_data)
     resp = make_response(raw)
-    resp.headers['Content-Type'] = doc.mime_type
-    resp.headers['Content-Disposition'] = f'attachment; filename="{doc.original_filename}"'
+    resp.headers['Content-Type']        = doc.mime_type
+    resp.headers['Content-Disposition'] = _content_disposition('attachment', doc.original_filename)
     return resp
 
 
