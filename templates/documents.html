@@ -5,272 +5,425 @@
 
 {% block head %}
 <style>
-/* ─── Shell ─────────────────────────────────────────────────────────────── */
+/* ─── Shell ─────────────────────────────────────────────────────────────────── */
 .doc-shell   { display:flex; gap:0; background:#fff; border:1px solid #e2e8f0;
                border-radius:16px; overflow:hidden; min-height:560px; }
 
-/* ─── Left sidebar ──────────────────────────────────────────────────────── */
-.doc-sidebar { width:220px; min-width:180px; background:#f8fafc;
+/* ─── Sidebar ───────────────────────────────────────────────────────────────── */
+.doc-sidebar { width:230px; min-width:190px; background:#f8fafc;
                border-right:1px solid #e2e8f0; flex-shrink:0;
-               display:flex; flex-direction:column; }
-.sidebar-hdr { padding:14px 14px 8px; font-size:10px; font-weight:800;
+               display:flex; flex-direction:column; overflow-y:auto; }
+.sb-section  { padding:12px 12px 4px; font-size:10px; font-weight:800;
                letter-spacing:.08em; text-transform:uppercase; color:#94a3b8; }
-.sidebar-item{ display:flex; align-items:center; gap:9px; padding:8px 14px;
+.sb-item     { display:flex; align-items:center; gap:8px; padding:7px 12px 7px;
                font-size:13px; font-weight:500; color:#374151; cursor:pointer;
-               text-decoration:none; transition:background .1s; border-left:3px solid transparent; }
-.sidebar-item:hover  { background:#ede9fe; color:#4f46e5; }
-.sidebar-item.active { background:#ede9fe; color:#4f46e5; font-weight:700;
-                       border-left-color:#4f46e5; }
-.sidebar-item .cnt   { margin-left:auto; font-size:11px; opacity:.6;
-                       background:rgba(0,0,0,.07); padding:1px 7px; border-radius:99px; }
-.sidebar-item i      { width:16px; text-align:center; font-size:13px; flex-shrink:0; }
+               text-decoration:none; transition:background .1s;
+               border-left:3px solid transparent; position:relative; }
+.sb-item:hover { background:#ede9fe; color:#4f46e5; }
+.sb-item.active{ background:#ede9fe; color:#4f46e5; font-weight:700;
+                 border-left-color:#4f46e5; }
+.sb-item .cnt  { margin-left:auto; font-size:10px; background:rgba(0,0,0,.07);
+                 padding:1px 6px; border-radius:99px; opacity:.7; flex-shrink:0; }
+.sb-item i.fi  { font-size:13px; width:15px; text-align:center; flex-shrink:0; }
+.sb-new-folder { display:flex; align-items:center; gap:6px; padding:7px 12px;
+                 font-size:12px; font-weight:600; color:#4f46e5; cursor:pointer;
+                 text-decoration:none; transition:background .1s; }
+.sb-new-folder:hover { background:#ede9fe; }
 
-/* ─── Right content area ────────────────────────────────────────────────── */
-.doc-content { flex:1; min-width:0; display:flex; flex-direction:column; }
-
-/* Toolbar */
-.doc-toolbar { display:flex; align-items:center; gap:10px; padding:12px 16px;
-               border-bottom:1px solid #f1f5f9; flex-wrap:wrap; background:#fff; }
+/* ─── Main panel ────────────────────────────────────────────────────────────── */
+.doc-main    { flex:1; min-width:0; display:flex; flex-direction:column; }
+.doc-toolbar { display:flex; align-items:center; gap:10px; padding:11px 16px;
+               border-bottom:1px solid #f1f5f9; flex-wrap:wrap; }
 
 /* Breadcrumb */
-.breadcrumb  { display:flex; align-items:center; gap:4px; font-size:12px; color:#64748b; }
-.breadcrumb a{ color:#4f46e5; font-weight:600; text-decoration:none; }
-.breadcrumb a:hover { text-decoration:underline; }
-.breadcrumb .sep { color:#cbd5e1; }
+.bc { display:flex; align-items:center; gap:4px; font-size:13px; color:#94a3b8; flex-wrap:wrap; }
+.bc a { color:#4f46e5; font-weight:600; text-decoration:none; display:flex; align-items:center; gap:4px; }
+.bc a:hover { text-decoration:underline; }
+.bc .sep { color:#e2e8f0; font-size:10px; }
+.bc .cur { color:#0f172a; font-weight:700; }
 
-/* File table */
-.file-table  { width:100%; border-collapse:collapse; }
-.file-table th{ padding:8px 14px; text-align:left; font-size:10px; font-weight:700;
-                color:#94a3b8; text-transform:uppercase; letter-spacing:.06em;
-                background:#fafafa; border-bottom:1px solid #f1f5f9; white-space:nowrap; }
-.file-table td{ padding:9px 14px; font-size:13px; color:#374151;
-                border-bottom:1px solid #f8fafc; vertical-align:middle; }
-.file-table tr:last-child td { border-bottom:none; }
-.file-table tr:hover td { background:#f8f8ff; cursor:pointer; }
-.file-name   { display:flex; align-items:center; gap:10px; }
-
-/* Folder row in table */
-.folder-row  { }
-.folder-row:hover td { background:#fdf4ff; cursor:pointer; }
-
-/* Buttons */
-.btn-sm { display:inline-flex; align-items:center; gap:5px; padding:6px 13px;
-          border-radius:8px; font-size:12px; font-weight:700; text-decoration:none;
-          border:1px solid transparent; transition:all .12s; cursor:pointer; }
-.btn-primary { background:#4f46e5; color:#fff; }
-.btn-primary:hover { background:#4338ca; }
-.btn-ghost   { background:#f1f5f9; color:#64748b; border-color:#e2e8f0; }
-.btn-ghost:hover   { background:#ede9fe; color:#4f46e5; border-color:#c7d2fe; }
-.search-box  { flex:1; max-width:240px; padding:7px 12px; border:1px solid #e2e8f0;
-               border-radius:8px; font-size:13px; outline:none; transition:border-color .15s; }
+/* Search */
+.search-box { padding:7px 12px; border:1px solid #e2e8f0; border-radius:8px;
+              font-size:13px; outline:none; width:200px; transition:border-color .15s; }
 .search-box:focus { border-color:#4f46e5; }
 
-/* Empty state */
-.empty-state { text-align:center; padding:70px 20px; color:#94a3b8; }
-.empty-state i { font-size:40px; margin-bottom:14px; opacity:.25; display:block; }
+/* Buttons */
+.btn { display:inline-flex; align-items:center; gap:5px; padding:6px 13px;
+       border-radius:8px; font-size:12px; font-weight:700; text-decoration:none;
+       border:1px solid transparent; transition:all .12s; cursor:pointer; white-space:nowrap; }
+.btn-primary { background:#4f46e5; color:#fff; border-color:#4f46e5; }
+.btn-primary:hover { background:#4338ca; }
+.btn-ghost { background:#f1f5f9; color:#64748b; border-color:#e2e8f0; }
+.btn-ghost:hover { background:#ede9fe; color:#4f46e5; border-color:#c7d2fe; }
+.btn-danger { background:#fef2f2; color:#dc2626; border-color:#fecaca; }
+.btn-danger:hover { background:#fee2e2; }
+
+/* File table */
+.ftbl      { width:100%; border-collapse:collapse; }
+.ftbl th   { padding:8px 14px; text-align:left; font-size:10px; font-weight:700;
+             color:#94a3b8; text-transform:uppercase; letter-spacing:.06em;
+             background:#fafafa; border-bottom:1px solid #f1f5f9; white-space:nowrap; }
+.ftbl td   { padding:9px 14px; font-size:13px; color:#374151;
+             border-bottom:1px solid #f8fafc; vertical-align:middle; }
+.ftbl tr:last-child td { border-bottom:none; }
+.ftbl tr.file-row:hover td { background:#f8f8ff; cursor:pointer; }
+.ftbl tr.fold-row:hover td { background:#fdf4ff; cursor:pointer; }
+.ftbl .sect-row td { padding:4px 14px; background:#f8fafc; }
+.fname { display:flex; align-items:center; gap:10px; }
+
+/* Move-to-folder popover */
+.move-wrap  { position:relative; display:inline-block; }
+.move-popover { display:none; position:absolute; right:0; top:110%; z-index:200;
+               background:#fff; border:1px solid #e2e8f0; border-radius:12px;
+               box-shadow:0 8px 30px rgba(0,0,0,.12); min-width:220px; max-height:280px;
+               overflow-y:auto; padding:6px 0; }
+.move-popover.open { display:block; }
+.move-popover .mp-item { display:flex; align-items:center; gap:8px; padding:8px 14px;
+               font-size:13px; cursor:pointer; color:#374151; transition:background .1s; }
+.move-popover .mp-item:hover { background:#ede9fe; color:#4f46e5; }
+.move-popover .mp-item i { color:#f59e0b; font-size:12px; width:14px; flex-shrink:0; }
+.move-popover .mp-sep  { padding:4px 14px; font-size:10px; font-weight:700;
+               color:#94a3b8; text-transform:uppercase; letter-spacing:.06em; }
+
+/* Empty */
+.empty { text-align:center; padding:60px 20px; color:#94a3b8; }
+.empty i { font-size:40px; margin-bottom:14px; opacity:.2; display:block; }
+
+/* New-folder inline form */
+#new-folder-form { display:none; padding:10px 16px; border-bottom:1px solid #f1f5f9;
+                   background:#f8fafc; }
+#new-folder-form.open { display:flex; gap:8px; align-items:center; }
 </style>
 {% endblock %}
 
 {% block content %}
 
-<!-- ── Top bar ─────────────────────────────────────────────────────────── -->
+<!-- Top bar -->
 <div style="display:flex;align-items:center;justify-content:space-between;
             margin-bottom:16px;flex-wrap:wrap;gap:10px;">
   <div>
     <h2 style="font-size:20px;font-weight:900;color:#0f172a;">Document Library</h2>
     <p style="color:#64748b;font-size:13px;margin-top:2px;">
-      {{ all_docs|length }} file{{ 's' if all_docs|length != 1 }}
+      {{ total_count }} file{{ 's' if total_count != 1 }}
       {% if active_project %} · {{ active_project.name }}{% endif %}
     </p>
   </div>
-  <a href="{{ url_for('document_upload') }}" class="btn-sm btn-primary">
-    <i class="fa-solid fa-cloud-arrow-up"></i> Upload Document
+  <a href="{{ url_for('document_upload') }}{% if folder_id %}?folder={{ folder_id }}{% endif %}"
+     class="btn btn-primary">
+    <i class="fa-solid fa-cloud-arrow-up"></i> Upload
   </a>
 </div>
 
-<!-- ── Explorer shell ─────────────────────────────────────────────────── -->
+<!-- ── Explorer shell ──────────────────────────────────────────────────────── -->
 <div class="doc-shell card" style="padding:0;">
 
-  <!-- LEFT sidebar (folder tree) -->
+  <!-- ════ LEFT SIDEBAR ════════════════════════════════════════════════════ -->
   <div class="doc-sidebar">
-    <div class="sidebar-hdr">Folders</div>
 
+    <!-- Root / All -->
+    <div class="sb-section">Navigation</div>
     <a href="{{ url_for('documents_list') }}"
-       class="sidebar-item {% if not active_cat %}active{% endif %}">
-      <i class="fa-solid fa-folder-open" style="color:#f59e0b;"></i>
+       class="sb-item {% if not folder_id and not search %}active{% endif %}">
+      <i class="fi fa-solid fa-folder-open" style="color:#f59e0b;"></i>
       All Documents
-      <span class="cnt">{{ all_docs|length }}</span>
+      <span class="cnt">{{ total_count }}</span>
     </a>
 
-    <div class="sidebar-hdr" style="margin-top:6px;">By Category</div>
-
-    {% for key, label, icon, color in DOCUMENT_CATEGORIES %}
-    {% set cnt = all_docs | selectattr('category','eq',key) | list | length %}
-    <a href="{{ url_for('documents_list', cat=key) }}"
-       class="sidebar-item {% if active_cat == key %}active{% endif %}">
-      <i class="fa-solid {{ icon }}"
-         style="color:{% if active_cat == key %}#4f46e5{% else %}{{ color }}{% endif %};"></i>
-      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ label }}</span>
+    <!-- Folder tree -->
+    {% if folder_tree %}
+    <div class="sb-section" style="margin-top:4px;">Folders</div>
+    {% for f, level in folder_tree %}
+    <a href="{{ url_for('documents_list', folder=f.id) }}"
+       class="sb-item {% if current_folder and current_folder.id == f.id %}active{% endif %}"
+       style="padding-left:{{ 12 + level * 16 }}px;">
+      <i class="fi fa-solid fa-folder{% if current_folder and current_folder.id == f.id %}-open{% endif %}"
+         style="color:#f59e0b;"></i>
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ f.name }}</span>
+      {% set cnt = f.doc_count_recursive %}
       {% if cnt %}<span class="cnt">{{ cnt }}</span>{% endif %}
     </a>
     {% endfor %}
-  </div>
+    {% endif %}
 
-  <!-- RIGHT content panel -->
-  <div class="doc-content">
+    <!-- New folder button -->
+    <div style="margin-top:auto;border-top:1px solid #e2e8f0;padding:6px 0;">
+      <a class="sb-new-folder" onclick="toggleNewFolderBar()" style="cursor:pointer;">
+        <i class="fa-solid fa-folder-plus" style="color:#4f46e5;font-size:13px;"></i>
+        New Folder
+      </a>
+    </div>
 
-    <!-- Toolbar -->
+  </div><!-- /sidebar -->
+
+  <!-- ════ MAIN CONTENT ════════════════════════════════════════════════════ -->
+  <div class="doc-main">
+
+    <!-- ── New-folder inline form ───────────────────────────────────────── -->
+    <form id="new-folder-form" method="POST" action="{{ url_for('folder_create') }}">
+      <input type="hidden" name="parent_id" value="{{ folder_id or '' }}"/>
+      <i class="fa-solid fa-folder-plus" style="color:#f59e0b;font-size:16px;"></i>
+      <input type="text" name="name" id="nf-input" placeholder="Folder name…"
+             class="search-box" style="width:220px;" required autocomplete="off"/>
+      <button type="submit" class="btn btn-primary" style="padding:6px 14px;">
+        <i class="fa-solid fa-check"></i> Create
+      </button>
+      <button type="button" onclick="toggleNewFolderBar()" class="btn btn-ghost" style="padding:6px 14px;">
+        Cancel
+      </button>
+      {% if current_folder %}
+      <span style="font-size:12px;color:#94a3b8;">inside <strong>{{ current_folder.name }}</strong></span>
+      {% endif %}
+    </form>
+
+    <!-- ── Toolbar ───────────────────────────────────────────────────────── -->
     <div class="doc-toolbar">
+
       <!-- Breadcrumb -->
-      <div class="breadcrumb">
+      <div class="bc">
         <a href="{{ url_for('documents_list') }}">
-          <i class="fa-solid fa-house" style="font-size:11px;margin-right:3px;"></i>All
+          <i class="fa-solid fa-house" style="font-size:11px;"></i> All
         </a>
-        {% if active_cat %}
+        {% for anc in ancestors %}
         <span class="sep">›</span>
-        <span style="color:#0f172a;font-weight:700;">{{ active_cat_label }}</span>
+        {% if not loop.last %}
+        <a href="{{ url_for('documents_list', folder=anc.id) }}">{{ anc.name }}</a>
+        {% else %}
+        <span class="cur">{{ anc.name }}</span>
         {% endif %}
+        {% endfor %}
       </div>
 
       <!-- Search -->
       <form method="GET" action="{{ url_for('documents_list') }}"
             style="display:flex;align-items:center;gap:6px;margin-left:auto;">
-        {% if active_cat %}<input type="hidden" name="cat" value="{{ active_cat }}"/>{% endif %}
-        <input name="q" value="{{ search }}" placeholder="Search…" class="search-box" autocomplete="off"/>
-        <button type="submit" class="btn-sm btn-ghost" style="padding:6px 10px;">
+        {% if folder_id %}<input type="hidden" name="folder" value="{{ folder_id }}"/>{% endif %}
+        <input name="q" value="{{ search }}" placeholder="Search files…"
+               class="search-box" autocomplete="off"/>
+        <button type="submit" class="btn btn-ghost" style="padding:6px 10px;">
           <i class="fa-solid fa-magnifying-glass"></i>
         </button>
-        {% if search or active_cat %}
-        <a href="{{ url_for('documents_list') }}" class="btn-sm btn-ghost" style="padding:6px 10px;">
+        {% if search %}
+        <a href="{{ url_for('documents_list', folder=folder_id or '') }}"
+           class="btn btn-ghost" style="padding:6px 10px;">
           <i class="fa-solid fa-xmark"></i>
         </a>
         {% endif %}
       </form>
 
-      <span style="font-size:12px;color:#94a3b8;white-space:nowrap;">
-        {{ docs|length }} item{{ 's' if docs|length != 1 }}
-      </span>
-    </div>
+      <!-- Delete folder -->
+      {% if current_folder %}
+      <form method="POST" action="{{ url_for('folder_delete', folder_id=current_folder.id) }}"
+            onsubmit="return confirm('Delete folder "{{ current_folder.name }}"? Files will move to parent folder.');">
+        <button type="submit" class="btn btn-danger" style="padding:5px 10px;"
+                title="Delete this folder">
+          <i class="fa-solid fa-folder-minus"></i>
+        </button>
+      </form>
+      {% endif %}
 
-    <!-- File / folder listing -->
-    {% if not docs %}
-    <div class="empty-state">
-      <i class="fa-solid fa-{% if active_cat %}folder-open{% else %}cloud-arrow-up{% endif %}"></i>
-      <p style="font-size:14px;font-weight:700;margin-bottom:6px;">
-        {% if search %}No results for "{{ search }}"
-        {% elif active_cat %}No files in {{ active_cat_label }}
-        {% else %}Library is empty{% endif %}
-      </p>
+    </div><!-- /toolbar -->
+
+    <!-- ── Table ─────────────────────────────────────────────────────────── -->
+    {% if not sub_folders and not docs and not search %}
+    <div class="empty">
+      <i class="fa-solid fa-folder-open"></i>
+      <p style="font-size:14px;font-weight:700;margin-bottom:6px;">This folder is empty</p>
       <p style="font-size:12px;">
-        {% if search %}Try a different search term.
-        {% else %}<a href="{{ url_for('document_upload') }}" style="color:#4f46e5;font-weight:600;">Upload your first document</a>{% endif %}
+        <a href="{{ url_for('document_upload') }}{% if folder_id %}?folder={{ folder_id }}{% endif %}"
+           style="color:#4f46e5;font-weight:600;">Upload a document</a>
+        &nbsp;or create a sub-folder below.
       </p>
     </div>
-
+    {% elif not sub_folders and not docs and search %}
+    <div class="empty">
+      <i class="fa-solid fa-magnifying-glass"></i>
+      <p style="font-size:14px;font-weight:700;margin-bottom:6px;">No results for "{{ search }}"</p>
+    </div>
     {% else %}
-    <table class="file-table">
+    <table class="ftbl">
       <thead>
         <tr>
           <th style="width:44%;">Name</th>
           <th>Category</th>
           <th>Size</th>
-          <th>Date</th>
-          <th style="text-align:center;">Links</th>
-          <th style="width:90px;"></th>
+          <th>Modified</th>
+          <th style="text-align:center;width:50px;">Links</th>
+          <th style="width:130px;"></th>
         </tr>
       </thead>
       <tbody>
-        <!-- Category "folders" only visible on All Documents view -->
-        {% if not active_cat and not search %}
-        {% for key, label, icon, color in DOCUMENT_CATEGORIES %}
-        {% set cnt = all_docs | selectattr('category','eq',key) | list | length %}
-        {% if cnt %}
-        <tr class="folder-row"
-            onclick="window.location='{{ url_for('documents_list', cat=key) }}'">
+
+        <!-- Sub-folders -->
+        {% if sub_folders %}
+        <tr class="sect-row"><td colspan="6"><span>Folders</span></td></tr>
+        {% for sf in sub_folders | sort(attribute='name') %}
+        <tr class="fold-row"
+            onclick="window.location='{{ url_for('documents_list', folder=sf.id) }}'">
           <td>
-            <div class="file-name">
-              <i class="fa-solid fa-folder" style="font-size:20px;color:{{ color }};width:22px;text-align:center;flex-shrink:0;"></i>
+            <div class="fname">
+              <i class="fa-solid fa-folder" style="font-size:20px;color:#f59e0b;
+                 width:22px;text-align:center;flex-shrink:0;"></i>
               <div>
-                <div style="font-weight:700;color:#0f172a;">{{ label }}</div>
-                <div style="font-size:11px;color:#94a3b8;">{{ cnt }} file{{ 's' if cnt != 1 }}</div>
+                <div style="font-weight:700;color:#0f172a;">{{ sf.name }}</div>
+                {% set cnt = sf.doc_count_recursive %}
+                <div style="font-size:11px;color:#94a3b8;">
+                  {{ cnt }} file{{ 's' if cnt != 1 }}
+                </div>
               </div>
             </div>
           </td>
           <td></td>
           <td style="color:#94a3b8;font-size:12px;">Folder</td>
-          <td></td>
+          <td style="color:#94a3b8;font-size:12px;">{{ sf.created_at.strftime('%d %b %Y') }}</td>
           <td></td>
           <td onclick="event.stopPropagation()">
-            <a href="{{ url_for('documents_list', cat=key) }}" class="btn-sm btn-ghost" style="padding:5px 10px;">
-              <i class="fa-solid fa-arrow-right" style="font-size:10px;"></i> Open
+            <a href="{{ url_for('documents_list', folder=sf.id) }}" class="btn btn-ghost" style="padding:5px 10px;">
+              <i class="fa-solid fa-arrow-right" style="font-size:10px;"></i>
             </a>
           </td>
         </tr>
-        {% endif %}
         {% endfor %}
+        {% endif %}
 
-        <!-- Divider -->
-        {% set loose = all_docs | selectattr('category','eq','general') | list %}
+        <!-- Files -->
         {% if docs %}
-        <tr>
-          <td colspan="6" style="padding:4px 14px;background:#f8fafc;">
-            <span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;">
-              All Files
-            </span>
-          </td>
-        </tr>
+        {% if sub_folders %}
+        <tr class="sect-row"><td colspan="6"><span>Files</span></td></tr>
         {% endif %}
-        {% endif %}
-
-        <!-- Actual files -->
         {% for doc in docs %}
-        <tr onclick="window.location='{{ url_for('document_detail', doc_id=doc.id) }}'">
+        <tr class="file-row"
+            onclick="window.location='{{ url_for('document_detail', doc_id=doc.id) }}'">
           <td>
-            <div class="file-name">
+            <div class="fname">
               <i class="fa-solid {{ doc.icon_class }}"
-                 style="font-size:19px;color:{{ doc.icon_color }};width:22px;text-align:center;flex-shrink:0;"></i>
+                 style="font-size:19px;color:{{ doc.icon_color }};
+                        width:22px;text-align:center;flex-shrink:0;"></i>
               <div style="min-width:0;">
                 <div style="font-weight:600;color:#0f172a;white-space:nowrap;
-                            overflow:hidden;text-overflow:ellipsis;max-width:280px;">{{ doc.title }}</div>
+                            overflow:hidden;text-overflow:ellipsis;max-width:260px;">{{ doc.title }}</div>
                 <div style="font-size:11px;color:#94a3b8;white-space:nowrap;
-                            overflow:hidden;text-overflow:ellipsis;max-width:280px;">{{ doc.original_filename }}</div>
+                            overflow:hidden;text-overflow:ellipsis;max-width:260px;">{{ doc.original_filename }}</div>
               </div>
             </div>
           </td>
           <td>
-            <span style="font-size:11px;font-weight:700;padding:2px 9px;border-radius:99px;
+            <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;
                          background:{{ doc.category_color }}15;color:{{ doc.category_color }};
-                         border:1px solid {{ doc.category_color }}25;white-space:nowrap;">{{ doc.category_label }}</span>
+                         border:1px solid {{ doc.category_color }}22;white-space:nowrap;">
+              {{ doc.category_label }}
+            </span>
           </td>
-          <td style="color:#64748b;white-space:nowrap;">{{ doc.file_size_display }}</td>
-          <td style="color:#64748b;white-space:nowrap;">{{ doc.uploaded_at.strftime('%d %b %Y') }}</td>
+          <td style="color:#64748b;white-space:nowrap;font-size:12px;">{{ doc.file_size_display }}</td>
+          <td style="color:#64748b;white-space:nowrap;font-size:12px;">{{ doc.uploaded_at.strftime('%d %b %Y') }}</td>
           <td style="text-align:center;">
             {% if doc.links %}
-            <span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:700;
-                         padding:2px 7px;border-radius:99px;background:#ede9fe;color:#6d28d9;">
-              <i class="fa-solid fa-link" style="font-size:8px;"></i> {{ doc.links|length }}
+            <span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;
+                         font-weight:700;padding:2px 7px;border-radius:99px;
+                         background:#ede9fe;color:#6d28d9;">
+              <i class="fa-solid fa-link" style="font-size:8px;"></i>{{ doc.links|length }}
             </span>
-            {% else %}
-            <span style="color:#e2e8f0;">—</span>
-            {% endif %}
+            {% else %}<span style="color:#e2e8f0;">—</span>{% endif %}
           </td>
+
+          <!-- Actions (stop row-click) -->
           <td onclick="event.stopPropagation()" style="white-space:nowrap;">
+
+            <!-- Open in new tab -->
             <a href="{{ url_for('document_view', doc_id=doc.id) }}" target="_blank"
-               class="btn-sm btn-ghost" title="Open / Print" style="padding:5px 9px;margin-right:3px;">
+               class="btn btn-ghost" title="Open / Print"
+               style="padding:5px 8px;margin-right:2px;">
               <i class="fa-solid fa-arrow-up-right-from-square"></i>
             </a>
+
+            <!-- Download -->
             <a href="{{ url_for('document_download', doc_id=doc.id) }}"
-               class="btn-sm btn-ghost" title="Download" style="padding:5px 9px;">
+               class="btn btn-ghost" title="Download"
+               style="padding:5px 8px;margin-right:2px;">
               <i class="fa-solid fa-download"></i>
             </a>
+
+            <!-- Move to folder -->
+            <div class="move-wrap" id="mw-{{ doc.id }}">
+              <button class="btn btn-ghost" title="Move to folder"
+                      style="padding:5px 8px;"
+                      onclick="toggleMove({{ doc.id }}, event)">
+                <i class="fa-solid fa-folder-arrow-down"></i>
+              </button>
+              <div class="move-popover" id="mp-{{ doc.id }}">
+                <div class="mp-sep">Move to…</div>
+                <!-- Root -->
+                <div class="mp-item" onclick="moveDoc({{ doc.id }}, 0, this)">
+                  <i class="fa-solid fa-house"></i>
+                  <span>Root (no folder)</span>
+                </div>
+                {% for tf, tl in folder_tree %}
+                <div class="mp-item"
+                     onclick="moveDoc({{ doc.id }}, {{ tf.id }}, this)"
+                     style="padding-left:{{ 14 + tl * 14 }}px;">
+                  <i class="fa-solid fa-folder"></i>
+                  <span>{{ tf.name }}</span>
+                </div>
+                {% endfor %}
+              </div>
+            </div>
+
           </td>
         </tr>
         {% endfor %}
+        {% endif %}
+
       </tbody>
     </table>
     {% endif %}
 
-  </div><!-- /doc-content -->
+  </div><!-- /doc-main -->
 </div><!-- /doc-shell -->
 
+{% endblock %}
+
+{% block scripts %}
+<script>
+/* ── New-folder bar toggle ─────────────────────────────────────────────── */
+function toggleNewFolderBar() {
+  const bar = document.getElementById('new-folder-form');
+  const inp = document.getElementById('nf-input');
+  if (bar.classList.toggle('open')) inp.focus();
+}
+
+/* ── Move-to-folder popover ──────────────────────────────────────────────
+   Clicking the folder-arrow button opens a popover listing all folders.
+   Clicking a folder item calls the /move endpoint via fetch, then reloads.
+*/
+function toggleMove(docId, e) {
+  e.stopPropagation();
+  // Close any others
+  document.querySelectorAll('.move-popover.open').forEach(p => {
+    if (p.id !== 'mp-' + docId) p.classList.remove('open');
+  });
+  document.getElementById('mp-' + docId).classList.toggle('open');
+}
+
+function moveDoc(docId, folderId, el) {
+  const body = new URLSearchParams({ folder_id: folderId });
+  fetch(`/documents/${docId}/move`, { method:'POST', body })
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok) {
+        // Show brief success flash on the row icon
+        const btn = el.closest('.move-popover');
+        btn.classList.remove('open');
+        const wrap = document.getElementById('mw-' + docId);
+        const icon = wrap.querySelector('i');
+        icon.className = 'fa-solid fa-check';
+        icon.style.color = '#22c55e';
+        setTimeout(() => location.reload(), 600);
+      }
+    });
+}
+
+// Close popovers when clicking elsewhere
+document.addEventListener('click', () => {
+  document.querySelectorAll('.move-popover.open').forEach(p => p.classList.remove('open'));
+});
+</script>
 {% endblock %}

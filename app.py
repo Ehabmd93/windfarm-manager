@@ -18,7 +18,7 @@ from models import (db, User, WTG, Area, QATest, TestRecord,
                     ITPRecord, ITPItemStatus, ITPItemDocument,
                     FoundationStage, FoundationStageTemplate, FoundationDocument, FOUNDATION_STAGES,
                     CustomTrackingField, ProgressWidget,
-                    Document, DocumentLink,
+                    Document, DocumentLink, DocumentFolder,
                     DOCUMENT_CATEGORIES, DOCUMENT_LINK_TYPES, DOCUMENT_LINK_DICT)
 from itp_definitions import ITP_DEFINITIONS, CLIENTS
 from seed import seed
@@ -299,35 +299,124 @@ def _allowed_doc(filename):
     return '.' in filename and filename.rsplit('.',1)[1].lower() in ALLOWED_DOC_EXTS
 
 
+def _build_folder_tree(folders, parent_id=None, level=0):
+    """Return flat list of (folder, level) in tree order."""
+    result = []
+    for f in sorted(folders, key=lambda x: x.name.lower()):
+        if f.parent_id == parent_id:
+            result.append((f, level))
+            result.extend(_build_folder_tree(folders, f.id, level + 1))
+    return result
+
+
+def _folder_ancestors(folder):
+    """Return list [root … folder] of ancestor folders."""
+    chain = []
+    f = folder
+    while f:
+        chain.insert(0, f)
+        f = DocumentFolder.query.get(f.parent_id) if f.parent_id else None
+    return chain
+
+
 @app.route('/documents')
 @login_required
 def documents_list():
     from flask import g
     proj = getattr(g, 'project', None)
 
-    # Full unfiltered list for folder-tree counts
-    base_q = Document.query.filter_by(is_active=True)
+    folder_id = request.args.get('folder', type=int)
+    search    = request.args.get('q', '').strip()
+
+    # All folders for this project (sidebar tree)
+    fq = DocumentFolder.query
+    if proj:
+        fq = fq.filter_by(project_id=proj.id)
+    all_folders   = fq.order_by(DocumentFolder.name).all()
+    folder_tree   = _build_folder_tree(all_folders)
+
+    # Current folder object
+    current_folder = DocumentFolder.query.get(folder_id) if folder_id else None
+    ancestors      = _folder_ancestors(current_folder) if current_folder else []
+
+    # Sub-folders to show in the main panel
+    sub_folders = [f for f in all_folders if f.parent_id == folder_id]
+
+    # Files in the current folder
+    base_q = Document.query.filter_by(is_active=True, folder_id=folder_id)
     if proj:
         base_q = base_q.filter_by(project_id=proj.id)
-    all_docs = base_q.order_by(Document.uploaded_at.desc()).all()
+    if search:
+        base_q = base_q.filter(
+            Document.title.ilike(f'%{search}%') |
+            Document.original_filename.ilike(f'%{search}%')
+        )
+    docs = base_q.order_by(Document.uploaded_at.desc()).all()
 
-    # Filters from query string
-    cat    = request.args.get('cat',  '')
-    search = request.args.get('q', '').strip()
-
-    docs = all_docs
-    if cat:    docs = [d for d in docs if d.category == cat]
-    if search: docs = [d for d in docs if search.lower() in d.title.lower()
-                                        or search.lower() in (d.original_filename or '').lower()]
-
-    # Human-readable label for active category
-    cat_map = {k: lbl for k, lbl, _ic, _col in DOCUMENT_CATEGORIES}
-    active_cat_label = cat_map.get(cat, cat)
+    # Total count for sidebar badge
+    all_q = Document.query.filter_by(is_active=True)
+    if proj:
+        all_q = all_q.filter_by(project_id=proj.id)
+    total_count = all_q.count()
 
     return render_template('documents.html',
-                           docs=docs, all_docs=all_docs,
-                           active_cat=cat, search=search,
-                           active_cat_label=active_cat_label)
+                           docs=docs,
+                           sub_folders=sub_folders,
+                           folder_tree=folder_tree,
+                           all_folders=all_folders,
+                           current_folder=current_folder,
+                           ancestors=ancestors,
+                           folder_id=folder_id,
+                           search=search,
+                           total_count=total_count)
+
+
+@app.route('/documents/folder/new', methods=['POST'])
+@login_required
+def folder_create():
+    from flask import g
+    proj      = getattr(g, 'project', None)
+    name      = request.form.get('name', '').strip()
+    parent_id = request.form.get('parent_id', type=int)
+
+    if not name:
+        flash('Folder name is required.', 'danger')
+        return redirect(url_for('documents_list', folder=parent_id or ''))
+
+    folder = DocumentFolder(
+        project_id = proj.id if proj else None,
+        parent_id  = parent_id or None,
+        name       = name,
+        created_by = current_user.id,
+    )
+    db.session.add(folder)
+    db.session.commit()
+    flash(f'Folder "{name}" created.', 'success')
+    return redirect(url_for('documents_list', folder=folder.id))
+
+
+@app.route('/documents/folder/<int:folder_id>/delete', methods=['POST'])
+@login_required
+def folder_delete(folder_id):
+    folder = DocumentFolder.query.get_or_404(folder_id)
+    parent = folder.parent_id
+    # Move all documents in this folder to the parent (or root)
+    for doc in folder.documents:
+        doc.folder_id = parent
+    db.session.delete(folder)
+    db.session.commit()
+    flash(f'Folder "{folder.name}" deleted. Files moved to parent folder.', 'success')
+    return redirect(url_for('documents_list', folder=parent or ''))
+
+
+@app.route('/documents/<int:doc_id>/move', methods=['POST'])
+@login_required
+def document_move(doc_id):
+    doc       = Document.query.filter_by(id=doc_id, is_active=True).first_or_404()
+    folder_id = request.form.get('folder_id', type=int)   # None / 0 = root
+    doc.folder_id = folder_id if folder_id else None
+    db.session.commit()
+    return jsonify({'ok': True})
 
 
 @app.route('/documents/upload', methods=['GET', 'POST'])
@@ -348,8 +437,10 @@ def document_upload():
         ext   = f.filename.rsplit('.',1)[1].lower()
         title = request.form.get('title','').strip() or f.filename.rsplit('.',1)[0]
 
+        folder_id_up = request.form.get('folder_id', type=int) or None
         doc = Document(
             project_id        = proj.id if proj else None,
+            folder_id         = folder_id_up,
             title             = title,
             description       = request.form.get('description','').strip(),
             original_filename = f.filename,
@@ -363,9 +454,19 @@ def document_upload():
         db.session.add(doc)
         db.session.commit()
         flash(f'"{doc.title}" uploaded successfully.', 'success')
-        return redirect(url_for('document_detail', doc_id=doc.id))
+        return redirect(url_for('documents_list', folder=folder_id_up or ''))
 
-    return render_template('document_upload.html')
+    # Pass folder context to upload page
+    from flask import g as _g
+    _proj = getattr(_g, 'project', None)
+    _fq   = DocumentFolder.query
+    if _proj:
+        _fq = _fq.filter_by(project_id=_proj.id)
+    upload_folders = _fq.order_by(DocumentFolder.name).all()
+    pre_folder     = request.args.get('folder', type=int)
+    return render_template('document_upload.html',
+                           upload_folders=upload_folders,
+                           pre_folder=pre_folder)
 
 
 @app.route('/documents/<int:doc_id>')

@@ -66,6 +66,19 @@
         </div>
 
         <div>
+          <label class="form-label">Save to Folder</label>
+          <select name="folder_id" class="form-input form-select">
+            <option value="">📁 Root (no folder)</option>
+            {% for f in upload_folders %}
+            <option value="{{ f.id }}"
+              {% if pre_folder == f.id %}selected{% endif %}>
+              📁 {{ f.name }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div>
           <label class="form-label">Category</label>
           <select name="category" class="form-input form-select">
             {% for key, label, icon, color in DOCUMENT_CATEGORIES %}

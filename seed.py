@@ -118,6 +118,20 @@ def _migrate_projects(app):
         db.session.commit()
         print(f"Created King Rocks Wind Farm project (id={kr.id})")
 
+    # ── 2a. Add folder_id column to documents table if missing ──────────────
+    from sqlalchemy import text, inspect as sa_inspect
+    insp2 = sa_inspect(db.engine)
+    if 'documents' in insp2.get_table_names():
+        cols2 = [c['name'] for c in insp2.get_columns('documents')]
+        if 'folder_id' not in cols2:
+            try:
+                with db.engine.connect() as conn:
+                    conn.execute(text('ALTER TABLE documents ADD COLUMN folder_id INTEGER REFERENCES document_folders(id)'))
+                    conn.commit()
+                print("Added folder_id column to documents")
+            except Exception as e:
+                print(f"folder_id column note: {e}")
+
     # ── 2b. Ensure all features exist for all existing projects ──────────────
     for proj in Project.query.all():
         existing_keys = {f.feature_key for f in proj.features}

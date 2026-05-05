@@ -560,10 +560,37 @@ DOCUMENT_LINK_TYPES = [
 # Dict version for fast template lookups (key → (label, icon))
 DOCUMENT_LINK_DICT = {k: (lbl, icon) for k, lbl, icon in DOCUMENT_LINK_TYPES}
 
+class DocumentFolder(db.Model):
+    """Hierarchical folder tree for the document library."""
+    __tablename__ = 'document_folders'
+    id         = db.Column(db.Integer, primary_key=True)
+    project_id = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=True)
+    parent_id  = db.Column(db.Integer, db.ForeignKey('document_folders.id'), nullable=True)
+    name       = db.Column(db.String(200), nullable=False)
+    created_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    children  = db.relationship('DocumentFolder',
+                                 backref=db.backref('parent', remote_side='DocumentFolder.id'),
+                                 lazy=True, cascade='all,delete')
+    documents = db.relationship('Document', backref='folder', lazy=True,
+                                 foreign_keys='Document.folder_id')
+    creator   = db.relationship('User', foreign_keys=[created_by])
+
+    @property
+    def doc_count_recursive(self):
+        """Count docs in this folder and all sub-folders (active only)."""
+        count = sum(1 for d in self.documents if d.is_active)
+        for child in self.children:
+            count += child.doc_count_recursive
+        return count
+
+
 class Document(db.Model):
     __tablename__ = 'documents'
     id                = db.Column(db.Integer, primary_key=True)
     project_id        = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=True)
+    folder_id         = db.Column(db.Integer, db.ForeignKey('document_folders.id'), nullable=True)
     title             = db.Column(db.String(300), nullable=False)
     description       = db.Column(db.Text)
     original_filename = db.Column(db.String(300), nullable=False)
