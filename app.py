@@ -76,7 +76,7 @@ if not _db_url:
     _db_url = f"sqlite:///{os.path.join(BASE_DIR, 'windfarm.db')}"
 app.config['SQLALCHEMY_DATABASE_URI'] = _db_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500 MB — DB fallback limit (R2 path bypasses this entirely)
+app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024 * 1024  # 2 GB — DB fallback limit (R2 path bypasses this entirely)
 
 # ── File upload dirs ─────────────────────────────────────────────────────────
 # On Railway with a volume mounted at /data, use that; else local static/
