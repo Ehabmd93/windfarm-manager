@@ -47,6 +47,7 @@ ALL_FEATURES = [
     ('itp',              'ITPs',               'fa-clipboard-list',    '#a78bfa'),
     ('foundation',       'Foundation Tracker', 'fa-layer-group',       '#fb923c'),
     ('progress_tracker', 'Analytics',          'fa-chart-line',        '#22d3ee'),
+    ('documents',        'Documents',          'fa-folder-open',       '#f59e0b'),
     ('daily_report',     'Daily Report',       'fa-clipboard-user',    '#38bdf8'),
     ('site_capture',     'Daily Site Capture', 'fa-camera-retro',      '#c084fc'),
     ('roster',           'Roster',             'fa-users',             '#e879f9'),
@@ -556,6 +557,8 @@ DOCUMENT_LINK_TYPES = [
     ('itp_record',   'ITP Record',        'fa-clipboard-list'),
     ('project',      'Project (General)', 'fa-folder'),
 ]
+# Dict version for fast template lookups (key → (label, icon))
+DOCUMENT_LINK_DICT = {k: (lbl, icon) for k, lbl, icon in DOCUMENT_LINK_TYPES}
 
 class Document(db.Model):
     __tablename__ = 'documents'

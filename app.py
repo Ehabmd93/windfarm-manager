@@ -18,7 +18,7 @@ from models import (db, User, WTG, Area, QATest, TestRecord,
                     FoundationStage, FoundationStageTemplate, FoundationDocument, FOUNDATION_STAGES,
                     CustomTrackingField, ProgressWidget,
                     Document, DocumentLink,
-                    DOCUMENT_CATEGORIES, DOCUMENT_LINK_TYPES)
+                    DOCUMENT_CATEGORIES, DOCUMENT_LINK_TYPES, DOCUMENT_LINK_DICT)
 from itp_definitions import ITP_DEFINITIONS, CLIENTS
 from seed import seed
 from kml_parser import get_geojson
@@ -116,8 +116,9 @@ def inject_now():
         'ALL_FEATURES':       ALL_FEATURES,
         'PROJECT_TYPES':      PROJECT_TYPES,
         'PROJECT_STATUSES':   PROJECT_STATUSES,
-        'DOCUMENT_CATEGORIES': DOCUMENT_CATEGORIES,
-        'DOCUMENT_LINK_TYPES': DOCUMENT_LINK_TYPES,
+        'DOCUMENT_CATEGORIES':  DOCUMENT_CATEGORIES,
+        'DOCUMENT_LINK_TYPES':  DOCUMENT_LINK_TYPES,
+        'DOCUMENT_LINK_DICT':   DOCUMENT_LINK_DICT,
     }
 
 # ─── Context helpers ─────────────────────────────────────────────────────────
@@ -290,29 +291,30 @@ def _allowed_doc(filename):
 def documents_list():
     from flask import g
     proj = getattr(g, 'project', None)
-    q = Document.query.filter_by(is_active=True)
+
+    # Full unfiltered list for folder-tree counts
+    base_q = Document.query.filter_by(is_active=True)
     if proj:
-        q = q.filter_by(project_id=proj.id)
-    q = q.order_by(Document.uploaded_at.desc())
+        base_q = base_q.filter_by(project_id=proj.id)
+    all_docs = base_q.order_by(Document.uploaded_at.desc()).all()
 
     # Filters from query string
-    cat   = request.args.get('cat',  '')
-    ftype = request.args.get('type', '')
+    cat    = request.args.get('cat',  '')
     search = request.args.get('q', '').strip()
-    if cat:    q = q.filter_by(category=cat)
-    if ftype:  q = q.filter(Document.file_ext == ftype.lower())
-    if search: q = q.filter(Document.title.ilike(f'%{search}%'))
 
-    docs = q.all()
+    docs = all_docs
+    if cat:    docs = [d for d in docs if d.category == cat]
+    if search: docs = [d for d in docs if search.lower() in d.title.lower()
+                                        or search.lower() in (d.original_filename or '').lower()]
 
-    # Stats
-    total_size = sum(d.file_size or 0 for d in docs)
-    cats_used  = list({d.category for d in docs})
-    ext_list   = sorted({d.file_ext.lower() for d in docs})
+    # Human-readable label for active category
+    cat_map = {k: lbl for k, lbl, _ic, _col in DOCUMENT_CATEGORIES}
+    active_cat_label = cat_map.get(cat, cat)
+
     return render_template('documents.html',
-                           docs=docs, total_size=total_size,
-                           cats_used=cats_used, ext_list=ext_list,
-                           active_cat=cat, active_type=ftype, search=search)
+                           docs=docs, all_docs=all_docs,
+                           active_cat=cat, search=search,
+                           active_cat_label=active_cat_label)
 
 
 @app.route('/documents/upload', methods=['GET', 'POST'])
@@ -360,41 +362,74 @@ def document_detail(doc_id):
     from flask import g
     proj = getattr(g, 'project', None)
 
-    # Build link target options
-    wtgs          = WTG.query.filter_by(project_id=proj.id).order_by(WTG.name).all() if proj else []
-    proof_rolls   = (ProofRollRecord.query
-                     .join(QATest).join(Area).join(WTG)
-                     .filter(WTG.project_id == proj.id)
-                     .order_by(ProofRollRecord.date.desc()).all()) if proj else []
-    itp_records   = (ITPRecord.query
-                     .join(WTG, ITPRecord.wtg_id == WTG.id)
-                     .filter(WTG.project_id == proj.id)
-                     .order_by(ITPRecord.created_at.desc()).all()) if proj else []
+    # Build link target options (as simple {id, name} dicts for JS)
+    wtg_options     = []
+    pr_options      = []
+    itp_options     = []
+    qa_test_options = []
+
+    if proj:
+        for w in WTG.query.filter_by(project_id=proj.id).order_by(WTG.name).all():
+            wtg_options.append({'id': w.id, 'name': w.name})
+
+        for pr in (ProofRollRecord.query
+                   .join(QATest).join(Area).join(WTG)
+                   .filter(WTG.project_id == proj.id)
+                   .order_by(ProofRollRecord.date.desc()).all()):
+            try:
+                label = f'{pr.qa_test.area.wtg.name} – {pr.qa_test.area.label} ({pr.date})'
+            except Exception:
+                label = f'Proof Roll #{pr.id}'
+            pr_options.append({'id': pr.id, 'name': label})
+
+        for it in (ITPRecord.query
+                   .join(WTG, ITPRecord.wtg_id == WTG.id)
+                   .filter(WTG.project_id == proj.id)
+                   .order_by(ITPRecord.created_at.desc()).all()):
+            wtg_obj = WTG.query.get(it.wtg_id)
+            label   = f'{wtg_obj.name} / {it.itp_type.replace("_"," ").title()}' if wtg_obj else f'ITP #{it.id}'
+            itp_options.append({'id': it.id, 'name': label})
+
+        qa_test_options = []
+        for qt in (QATest.query
+                   .join(Area).join(WTG)
+                   .filter(WTG.project_id == proj.id)
+                   .order_by(QATest.id.desc()).all()):
+            try:
+                label = f'{qt.area.wtg.name} – {qt.area.label} / {qt.display_name}'
+            except Exception:
+                label = f'QA Test #{qt.id}'
+            qa_test_options.append({'id': qt.id, 'name': label})
 
     # Enrich links with human-readable label
     link_labels = {}
     for lnk in doc.links:
-        if lnk.link_type == 'wtg':
-            w = WTG.query.get(lnk.link_id)
-            link_labels[lnk.id] = w.name if w else f'WTG #{lnk.link_id}'
-        elif lnk.link_type == 'proof_roll':
-            pr = ProofRollRecord.query.get(lnk.link_id)
-            link_labels[lnk.id] = (f'Proof Roll – {pr.qa_test.area.wtg.name} '
-                                    f'{pr.qa_test.area.label} ({pr.date})') if pr else f'PR #{lnk.link_id}'
-        elif lnk.link_type == 'itp_record':
-            it  = ITPRecord.query.get(lnk.link_id)
-            wtg = WTG.query.get(it.wtg_id) if it else None
-            link_labels[lnk.id] = f'ITP – {wtg.name} / {it.itp_type}' if (it and wtg) else f'ITP #{lnk.link_id}'
-        elif lnk.link_type == 'qa_test':
-            qt = QATest.query.get(lnk.link_id)
-            link_labels[lnk.id] = (f'{qt.display_name} – {qt.area.wtg.name} '
-                                    f'{qt.area.label}') if qt else f'Test #{lnk.link_id}'
-        else:
-            link_labels[lnk.id] = f'Project link'
+        try:
+            if lnk.link_type == 'wtg':
+                w = WTG.query.get(lnk.link_id)
+                link_labels[lnk.id] = w.name if w else f'WTG #{lnk.link_id}'
+            elif lnk.link_type == 'proof_roll':
+                pr = ProofRollRecord.query.get(lnk.link_id)
+                link_labels[lnk.id] = (f'{pr.qa_test.area.wtg.name} – '
+                                        f'{pr.qa_test.area.label} ({pr.date})') if pr else f'PR #{lnk.link_id}'
+            elif lnk.link_type == 'itp_record':
+                it  = ITPRecord.query.get(lnk.link_id)
+                wtg = WTG.query.get(it.wtg_id) if it else None
+                link_labels[lnk.id] = (f'{wtg.name} / {it.itp_type.replace("_"," ").title()}'
+                                        if (it and wtg) else f'ITP #{lnk.link_id}')
+            elif lnk.link_type == 'qa_test':
+                qt = QATest.query.get(lnk.link_id)
+                link_labels[lnk.id] = (f'{qt.display_name} – {qt.area.wtg.name} '
+                                        f'{qt.area.label}') if qt else f'Test #{lnk.link_id}'
+            else:
+                link_labels[lnk.id] = 'Project (General)'
+        except Exception:
+            link_labels[lnk.id] = f'Record #{lnk.link_id}'
 
     return render_template('document_detail.html', doc=doc,
-                           wtgs=wtgs, proof_rolls=proof_rolls,
-                           itp_records=itp_records, link_labels=link_labels)
+                           wtg_options=wtg_options, pr_options=pr_options,
+                           itp_options=itp_options, qa_test_options=qa_test_options,
+                           link_labels=link_labels)
 
 
 @app.route('/documents/<int:doc_id>/view')
@@ -546,9 +581,16 @@ def dashboard():
 @app.route('/wtg/<int:wtg_id>')
 @login_required
 def wtg_detail(wtg_id):
-    wtg = WTG.query.get_or_404(wtg_id)
+    wtg   = WTG.query.get_or_404(wtg_id)
     areas = {a.area_type: a for a in wtg.areas}
-    return render_template('wtg_detail.html', wtg=wtg, areas=areas)
+
+    # Documents linked directly to this WTG
+    wtg_links   = DocumentLink.query.filter_by(link_type='wtg', link_id=wtg.id).all()
+    wtg_doc_ids = [lnk.document_id for lnk in wtg_links]
+    wtg_docs    = Document.query.filter(Document.id.in_(wtg_doc_ids),
+                                         Document.is_active == True).all() if wtg_doc_ids else []
+
+    return render_template('wtg_detail.html', wtg=wtg, areas=areas, wtg_docs=wtg_docs)
 
 # ─── QA Test detail / mark complete ──────────────────────────────────────────
 @app.route('/test/<int:test_id>')
@@ -620,6 +662,14 @@ def proof_roll_index():
     summary = []
     total_records = total_passed = total_failed = total_pending = 0
 
+    # Pre-fetch document link counts keyed by proof_roll id
+    from sqlalchemy import func
+    pr_doc_counts = {}
+    for row in (db.session.query(DocumentLink.link_id, func.count(DocumentLink.id))
+                .filter_by(link_type='proof_roll')
+                .group_by(DocumentLink.link_id).all()):
+        pr_doc_counts[row[0]] = row[1]
+
     for wtg in wtgs:
         wtg_entry = {'wtg': wtg, 'areas': []}
         for area in sorted(wtg.areas, key=lambda a: ['hardstand','crane_pad','boom_pad','blade_fingers'].index(a.area_type) if a.area_type in ['hardstand','crane_pad','boom_pad','blade_fingers'] else 99):
@@ -631,7 +681,9 @@ def proof_roll_index():
                 recs   = test.proof_rolls
                 latest = recs[-1] if recs else None
                 status = latest.passed if latest else 'pending'
-                area_rows.append({'test': test, 'count': len(recs), 'latest': latest, 'status': status})
+                doc_count = pr_doc_counts.get(latest.id, 0) if latest else 0
+                area_rows.append({'test': test, 'count': len(recs), 'latest': latest,
+                                  'status': status, 'doc_count': doc_count})
                 total_records += len(recs)
                 total_passed  += sum(1 for r in recs if r.passed == 'yes')
                 total_failed  += sum(1 for r in recs if r.passed == 'no')
@@ -796,7 +848,16 @@ def view_proof_roll(pr_id):
     test = pr.qa_test
     area = test.area
     wtg  = area.wtg
-    return render_template('proof_roll_view.html', pr=pr, test=test, area=area, wtg=wtg)
+
+    # Linked documents (via DocumentLink)
+    pr_links   = DocumentLink.query.filter_by(link_type='proof_roll', link_id=pr.id).all()
+    test_links = DocumentLink.query.filter_by(link_type='qa_test',    link_id=test.id).all()
+    all_link_ids = list({lnk.document_id for lnk in pr_links + test_links})
+    linked_docs  = Document.query.filter(Document.id.in_(all_link_ids),
+                                         Document.is_active == True).all() if all_link_ids else []
+
+    return render_template('proof_roll_view.html', pr=pr, test=test, area=area, wtg=wtg,
+                           linked_docs=linked_docs)
 
 # ─── PDF export — branded, printable ────────────────────────────────────────
 @app.route('/proof-roll/<int:pr_id>/pdf')
@@ -1074,6 +1135,13 @@ def itp_detail(wtg_id, itp_type):
 
     now = datetime.now()
     now_dt = now.strftime('%Y-%m-%dT%H:%M')
+
+    # Linked documents for this ITP record
+    itp_links   = DocumentLink.query.filter_by(link_type='itp_record', link_id=record.id).all()
+    itp_doc_ids = [lnk.document_id for lnk in itp_links]
+    itp_linked_docs = Document.query.filter(Document.id.in_(itp_doc_ids),
+                                             Document.is_active == True).all() if itp_doc_ids else []
+
     return render_template('itp_detail.html',
                            wtg=wtg,
                            itp_type=itp_type,
@@ -1082,7 +1150,8 @@ def itp_detail(wtg_id, itp_type):
                            statuses=statuses,
                            clients=CLIENTS,
                            today=date.today().isoformat(),
-                           now_dt=now_dt)
+                           now_dt=now_dt,
+                           linked_docs=itp_linked_docs)
 
 
 @app.route('/itp/client/<token>', methods=['GET', 'POST'])

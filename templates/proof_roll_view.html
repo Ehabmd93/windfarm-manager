@@ -278,6 +278,50 @@
       <div style="display:flex;gap:8px;"><span style="font-weight:700;min-width:90px;">Form Ref:</span><span>OPER-FRM-057 · Uncontrolled When Printed</span></div>
     </div>
 
+    <!-- ── Linked Documents ─────────────────────────────────────────────── -->
+    {% if linked_docs %}
+    <div class="view-section no-print" style="margin-top:22px;">
+      <div class="vs-title">
+        <i class="fa-solid fa-paperclip" style="color:#f59e0b;"></i>
+        Linked Documents <span style="margin-left:6px;font-size:10px;background:#fef3c7;color:#d97706;padding:1px 8px;border-radius:99px;font-weight:700;">{{ linked_docs|length }}</span>
+      </div>
+      <div style="display:grid;gap:8px;">
+        {% for doc in linked_docs %}
+        <a href="{{ url_for('document_detail', doc_id=doc.id) }}"
+           style="display:flex;align-items:center;gap:12px;padding:10px 14px;
+                  background:#fffbeb;border:1px solid #fde68a;border-radius:10px;
+                  text-decoration:none;transition:background .12s;"
+           onmouseover="this.style.background='#fef9c3'"
+           onmouseout="this.style.background='#fffbeb'">
+          <div style="width:36px;height:36px;border-radius:9px;flex-shrink:0;
+                      background:{{ doc.icon_color }}20;display:flex;align-items:center;justify-content:center;">
+            <i class="fa-solid {{ doc.icon_class }}" style="font-size:16px;color:{{ doc.icon_color }};"></i>
+          </div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:13px;font-weight:700;color:#0f172a;
+                        white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ doc.title }}</div>
+            <div style="font-size:11px;color:#92400e;">
+              {{ doc.file_ext.upper() }} · {{ doc.file_size_display }} · {{ doc.uploaded_at.strftime('%d %b %Y') }}
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;flex-shrink:0;">
+            <span onclick="event.preventDefault();window.open('{{ url_for('document_download', doc_id=doc.id) }}')"
+                  style="width:30px;height:30px;border-radius:7px;background:#f59e0b;color:white;
+                         display:flex;align-items:center;justify-content:center;font-size:12px;cursor:pointer;">
+              <i class="fa-solid fa-download"></i>
+            </span>
+            <span onclick="event.preventDefault();window.open('{{ url_for('document_view', doc_id=doc.id) }}')"
+                  style="width:30px;height:30px;border-radius:7px;background:#0891b2;color:white;
+                         display:flex;align-items:center;justify-content:center;font-size:12px;cursor:pointer;">
+              <i class="fa-solid fa-arrow-up-right-from-square"></i>
+            </span>
+          </div>
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
   </div><!-- /content box -->
 </div><!-- /printable -->
 

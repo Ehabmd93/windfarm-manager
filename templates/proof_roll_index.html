@@ -134,6 +134,13 @@
                  class="text-xs px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 border border-blue-100 hover:bg-blue-100 transition font-medium">
                 <i class="fa-solid fa-eye mr-1"></i>View
               </a>
+              {% if t.doc_count %}
+              <a href="{{ url_for('view_proof_roll', pr_id=t.latest.id) }}"
+                 class="text-xs px-2 py-1 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition font-medium"
+                 title="{{ t.doc_count }} linked document{{ 's' if t.doc_count != 1 }}">
+                <i class="fa-solid fa-paperclip mr-1"></i>{{ t.doc_count }}
+              </a>
+              {% endif %}
             {% endif %}
             <a href="{{ url_for('proof_roll_form', test_id=t.test.id) }}"
                class="text-xs px-2.5 py-1 rounded-lg

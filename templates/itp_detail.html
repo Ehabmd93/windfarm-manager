@@ -508,6 +508,50 @@
       {% endif %}
     </div>
 
+    <!-- ── Linked Documents panel ──────────────────────────────────────── -->
+    <div class="panel">
+      <div class="panel-hdr" style="background:#d97706;">
+        <i class="fa-solid fa-paperclip"></i> Linked Documents
+        {% if linked_docs %}
+        <span style="margin-left:auto;font-size:11px;background:rgba(255,255,255,.25);
+                     padding:1px 8px;border-radius:99px;">{{ linked_docs|length }}</span>
+        {% endif %}
+      </div>
+      <div class="panel-body">
+        {% if linked_docs %}
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          {% for doc in linked_docs %}
+          <a href="{{ url_for('document_detail', doc_id=doc.id) }}"
+             style="display:flex;align-items:center;gap:9px;padding:8px 10px;
+                    background:#fffbeb;border:1px solid #fde68a;border-radius:9px;
+                    text-decoration:none;transition:background .12s;"
+             onmouseover="this.style.background='#fef9c3'"
+             onmouseout="this.style.background='#fffbeb'">
+            <div style="width:30px;height:30px;border-radius:7px;flex-shrink:0;
+                        background:{{ doc.icon_color }}20;display:flex;align-items:center;justify-content:center;">
+              <i class="fa-solid {{ doc.icon_class }}" style="font-size:13px;color:{{ doc.icon_color }};"></i>
+            </div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:12px;font-weight:700;color:#0f172a;
+                          white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ doc.title }}</div>
+              <div style="font-size:10px;color:#92400e;">{{ doc.file_ext.upper() }} · {{ doc.file_size_display }}</div>
+            </div>
+            <i class="fa-solid fa-arrow-up-right-from-square" style="color:#d97706;font-size:11px;flex-shrink:0;"></i>
+          </a>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div style="text-align:center;padding:18px 8px;color:#94a3b8;">
+          <i class="fa-solid fa-paperclip" style="font-size:22px;opacity:.3;display:block;margin-bottom:8px;"></i>
+          <p style="font-size:12px;font-weight:600;margin:0 0 4px;">No linked documents</p>
+          <p style="font-size:11px;margin:0;">Upload &amp; link from the
+            <a href="{{ url_for('documents_list') }}" style="color:#d97706;font-weight:700;">Document Library</a>
+          </p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
   </div><!-- right col -->
 </div><!-- itp-layout -->
 {% endblock %}

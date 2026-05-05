@@ -118,6 +118,18 @@ def _migrate_projects(app):
         db.session.commit()
         print(f"Created King Rocks Wind Farm project (id={kr.id})")
 
+    # ── 2b. Ensure all features exist for all existing projects ──────────────
+    for proj in Project.query.all():
+        existing_keys = {f.feature_key for f in proj.features}
+        added = 0
+        for key, *_ in ALL_FEATURES:
+            if key not in existing_keys:
+                db.session.add(ProjectFeature(project_id=proj.id, feature_key=key, enabled=True))
+                added += 1
+        if added:
+            db.session.commit()
+            print(f"Added {added} missing features to project '{proj.name}'")
+
     # ── 3. Link any WTGs with no project to King Rocks ───────────────────────
     if kr:
         try:
