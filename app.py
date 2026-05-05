@@ -76,7 +76,7 @@ if not _db_url:
     _db_url = f"sqlite:///{os.path.join(BASE_DIR, 'windfarm.db')}"
 app.config['SQLALCHEMY_DATABASE_URI'] = _db_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024   # 32 MB — allows documents up to ~25 MB + photo AJAX uploads
+app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500 MB — DB fallback limit (R2 path bypasses this entirely)
 
 # ── File upload dirs ─────────────────────────────────────────────────────────
 # On Railway with a volume mounted at /data, use that; else local static/
@@ -501,7 +501,64 @@ def document_upload():
     pre_folder     = request.args.get('folder', type=int)
     return render_template('document_upload.html',
                            upload_folders=upload_folders,
-                           pre_folder=pre_folder)
+                           pre_folder=pre_folder,
+                           r2_active=r2_storage.r2_enabled())
+
+
+# ── R2 direct-upload: step 1 — browser requests a presigned PUT URL ──────────
+@app.route('/documents/upload/presign', methods=['POST'])
+@login_required
+def document_upload_presign():
+    """Return a presigned PUT URL so the browser can upload straight to R2."""
+    if not r2_storage.r2_enabled():
+        return jsonify({'error': 'R2 not configured'}), 400
+    data         = request.get_json(force=True) or {}
+    filename     = data.get('filename', 'file')
+    content_type = data.get('content_type', 'application/octet-stream')
+    from flask import g
+    proj = getattr(g, 'project', None)
+    key  = r2_storage.make_key(filename, proj.id if proj else None)
+    url  = r2_storage.presigned_upload_url(key, content_type)
+    return jsonify({'upload_url': url, 'key': key})
+
+
+# ── R2 direct-upload: step 2 — browser confirms upload, save metadata ────────
+@app.route('/documents/upload/complete', methods=['POST'])
+@login_required
+def document_upload_complete():
+    """Save Document metadata after browser has uploaded the file directly to R2."""
+    from flask import g
+    proj      = getattr(g, 'project', None)
+    file_key  = request.form.get('file_key', '').strip()
+    filename  = request.form.get('filename', '').strip()
+    file_size = request.form.get('file_size', 0, type=int)
+    folder_id = request.form.get('folder_id', type=int) or None
+
+    if not file_key or not filename:
+        flash('Upload failed — missing file information.', 'danger')
+        return redirect(url_for('document_upload'))
+
+    ext   = filename.rsplit('.', 1)[-1].lower() if '.' in filename else 'bin'
+    title = request.form.get('title', '').strip() or filename.rsplit('.', 1)[0]
+
+    doc = Document(
+        project_id        = proj.id if proj else None,
+        folder_id         = folder_id,
+        title             = title,
+        description       = request.form.get('description', '').strip(),
+        original_filename = filename,
+        file_ext          = ext,
+        file_size         = file_size,
+        file_key          = file_key,
+        file_data         = None,
+        category          = request.form.get('category', 'general'),
+        tags              = request.form.get('tags', '').strip(),
+        uploaded_by       = current_user.id,
+    )
+    db.session.add(doc)
+    db.session.commit()
+    flash(f'"{doc.title}" uploaded successfully. ☁️ Stored in Cloudflare R2', 'success')
+    return redirect(url_for('documents_list', folder=folder_id or ''))
 
 
 @app.route('/documents/<int:doc_id>')

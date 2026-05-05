@@ -91,6 +91,18 @@ def delete(key: str) -> bool:
         return False
 
 
+def presigned_upload_url(key: str, content_type: str, expiry: int = 3600) -> str:
+    """
+    Generate a pre-signed URL the browser can PUT a file to directly.
+    The upload goes straight from the browser to R2 — Railway is not involved.
+    """
+    return _client().generate_presigned_url(
+        'put_object',
+        Params    = {'Bucket': _bucket(), 'Key': key, 'ContentType': content_type},
+        ExpiresIn = expiry,
+    )
+
+
 def presigned_url(key: str, original_filename: str,
                   disposition: str = 'inline', expiry: int = 3600) -> str:
     """

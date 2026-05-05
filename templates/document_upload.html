@@ -9,60 +9,124 @@
   border:2px dashed #c7d2fe; border-radius:18px; padding:48px 24px;
   text-align:center; transition:all .2s; cursor:pointer; background:#fafafe;
 }
-#drop-zone.over, #drop-zone:hover { border-color:#4f46e5; background:#f5f3ff; }
-#drop-zone.has-file { border-color:#22c55e; background:#f0fdf4; border-style:solid; }
-.form-label { display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:5px;
-  text-transform:uppercase;letter-spacing:.04em; }
-.form-input { width:100%;padding:11px 14px;border:1.5px solid #e2e8f0;border-radius:10px;
-  font-size:14px;color:#0f172a;transition:border-color .15s,box-shadow .15s;outline:none;background:white; }
-.form-input:focus { border-color:#4f46e5;box-shadow:0 0 0 3px rgba(79,70,229,.12); }
-.form-select { appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%2394a3b8' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");
-  background-repeat:no-repeat;background-position:right 14px center;padding-right:40px; }
+#drop-zone.over  { border-color:#4f46e5; background:#f5f3ff; }
+#drop-zone.ready { border-color:#22c55e; background:#f0fdf4; border-style:solid; }
+#drop-zone.error { border-color:#ef4444; background:#fef2f2; border-style:solid; }
+
+.form-label  { display:block; font-size:12px; font-weight:700; color:#374151;
+               margin-bottom:5px; text-transform:uppercase; letter-spacing:.04em; }
+.form-input  { width:100%; padding:11px 14px; border:1.5px solid #e2e8f0;
+               border-radius:10px; font-size:14px; color:#0f172a; outline:none;
+               background:white; transition:border-color .15s, box-shadow .15s;
+               box-sizing:border-box; }
+.form-input:focus { border-color:#4f46e5; box-shadow:0 0 0 3px rgba(79,70,229,.12); }
+.form-select { appearance:none;
+               background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%2394a3b8' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");
+               background-repeat:no-repeat; background-position:right 14px center; padding-right:40px; }
+
+/* Progress */
+#progress-wrap { display:none; margin-top:20px; }
+#progress-bar-bg { background:#e2e8f0; border-radius:99px; height:10px; overflow:hidden; }
+#progress-bar    { background:linear-gradient(90deg,#4f46e5,#818cf8);
+                   height:100%; border-radius:99px; width:0%; transition:width .3s; }
 </style>
 {% endblock %}
 
 {% block content %}
-<div style="max-width:680px;margin:0 auto;">
+<div style="max-width:680px; margin:0 auto;">
 
   <div style="margin-bottom:20px;">
     <a href="{{ url_for('documents_list') }}"
-       style="display:inline-flex;align-items:center;gap:6px;color:#64748b;font-size:13px;font-weight:600;text-decoration:none;">
+       style="display:inline-flex;align-items:center;gap:6px;color:#64748b;
+              font-size:13px;font-weight:600;text-decoration:none;">
       <i class="fa-solid fa-arrow-left"></i> Back to Library
     </a>
   </div>
 
-  <form method="POST" action="{{ url_for('document_upload') }}" enctype="multipart/form-data" id="upload-form">
+  {% if r2_active %}
+  <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;
+              background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;
+              margin-bottom:20px;font-size:13px;color:#1d4ed8;font-weight:600;">
+    <i class="fa-solid fa-cloud" style="font-size:16px;"></i>
+    Files upload directly to Cloudflare R2 — <strong>no size limit</strong>
+  </div>
+  {% else %}
+  <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;
+              background:#fefce8;border:1px solid #fde68a;border-radius:12px;
+              margin-bottom:20px;font-size:13px;color:#92400e;font-weight:600;">
+    <i class="fa-solid fa-database" style="font-size:14px;"></i>
+    Storing in database — max 500 MB per file. Set up R2 for unlimited storage.
+  </div>
+  {% endif %}
 
-    <!-- Drop zone -->
-    <div id="drop-zone" onclick="document.getElementById('file-input').click()">
-      <div id="dz-default">
-        <i class="fa-solid fa-cloud-arrow-up" style="font-size:40px;color:#a5b4fc;margin-bottom:12px;"></i>
-        <div style="font-size:16px;font-weight:700;color:#4f46e5;margin-bottom:6px;">Drop file here or click to browse</div>
-        <div style="font-size:12px;color:#94a3b8;">PDF, Word, Excel, Images, CSV, ZIP — up to 25 MB</div>
+  <!-- ── Drop zone ─────────────────────────────────────────────────────── -->
+  <div id="drop-zone" onclick="document.getElementById('file-input').click()">
+    <div id="dz-default">
+      <i class="fa-solid fa-cloud-arrow-up" style="font-size:42px;color:#a5b4fc;margin-bottom:12px;display:block;"></i>
+      <div style="font-size:17px;font-weight:700;color:#4f46e5;margin-bottom:6px;">
+        Drop file here or click to browse
       </div>
-      <div id="dz-file" style="display:none;">
-        <div id="file-icon" style="font-size:40px;margin-bottom:10px;">📄</div>
-        <div id="file-name" style="font-size:15px;font-weight:800;color:#0f172a;margin-bottom:4px;"></div>
-        <div id="file-size" style="font-size:12px;color:#64748b;"></div>
-        <div style="margin-top:12px;">
-          <span style="font-size:12px;color:#22c55e;font-weight:700;">
-            <i class="fa-solid fa-circle-check"></i> File ready to upload
-          </span>
-        </div>
+      <div style="font-size:12px;color:#94a3b8;">
+        PDF, Word, Excel, Images, CAD, ZIP —
+        {% if r2_active %}<strong style="color:#2563eb;">No size limit</strong>
+        {% else %}up to 500 MB{% endif %}
       </div>
     </div>
-    <input type="file" id="file-input" name="file" style="display:none;"
-           accept=".pdf,.docx,.doc,.xlsx,.xls,.pptx,.ppt,.jpg,.jpeg,.png,.gif,.bmp,.webp,.txt,.csv,.zip,.dwg,.dxf"
-           onchange="handleFileSelect(this)"/>
+    <div id="dz-file" style="display:none;">
+      <div id="file-icon" style="font-size:42px;margin-bottom:10px;">📄</div>
+      <div id="file-name" style="font-size:15px;font-weight:800;color:#0f172a;margin-bottom:4px;"></div>
+      <div id="file-size" style="font-size:13px;color:#64748b;"></div>
+      <div style="margin-top:10px;">
+        <span style="font-size:12px;color:#22c55e;font-weight:700;">
+          <i class="fa-solid fa-circle-check"></i> File selected — fill in details below
+        </span>
+      </div>
+    </div>
+  </div>
+  <input type="file" id="file-input" style="display:none;"
+         accept=".pdf,.docx,.doc,.xlsx,.xls,.pptx,.ppt,.jpg,.jpeg,.png,.gif,.bmp,.webp,.txt,.csv,.zip,.dwg,.dxf,.rar,.7z"
+         onchange="handleFileSelect(this)"/>
 
-    <!-- Form fields -->
+  <!-- ── Progress bar (shown during upload) ────────────────────────────── -->
+  <div id="progress-wrap">
+    <div style="display:flex;justify-content:space-between;font-size:12px;
+                color:#64748b;font-weight:600;margin-bottom:6px;">
+      <span id="progress-label">Uploading…</span>
+      <span id="progress-pct">0%</span>
+    </div>
+    <div id="progress-bar-bg"><div id="progress-bar"></div></div>
+    <p style="font-size:11px;color:#94a3b8;margin-top:6px;text-align:center;">
+      Uploading directly to Cloudflare R2 — please wait
+    </p>
+  </div>
+
+  <!-- ── Metadata form ─────────────────────────────────────────────────── -->
+  <!-- This form is used for BOTH paths:
+       R2 path:  action = /documents/upload/complete  (hidden file_key field populated by JS)
+       DB path:  action = /documents/upload           (file included as multipart) -->
+  <form id="meta-form"
+        method="POST"
+        action="{{ url_for('document_upload_complete') if r2_active else url_for('document_upload') }}"
+        enctype="{{ 'application/x-www-form-urlencoded' if r2_active else 'multipart/form-data' }}"
+        onsubmit="return handleSubmit(event)">
+
+    {% if not r2_active %}
+    <!-- DB path needs the actual file in the form -->
+    <input type="file" name="file" id="db-file-hidden" style="display:none;"/>
+    {% endif %}
+
+    <!-- Hidden fields populated by JS for R2 path -->
+    <input type="hidden" name="file_key"  id="h-file-key"/>
+    <input type="hidden" name="filename"  id="h-filename"/>
+    <input type="hidden" name="file_size" id="h-file-size"/>
+
     <div class="card" style="border-radius:20px;padding:28px;margin-top:20px;">
       <div style="display:grid;gap:16px;">
 
         <div>
           <label class="form-label">Document Title <span style="color:#ef4444;">*</span></label>
           <input type="text" name="title" id="title-input" class="form-input"
-                 placeholder="e.g. WTG02 Hardstand Compaction Results" required/>
+                 placeholder="e.g. WTG02 Hardstand Proof Roll – May 2026" required/>
         </div>
 
         <div>
@@ -70,8 +134,7 @@
           <select name="folder_id" class="form-input form-select">
             <option value="">📁 Root (no folder)</option>
             {% for f in upload_folders %}
-            <option value="{{ f.id }}"
-              {% if pre_folder == f.id %}selected{% endif %}>
+            <option value="{{ f.id }}" {% if pre_folder == f.id %}selected{% endif %}>
               📁 {{ f.name }}
             </option>
             {% endfor %}
@@ -89,14 +152,16 @@
 
         <div>
           <label class="form-label">Description</label>
-          <textarea name="description" class="form-input" rows="3"
-                    placeholder="Brief description of this document…" style="resize:vertical;"></textarea>
+          <textarea name="description" class="form-input" rows="2"
+                    placeholder="Brief description…" style="resize:vertical;"></textarea>
         </div>
 
         <div>
-          <label class="form-label">Tags <span style="color:#94a3b8;text-transform:none;font-weight:400;">(comma separated)</span></label>
+          <label class="form-label">Tags
+            <span style="color:#94a3b8;text-transform:none;font-weight:400;">(comma separated)</span>
+          </label>
           <input type="text" name="tags" class="form-input"
-                 placeholder="e.g. WTG02, hardstand, compaction, 2024"/>
+                 placeholder="e.g. WTG02, hardstand, compaction, 2026"/>
         </div>
 
       </div>
@@ -112,9 +177,9 @@
       <button type="submit" id="submit-btn"
               style="display:inline-flex;align-items:center;gap:8px;padding:11px 28px;
                      background:linear-gradient(135deg,#4f46e5,#6366f1);color:white;
-                     border:none;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer;
-                     box-shadow:0 4px 14px rgba(79,70,229,.3);transition:all .2s;">
-        <i class="fa-solid fa-cloud-arrow-up"></i>
+                     border:none;border-radius:12px;font-size:13px;font-weight:700;
+                     cursor:pointer;box-shadow:0 4px 14px rgba(79,70,229,.3);transition:all .2s;">
+        <i class="fa-solid fa-cloud-arrow-up" id="submit-icon"></i>
         <span id="submit-label">Upload Document</span>
       </button>
     </div>
@@ -125,37 +190,50 @@
 
 {% block scripts %}
 <script>
+const R2_ACTIVE   = {{ 'true' if r2_active else 'false' }};
+const PRESIGN_URL = '{{ url_for("document_upload_presign") }}';
+
 const FILE_ICONS = {
   pdf:'📕', docx:'📘', doc:'📘', xlsx:'📗', xls:'📗',
   pptx:'📙', ppt:'📙', jpg:'🖼️', jpeg:'🖼️', png:'🖼️', gif:'🖼️',
-  txt:'📄', csv:'📊', zip:'🗜️', default:'📄'
+  txt:'📄', csv:'📊', zip:'🗜️', dwg:'📐', dxf:'📐', default:'📄'
 };
+
+let selectedFile = null;
+
+function fmt(bytes) {
+  if (bytes < 1024)        return bytes + ' B';
+  if (bytes < 1048576)     return (bytes/1024).toFixed(1) + ' KB';
+  if (bytes < 1073741824)  return (bytes/1048576).toFixed(1) + ' MB';
+  return (bytes/1073741824).toFixed(2) + ' GB';
+}
 
 function handleFileSelect(input) {
   const file = input.files[0];
   if (!file) return;
+  selectedFile = file;
   const ext = file.name.split('.').pop().toLowerCase();
-  const sizeTxt = file.size < 1048576
-    ? (file.size/1024).toFixed(1)+' KB'
-    : (file.size/1048576).toFixed(2)+' MB';
 
   document.getElementById('dz-default').style.display = 'none';
   document.getElementById('dz-file').style.display    = 'block';
-  document.getElementById('drop-zone').classList.add('has-file');
-  document.getElementById('file-icon').textContent   = FILE_ICONS[ext] || FILE_ICONS.default;
-  document.getElementById('file-name').textContent   = file.name;
-  document.getElementById('file-size').textContent   = sizeTxt;
+  document.getElementById('drop-zone').classList.add('ready');
+  document.getElementById('file-icon').textContent = FILE_ICONS[ext] || FILE_ICONS.default;
+  document.getElementById('file-name').textContent = file.name;
+  document.getElementById('file-size').textContent = fmt(file.size);
 
-  // Auto-fill title if blank
-  const titleIn = document.getElementById('title-input');
-  if (!titleIn.value) {
-    titleIn.value = file.name.includes('.')
-      ? file.name.substring(0, file.name.lastIndexOf('.'))
-      : file.name;
+  // Auto-fill title
+  const ti = document.getElementById('title-input');
+  if (!ti.value) ti.value = file.name.includes('.') ? file.name.slice(0, file.name.lastIndexOf('.')) : file.name;
+
+  // For DB path: mirror file into hidden file input
+  if (!R2_ACTIVE) {
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    document.getElementById('db-file-hidden').files = dt.files;
   }
 }
 
-// Drag-and-drop
+// ── Drag and drop ─────────────────────────────────────────────────────────
 const dz = document.getElementById('drop-zone');
 dz.addEventListener('dragover',  e => { e.preventDefault(); dz.classList.add('over'); });
 dz.addEventListener('dragleave', () => dz.classList.remove('over'));
@@ -167,12 +245,92 @@ dz.addEventListener('drop', e => {
   handleFileSelect(fi);
 });
 
-// Show upload progress
-document.getElementById('upload-form').addEventListener('submit', function() {
-  const btn = document.getElementById('submit-btn');
-  document.getElementById('submit-label').textContent = 'Uploading…';
+// ── Form submit ───────────────────────────────────────────────────────────
+async function handleSubmit(e) {
+  if (!selectedFile) { alert('Please select a file first.'); return false; }
+
+  const btn   = document.getElementById('submit-btn');
+  const label = document.getElementById('submit-label');
+
+  if (!R2_ACTIVE) {
+    // DB path — normal form submit
+    label.textContent = 'Uploading…';
+    btn.disabled = true;
+    return true;  // let the form submit normally
+  }
+
+  // ── R2 path ───────────────────────────────────────────────────────────
+  e.preventDefault();
   btn.disabled = true;
-  btn.style.opacity = '0.7';
-});
+
+  // 1. Get presigned PUT URL
+  label.textContent = 'Preparing upload…';
+  let presignData;
+  try {
+    const r = await fetch(PRESIGN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        filename:     selectedFile.name,
+        content_type: selectedFile.type || 'application/octet-stream',
+      }),
+    });
+    presignData = await r.json();
+    if (!presignData.upload_url) throw new Error('No presigned URL returned');
+  } catch (err) {
+    alert('Failed to prepare upload: ' + err.message);
+    btn.disabled = false;
+    label.textContent = 'Upload Document';
+    return false;
+  }
+
+  // 2. Upload directly to R2 via XHR (for progress tracking)
+  document.getElementById('progress-wrap').style.display = 'block';
+  document.getElementById('meta-form').querySelector('[type=submit]').style.display = 'none';
+
+  try {
+    await uploadToR2(presignData.upload_url, selectedFile);
+  } catch (err) {
+    document.getElementById('progress-label').textContent = '✗ Upload failed — ' + err.message;
+    document.getElementById('drop-zone').classList.replace('ready', 'error');
+    btn.disabled = false;
+    btn.style.display = 'inline-flex';
+    document.getElementById('meta-form').querySelector('[type=submit]').style.display = '';
+    return false;
+  }
+
+  // 3. Populate hidden fields and submit metadata to Flask
+  document.getElementById('h-file-key').value  = presignData.key;
+  document.getElementById('h-filename').value  = selectedFile.name;
+  document.getElementById('h-file-size').value = selectedFile.size;
+
+  document.getElementById('progress-label').textContent = '✓ Saved to R2 — saving details…';
+  document.getElementById('meta-form').submit();
+  return false;
+}
+
+function uploadToR2(url, file) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', url);
+    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+
+    xhr.upload.onprogress = e => {
+      if (!e.lengthComputable) return;
+      const pct = Math.round(e.loaded / e.total * 100);
+      document.getElementById('progress-bar').style.width = pct + '%';
+      document.getElementById('progress-pct').textContent = pct + '%';
+      document.getElementById('progress-label').textContent =
+        `Uploading to Cloudflare R2… ${fmt(e.loaded)} / ${fmt(e.total)}`;
+    };
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) resolve();
+      else reject(new Error(`R2 returned HTTP ${xhr.status}`));
+    };
+    xhr.onerror = () => reject(new Error('Network error during upload'));
+    xhr.send(file);
+  });
+}
 </script>
 {% endblock %}
