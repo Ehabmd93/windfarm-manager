@@ -243,12 +243,13 @@
     <table class="ftbl">
       <thead>
         <tr>
-          <th style="width:44%;">Name</th>
+          <th style="width:42%;">Name</th>
           <th>Category</th>
           <th>Size</th>
           <th>Modified</th>
-          <th style="text-align:center;width:50px;">Links</th>
-          <th style="width:130px;"></th>
+          <th style="text-align:center;width:44px;" title="Linked QA records">Links</th>
+          <th style="text-align:center;width:36px;" title="Storage location">☁</th>
+          <th style="width:120px;"></th>
         </tr>
       </thead>
       <tbody>
@@ -323,6 +324,15 @@
               <i class="fa-solid fa-link" style="font-size:8px;"></i>{{ doc.links|length }}
             </span>
             {% else %}<span style="color:#e2e8f0;">—</span>{% endif %}
+          </td>
+          <td style="text-align:center;">
+            {% if doc.stored_in_r2 %}
+            <i class="fa-solid fa-cloud" style="color:#2563eb;font-size:12px;"
+               title="Stored in Cloudflare R2"></i>
+            {% else %}
+            <i class="fa-solid fa-database" style="color:#cbd5e1;font-size:11px;"
+               title="Stored in Database"></i>
+            {% endif %}
           </td>
 
           <!-- Actions (stop row-click) -->

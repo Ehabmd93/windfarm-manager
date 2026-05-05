@@ -596,12 +596,17 @@ class Document(db.Model):
     original_filename = db.Column(db.String(300), nullable=False)
     file_ext          = db.Column(db.String(10), nullable=False)   # pdf, docx, xlsx …
     file_size         = db.Column(db.Integer, default=0)           # raw bytes
-    file_data         = db.Column(db.Text, nullable=False)         # base64 encoded
+    file_data         = db.Column(db.Text, nullable=True)           # base64 (legacy/fallback)
+    file_key          = db.Column(db.String(500), nullable=True)   # R2 object key (new uploads)
     category          = db.Column(db.String(50), default='general')
     tags              = db.Column(db.String(500))                  # comma-separated
     uploaded_by       = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     uploaded_at       = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     is_active         = db.Column(db.Boolean, default=True)
+
+    @property
+    def stored_in_r2(self) -> bool:
+        return bool(self.file_key)
 
     links    = db.relationship('DocumentLink', backref='document', lazy=True, cascade='all,delete')
     uploader = db.relationship('User', foreign_keys=[uploaded_by])

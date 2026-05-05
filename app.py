@@ -24,6 +24,7 @@ from itp_definitions import ITP_DEFINITIONS, CLIENTS
 from seed import seed
 from kml_parser import get_geojson
 from email_utils import email_client_invitation, email_client_signed
+import r2_storage
 
 # ─── App setup ──────────────────────────────────────────────────────────────
 BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
@@ -298,6 +299,22 @@ ALLOWED_DOC_EXTS = {
 def _allowed_doc(filename):
     return '.' in filename and filename.rsplit('.',1)[1].lower() in ALLOWED_DOC_EXTS
 
+def _mime_for_ext(ext):
+    return {
+        'pdf':'application/pdf',
+        'docx':'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'doc':'application/msword',
+        'xlsx':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'xls':'application/vnd.ms-excel',
+        'pptx':'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'ppt':'application/vnd.ms-powerpoint',
+        'jpg':'image/jpeg','jpeg':'image/jpeg',
+        'png':'image/png','gif':'image/gif','webp':'image/webp',
+        'txt':'text/plain','csv':'text/csv',
+        'zip':'application/zip',
+        'dwg':'application/acad','dxf':'application/dxf',
+    }.get(ext.lower(), 'application/octet-stream')
+
 
 def _build_folder_tree(folders, parent_id=None, level=0):
     """Return flat list of (folder, level) in tree order."""
@@ -438,6 +455,22 @@ def document_upload():
         title = request.form.get('title','').strip() or f.filename.rsplit('.',1)[0]
 
         folder_id_up = request.form.get('folder_id', type=int) or None
+
+        # ── Choose storage backend ────────────────────────────────────────
+        file_key  = None
+        file_data = None
+        if r2_storage.r2_enabled():
+            try:
+                file_key = r2_storage.make_key(f.filename, proj.id if proj else None)
+                r2_storage.upload(file_key, raw, content_type=_mime_for_ext(ext))
+            except Exception as e:
+                app.logger.error(f'R2 upload failed: {e}')
+                flash('Cloud storage error — falling back to database storage.', 'warning')
+                file_key  = None
+                file_data = base64.b64encode(raw).decode('utf-8')
+        else:
+            file_data = base64.b64encode(raw).decode('utf-8')
+
         doc = Document(
             project_id        = proj.id if proj else None,
             folder_id         = folder_id_up,
@@ -446,14 +479,16 @@ def document_upload():
             original_filename = f.filename,
             file_ext          = ext,
             file_size         = len(raw),
-            file_data         = base64.b64encode(raw).decode('utf-8'),
+            file_key          = file_key,
+            file_data         = file_data,
             category          = request.form.get('category','general'),
             tags              = request.form.get('tags','').strip(),
             uploaded_by       = current_user.id,
         )
         db.session.add(doc)
         db.session.commit()
-        flash(f'"{doc.title}" uploaded successfully.', 'success')
+        storage_label = '☁️ R2' if file_key else '🗄️ DB'
+        flash(f'"{doc.title}" uploaded successfully. ({storage_label})', 'success')
         return redirect(url_for('documents_list', folder=folder_id_up or ''))
 
     # Pass folder context to upload page
@@ -549,9 +584,14 @@ def document_detail(doc_id):
 @app.route('/documents/<int:doc_id>/view')
 @login_required
 def document_view(doc_id):
-    """Serve the raw file inline (open in browser / print)."""
+    """Open file inline in browser (PDF viewer / image). No Railway timeout."""
     doc = Document.query.filter_by(id=doc_id, is_active=True).first_or_404()
-    raw = base64.b64decode(doc.file_data)
+    if doc.stored_in_r2:
+        url = r2_storage.presigned_url(doc.file_key, doc.original_filename,
+                                        disposition='inline')
+        return redirect(url)
+    # Legacy: base64 in DB
+    raw  = base64.b64decode(doc.file_data)
     resp = make_response(raw)
     resp.headers['Content-Type']        = doc.mime_type
     resp.headers['Content-Disposition'] = _content_disposition('inline', doc.original_filename)
@@ -564,7 +604,12 @@ def document_view(doc_id):
 def document_download(doc_id):
     """Force-download the file."""
     doc = Document.query.filter_by(id=doc_id, is_active=True).first_or_404()
-    raw = base64.b64decode(doc.file_data)
+    if doc.stored_in_r2:
+        url = r2_storage.presigned_url(doc.file_key, doc.original_filename,
+                                        disposition='attachment')
+        return redirect(url)
+    # Legacy: base64 in DB
+    raw  = base64.b64decode(doc.file_data)
     resp = make_response(raw)
     resp.headers['Content-Type']        = doc.mime_type
     resp.headers['Content-Disposition'] = _content_disposition('attachment', doc.original_filename)
@@ -577,6 +622,9 @@ def document_delete(doc_id):
     doc = Document.query.filter_by(id=doc_id, is_active=True).first_or_404()
     if current_user.role not in ('engineer','manager','admin') and doc.uploaded_by != current_user.id:
         abort(403)
+    # Remove from R2 if stored there
+    if doc.stored_in_r2:
+        r2_storage.delete(doc.file_key)
     doc.is_active = False
     db.session.commit()
     flash(f'"{doc.title}" deleted.', 'success')

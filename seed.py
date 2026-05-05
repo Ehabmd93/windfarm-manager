@@ -118,19 +118,34 @@ def _migrate_projects(app):
         db.session.commit()
         print(f"Created King Rocks Wind Farm project (id={kr.id})")
 
-    # ── 2a. Add folder_id column to documents table if missing ──────────────
+    # ── 2a. Add new columns to documents table if missing ───────────────────
     from sqlalchemy import text, inspect as sa_inspect
     insp2 = sa_inspect(db.engine)
     if 'documents' in insp2.get_table_names():
         cols2 = [c['name'] for c in insp2.get_columns('documents')]
-        if 'folder_id' not in cols2:
-            try:
-                with db.engine.connect() as conn:
-                    conn.execute(text('ALTER TABLE documents ADD COLUMN folder_id INTEGER REFERENCES document_folders(id)'))
-                    conn.commit()
-                print("Added folder_id column to documents")
-            except Exception as e:
-                print(f"folder_id column note: {e}")
+        migrations = [
+            ('folder_id', 'ALTER TABLE documents ADD COLUMN folder_id INTEGER REFERENCES document_folders(id)'),
+            ('file_key',  'ALTER TABLE documents ADD COLUMN file_key VARCHAR(500)'),
+        ]
+        for col_name, sql in migrations:
+            if col_name not in cols2:
+                try:
+                    with db.engine.connect() as conn:
+                        conn.execute(text(sql))
+                        conn.commit()
+                    print(f"Added {col_name} column to documents")
+                except Exception as e:
+                    print(f"{col_name} column note: {e}")
+
+        # Make file_data nullable for R2 uploads
+        try:
+            with db.engine.connect() as conn:
+                conn.execute(text(
+                    "ALTER TABLE documents ALTER COLUMN file_data DROP NOT NULL"
+                ))
+                conn.commit()
+        except Exception:
+            pass  # already nullable or SQLite (no-op)
 
     # ── 2b. Ensure all features exist for all existing projects ──────────────
     for proj in Project.query.all():
