@@ -103,6 +103,39 @@
   .assign-cb.checked::after { content:'✓';position:absolute;color:#fff;font-size:11px;font-weight:900;
                                top:50%;left:50%;transform:translate(-50%,-50%); }
   .assign-mode .assign-cb { display:flex;align-items:center;justify-content:center; }
+
+  /* WP assign banner */
+  #wp-assign-banner {
+    display:none;position:sticky;top:0;z-index:50;
+    background:linear-gradient(135deg,#7c3aed,#a78bfa);
+    color:#fff;border-radius:12px;padding:12px 18px;margin-bottom:12px;
+    box-shadow:0 4px 20px rgba(139,92,246,0.4);
+  }
+  #wp-assign-banner.visible { display:flex;align-items:center;gap:12px; }
+
+  /* WP dropdown */
+  #wp-dropdown-popup {
+    display:none;position:absolute;background:#fff;border:1px solid #e2e8f0;
+    border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,0.12);z-index:200;
+    min-width:220px;overflow:hidden;
+  }
+  .wpdrop-item {
+    display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;
+    font-size:13px;font-weight:600;color:#334155;transition:background .1s;border-bottom:1px solid #f1f5f9;
+  }
+  .wpdrop-item:last-child { border-bottom:none; }
+  .wpdrop-item:hover { background:#f5f3ff; }
+
+  /* WP card */
+  .wp-card { border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;margin-bottom:16px; }
+  .wp-header { display:flex;align-items:center;gap:10px;padding:12px 16px;font-weight:700;font-size:14px;color:#1e293b; }
+
+  /* Icon picker */
+  .icon-opt { width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;
+              cursor:pointer;font-size:14px;border:2px solid transparent;background:#f1f5f9;color:#64748b;
+              transition:all .15s; }
+  .icon-opt.selected { border-color:#7c3aed;background:#f5f3ff;color:#7c3aed; }
+  .icon-opt:hover { background:#ede9fe;color:#7c3aed; }
 </style>
 {% endblock %}
 
@@ -117,7 +150,7 @@
 </div>
 
 <!-- Tabs -->
-<div class="flex gap-2 mb-6">
+<div class="flex gap-2 mb-6 flex-wrap">
   <button class="tab-btn active" id="tab-btn-elements" onclick="switchTab('elements', this)">
     <i class="fa-solid fa-tower-broadcast mr-1.5"></i> Elements
     <span style="background:#e2e8f0;color:#64748b;border-radius:20px;padding:1px 8px;font-size:11px;margin-left:6px;" id="el-count-badge">{{ elements|length }}</span>
@@ -125,6 +158,10 @@
   <button class="tab-btn" id="tab-btn-groups" onclick="switchTab('groups', this)">
     <i class="fa-solid fa-layer-group mr-1.5"></i> Groups
     <span style="background:#e2e8f0;color:#64748b;border-radius:20px;padding:1px 8px;font-size:11px;margin-left:6px;">{{ groups|length }}</span>
+  </button>
+  <button class="tab-btn" id="tab-btn-workpackages" onclick="switchTab('workpackages', this)">
+    <i class="fa-solid fa-boxes-stacked mr-1.5"></i> Work Packages
+    <span style="background:#e2e8f0;color:#64748b;border-radius:20px;padding:1px 8px;font-size:11px;margin-left:6px;">{{ work_packages|length }}</span>
   </button>
 </div>
 
@@ -145,6 +182,25 @@
       <i class="fa-solid fa-check mr-1"></i> Save
     </button>
     <button onclick="cancelAssign()"
+            style="background:rgba(255,255,255,0.15);color:#fff;border:none;padding:8px 14px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;">
+      Cancel
+    </button>
+  </div>
+
+  <!-- WP Assign Banner -->
+  <div id="wp-assign-banner">
+    <div style="width:34px;height:34px;border-radius:9px;background:rgba(255,255,255,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+      <i class="fa-solid fa-boxes-stacked text-white text-sm"></i>
+    </div>
+    <div style="flex:1;">
+      <p style="font-weight:800;font-size:14px;" id="wp-banner-title">Assigning to work package</p>
+      <p style="font-size:12px;opacity:.85;" id="wp-banner-sub">Tick elements below then click Save</p>
+    </div>
+    <button onclick="saveAssignmentWp()" id="wp-banner-save"
+            style="background:#fff;color:#7c3aed;border:none;padding:8px 18px;border-radius:8px;font-weight:800;font-size:13px;cursor:pointer;">
+      <i class="fa-solid fa-check mr-1"></i> Save
+    </button>
+    <button onclick="cancelAssignWp()"
             style="background:rgba(255,255,255,0.15);color:#fff;border:none;padding:8px 14px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;">
       Cancel
     </button>
@@ -184,6 +240,31 @@
             {% endif %}
           </div>
         </div>
+        <!-- Assign to Work Package button + dropdown -->
+        <div style="position:relative;">
+          <button onclick="toggleWpDropdown(this)" id="wp-assign-btn"
+                  class="btn-sm" style="background:#f5f3ff;color:#7c3aed;border:1px solid #ddd6fe;">
+            <i class="fa-solid fa-boxes-stacked mr-1"></i> Assign to WP
+            <i class="fa-solid fa-chevron-down ml-1 text-xs"></i>
+          </button>
+          <div id="wp-dropdown-popup">
+            {% if work_packages %}
+            {% for wp in work_packages %}
+            <div class="wpdrop-item" onclick="startAssignWp({{ wp.id }}, '{{ wp.name }}', '{{ wp.color }}')">
+              <div style="width:10px;height:10px;border-radius:50%;background:{{ wp.color }};flex-shrink:0;"></div>
+              {{ wp.name }}
+              <span style="margin-left:auto;font-size:10px;color:#94a3b8;">{{ wp.elements|length }} elem.</span>
+            </div>
+            {% endfor %}
+            {% else %}
+            <div style="padding:14px 16px;font-size:12px;color:#94a3b8;text-align:center;">
+              No work packages yet.<br>
+              <span onclick="switchTab('workpackages', document.getElementById('tab-btn-workpackages'));closeWpDropdown();"
+                    style="color:#7c3aed;cursor:pointer;font-weight:700;">Create one first →</span>
+            </div>
+            {% endif %}
+          </div>
+        </div>
         <button onclick="openAddElement()" class="btn-sm btn-primary">
           <i class="fa-solid fa-plus mr-1"></i> Add Element
         </button>
@@ -197,6 +278,9 @@
            data-group-id="{{ el.group_id or '' }}"
            data-group-name="{{ el.group.name if el.group else '' }}"
            data-group-color="{{ el.group.color if el.group else '' }}"
+           data-wp-id="{{ el.work_package_id or '' }}"
+           data-wp-name="{{ el.work_package.name if el.work_package else '' }}"
+           data-wp-color="{{ el.work_package.color if el.work_package else '' }}"
            onclick="rowClick({{ el.id }}, this)">
 
         <!-- Assign checkbox (hidden until assign mode) -->
@@ -220,6 +304,17 @@
             {% else %}
             <span class="group-badge" style="background:#f1f5f9;color:#94a3b8;display:none;"
                   id="el-group-badge-{{ el.id }}"></span>
+            {% endif %}
+            {% if el.work_package %}
+            <span class="group-badge" style="background:{{ el.work_package.color }}22;color:{{ el.work_package.color }};"
+                  id="el-wp-badge-{{ el.id }}">
+              <i class="fa-solid fa-boxes-stacked" style="font-size:9px;margin-right:3px;"></i>{{ el.work_package.name }}
+              <span onclick="event.stopPropagation();removeFromWp({{ el.id }})"
+                    style="opacity:.6;cursor:pointer;margin-left:3px;" title="Remove from work package">×</span>
+            </span>
+            {% else %}
+            <span class="group-badge" style="background:#f1f5f9;color:#94a3b8;display:none;"
+                  id="el-wp-badge-{{ el.id }}"></span>
             {% endif %}
           </div>
         </div>
@@ -313,6 +408,64 @@
       <i class="fa-solid fa-layer-group text-3xl mb-2 block"></i>
       <p class="font-semibold">No groups yet</p>
       <p class="text-sm mt-1">Groups let you organise elements into zones — e.g. CS1, CS2, North Zone</p>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════ WORK PACKAGES TAB ═════════════════════════ -->
+<div id="tab-workpackages" class="tab-panel">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
+    <div>
+      <p class="font-bold text-slate-800">Work Packages</p>
+      <p class="text-xs text-slate-400 mt-0.5">Group elements by work type — e.g. Foundation, Access Track, Cable Route</p>
+    </div>
+    <button onclick="openAddWp()" class="btn-sm" style="background:#7c3aed;color:#fff;border:none;">
+      <i class="fa-solid fa-plus mr-1"></i> Create Work Package
+    </button>
+  </div>
+
+  <div id="wp-list">
+    {% for wp in work_packages %}
+    <div class="wp-card" id="wpcard-{{ wp.id }}">
+      <div class="wp-header" style="background:{{ wp.color }}11;border-bottom:1px solid {{ wp.color }}22;">
+        <div class="color-dot" style="background:{{ wp.color }};"></div>
+        <i class="fa-solid fa-{{ wp.icon }}" style="color:{{ wp.color }};font-size:13px;"></i>
+        <span id="wpname-{{ wp.id }}" style="flex:1;">{{ wp.name }}</span>
+        <span style="font-size:13px;font-weight:800;padding:3px 12px;border-radius:20px;background:{{ wp.color }}22;color:{{ wp.color }};margin-right:8px;" id="wpcount-{{ wp.id }}">{{ wp.elements|length }} element(s)</span>
+        <button onclick="switchTab('elements', document.getElementById('tab-btn-elements'));startAssignWp({{ wp.id }}, '{{ wp.name }}', '{{ wp.color }}')"
+                style="background:{{ wp.color }}22;color:{{ wp.color }};border:none;padding:5px 12px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;margin-right:6px;">
+          <i class="fa-solid fa-plus mr-1"></i> Add Elements
+        </button>
+        <button onclick="renameWp({{ wp.id }})" class="btn-sm btn-ghost" style="padding:4px 10px;">
+          <i class="fa-solid fa-pen text-xs"></i>
+        </button>
+        <button onclick="deleteWp({{ wp.id }}, '{{ wp.name }}')" class="btn-sm btn-danger" style="padding:4px 10px;">
+          <i class="fa-solid fa-trash text-xs"></i>
+        </button>
+      </div>
+      <div style="padding:10px 14px;display:flex;flex-wrap:wrap;gap:8px;" id="wpmembers-{{ wp.id }}">
+        {% for el in wp.elements %}
+        <span style="display:inline-flex;align-items:center;gap:6px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:600;color:#334155;"
+              id="wptag-{{ el.id }}">
+          <i class="fa-solid fa-tower-broadcast text-slate-300 text-xs"></i>
+          {{ el.name }}
+          <span onclick="removeFromWp({{ el.id }}, {{ wp.id }})"
+                style="color:#94a3b8;cursor:pointer;font-size:13px;font-weight:900;line-height:1;" title="Remove">×</span>
+        </span>
+        {% else %}
+        <span style="color:#94a3b8;font-size:12px;font-style:italic;" id="wpempty-{{ wp.id }}">
+          No elements — click "Add Elements" above
+        </span>
+        {% endfor %}
+      </div>
+    </div>
+    {% else %}
+    <div class="empty-state" id="empty-wps">
+      <i class="fa-solid fa-boxes-stacked text-3xl mb-2 block"></i>
+      <p class="font-semibold">No work packages yet</p>
+      <p class="text-sm mt-1">Work packages let you group elements by work type — e.g. Foundation, Access Track</p>
     </div>
     {% endfor %}
   </div>
@@ -413,6 +566,45 @@
   </div>
 </div>
 
+<!-- Add Work Package Modal -->
+<div id="modal-add-wp" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:300;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:16px;padding:24px;width:400px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.2);">
+    <p class="font-bold text-slate-800 text-base mb-4">Create Work Package</p>
+    <div class="flex flex-col gap-3">
+      <div>
+        <label class="text-xs font-semibold text-slate-500 block mb-1">Name</label>
+        <input id="new-wp-name" type="text" placeholder="e.g. Foundation, Access Track, Cable Route" style="width:100%;">
+      </div>
+      <div>
+        <label class="text-xs font-semibold text-slate-500 block mb-1">Color</label>
+        <div class="flex gap-2 flex-wrap" id="wp-color-options">
+          {% for c in ['#7c3aed','#0ea5e9','#22c55e','#f59e0b','#ef4444','#ec4899','#14b8a6','#f97316','#6366f1','#0f2942'] %}
+          <div onclick="selectWpColor('{{ c }}')" data-color="{{ c }}"
+               style="width:26px;height:26px;border-radius:50%;background:{{ c }};cursor:pointer;border:2px solid transparent;transition:all .15s;"
+               class="wp-color-opt"></div>
+          {% endfor %}
+        </div>
+        <input type="hidden" id="new-wp-color" value="#7c3aed">
+      </div>
+      <div>
+        <label class="text-xs font-semibold text-slate-500 block mb-1">Icon</label>
+        <div class="flex gap-2 flex-wrap" id="wp-icon-options">
+          {% for ico in ['layer-group','boxes-stacked','road','tower-broadcast','wrench','hard-hat','bolt','leaf','water','mountain'] %}
+          <div onclick="selectWpIcon('{{ ico }}')" data-icon="{{ ico }}" class="icon-opt" title="{{ ico }}">
+            <i class="fa-solid fa-{{ ico }}"></i>
+          </div>
+          {% endfor %}
+        </div>
+        <input type="hidden" id="new-wp-icon" value="layer-group">
+      </div>
+    </div>
+    <div class="flex gap-2 mt-5 justify-end">
+      <button onclick="closeModal('modal-add-wp')" class="btn-sm btn-ghost">Cancel</button>
+      <button onclick="submitAddWp()" class="btn-sm" style="background:#7c3aed;color:#fff;border:none;">Create</button>
+    </div>
+  </div>
+</div>
+
 <!-- Toast (bottom-right) -->
 <div id="toast"><i class="fa-solid fa-circle-check"></i><span id="toast-msg"></span></div>
 
@@ -462,7 +654,7 @@ function showCentreFlash(title, sub, icon='✦') {
 // ── Modal helpers ────────────────────────────────────────────────────────────
 function openModal(id) { document.getElementById(id).style.display = 'flex'; }
 function closeModal(id) { document.getElementById(id).style.display = 'none'; }
-['modal-add-element','modal-add-area','modal-add-group'].forEach(id => {
+['modal-add-element','modal-add-area','modal-add-group','modal-add-wp'].forEach(id => {
   document.getElementById(id).addEventListener('click', function(e) {
     if (e.target === this) closeModal(id);
   });
@@ -773,5 +965,233 @@ async function deleteGroup(id, name) {
 // ── Enter key shortcuts ───────────────────────────────────────────────────────
 document.getElementById('new-el-name')?.addEventListener('keydown',    e => { if(e.key==='Enter') submitAddElement(); });
 document.getElementById('new-group-name')?.addEventListener('keydown', e => { if(e.key==='Enter') submitAddGroup(); });
+document.getElementById('new-wp-name')?.addEventListener('keydown',    e => { if(e.key==='Enter') submitAddWp(); });
+
+// ── Work Package assign flow ─────────────────────────────────────────────────
+let _assignWpId    = null;
+let _assignWpName  = '';
+let _assignWpColor = '';
+let _assignWpMode  = false;
+let _selectedWpEls = new Set();
+
+function toggleWpDropdown(btn) {
+  const popup = document.getElementById('wp-dropdown-popup');
+  const showing = popup.style.display === 'block';
+  closeWpDropdown();
+  if (!showing) {
+    popup.style.display = 'block';
+    popup.style.top  = (btn.offsetTop + btn.offsetHeight + 4) + 'px';
+    popup.style.right = '0px';
+  }
+}
+function closeWpDropdown() {
+  document.getElementById('wp-dropdown-popup').style.display = 'none';
+}
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('#wp-assign-btn') && !e.target.closest('#wp-dropdown-popup')) {
+    closeWpDropdown();
+  }
+});
+
+function startAssignWp(wpid, wpname, wpcolor) {
+  closeWpDropdown();
+  // Cancel any active group assign
+  if (_assignMode) cancelAssign();
+
+  _assignWpId    = wpid;
+  _assignWpName  = wpname;
+  _assignWpColor = wpcolor;
+  _assignWpMode  = true;
+  _selectedWpEls = new Set();
+
+  document.getElementById('wp-banner-title').textContent = `Assigning to "${wpname}"`;
+  document.getElementById('wp-banner-sub').textContent   = 'Tick the elements below, then click Save';
+  const banner = document.getElementById('wp-assign-banner');
+  banner.style.background = `linear-gradient(135deg, #7c3aed, ${wpcolor})`;
+  banner.classList.add('visible');
+
+  document.querySelectorAll('.el-row').forEach(row => {
+    row.classList.add('assign-mode');
+    row.querySelectorAll('.el-actions').forEach(a => a.style.opacity = '0.3');
+  });
+  document.querySelectorAll('.assign-cb').forEach(cb => { cb.style.display = 'flex'; cb.classList.remove('checked'); });
+
+  // Pre-check elements already in this WP
+  document.querySelectorAll('.el-row').forEach(row => {
+    const id = parseInt(row.id.replace('elrow-',''));
+    if (row.dataset.wpId == wpid) {
+      _selectedWpEls.add(id);
+      document.getElementById('cb-' + id).classList.add('checked');
+      row.classList.add('selected-for-assign');
+    }
+  });
+  showCentreFlash(`Assigning to "${wpname}"`, 'Tick elements below, then click Save', '⊞');
+}
+
+async function saveAssignmentWp() {
+  const allRows = document.querySelectorAll('.el-row[id^="elrow-"]');
+  const ops = [];
+  allRows.forEach(row => {
+    const id  = parseInt(row.id.replace('elrow-',''));
+    const cur = parseInt(row.dataset.wpId) || null;
+    if (_selectedWpEls.has(id) && cur !== _assignWpId) {
+      ops.push({ id, work_package_id: _assignWpId });
+    } else if (!_selectedWpEls.has(id) && cur === _assignWpId) {
+      ops.push({ id, work_package_id: null });
+    }
+  });
+
+  for (const op of ops) {
+    await fetch(`/api/elements/${op.id}`, {
+      method: 'PATCH', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({work_package_id: op.work_package_id})
+    });
+  }
+
+  showToast(`Saved! "${_assignWpName}" updated.`, 'success');
+  cancelAssignWp();
+  updateWpBadgesAfterAssign();
+}
+
+function updateWpBadgesAfterAssign() {
+  document.querySelectorAll('.el-row[id^="elrow-"]').forEach(row => {
+    const id    = parseInt(row.id.replace('elrow-',''));
+    const badge = document.getElementById('el-wp-badge-' + id);
+    if (!badge) return;
+    if (_selectedWpEls.has(id)) {
+      row.dataset.wpId    = _assignWpId;
+      row.dataset.wpName  = _assignWpName;
+      row.dataset.wpColor = _assignWpColor;
+      badge.style.display   = '';
+      badge.style.background= _assignWpColor + '22';
+      badge.style.color     = _assignWpColor;
+      badge.innerHTML = `<i class="fa-solid fa-boxes-stacked" style="font-size:9px;margin-right:3px;"></i>${_assignWpName} <span onclick="event.stopPropagation();removeFromWp(${id})" style="opacity:.6;cursor:pointer;margin-left:3px;" title="Remove from work package">×</span>`;
+    } else if (parseInt(row.dataset.wpId) === _assignWpId) {
+      row.dataset.wpId    = '';
+      row.dataset.wpName  = '';
+      row.dataset.wpColor = '';
+      badge.style.display = 'none';
+      badge.innerHTML     = '';
+    }
+  });
+}
+
+function cancelAssignWp() {
+  _assignWpMode = false;
+  _selectedWpEls = new Set();
+  document.getElementById('wp-assign-banner').classList.remove('visible');
+  document.querySelectorAll('.el-row').forEach(row => {
+    row.classList.remove('assign-mode','selected-for-assign');
+    row.querySelectorAll('.el-actions').forEach(a => a.style.opacity = '1');
+  });
+  document.querySelectorAll('.assign-cb').forEach(cb => { cb.style.display = 'none'; cb.classList.remove('checked'); });
+}
+
+async function removeFromWp(elId, wpIdHint) {
+  if (!confirm('Remove this element from its work package?')) return;
+  await fetch(`/api/elements/${elId}`, {
+    method: 'PATCH', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({work_package_id: null})
+  });
+  const badge = document.getElementById('el-wp-badge-' + elId);
+  if (badge) { badge.style.display = 'none'; badge.innerHTML = ''; }
+  const row = document.getElementById('elrow-' + elId);
+  if (row) { row.dataset.wpId = ''; row.dataset.wpName = ''; }
+  const wptag = document.getElementById('wptag-' + elId);
+  if (wptag) wptag.remove();
+  showToast('Removed from work package', 'success');
+}
+
+// Patch rowClick to handle both assign modes
+const _origRowClick = rowClick;
+function rowClick(elId, row) {
+  if (_assignWpMode) {
+    const cb = document.getElementById('cb-' + elId);
+    if (_selectedWpEls.has(elId)) {
+      _selectedWpEls.delete(elId);
+      cb.classList.remove('checked');
+      row.classList.remove('selected-for-assign');
+    } else {
+      _selectedWpEls.add(elId);
+      cb.classList.add('checked');
+      row.classList.add('selected-for-assign');
+    }
+    return;
+  }
+  _origRowClick(elId, row);
+}
+
+// ── Work Package CRUD ────────────────────────────────────────────────────────
+let _selectedWpColor = '#7c3aed';
+let _selectedWpIcon  = 'layer-group';
+
+function selectWpColor(c) {
+  _selectedWpColor = c;
+  document.getElementById('new-wp-color').value = c;
+  document.querySelectorAll('.wp-color-opt').forEach(el => {
+    el.style.borderColor = el.dataset.color === c ? '#1e293b' : 'transparent';
+    el.style.transform   = el.dataset.color === c ? 'scale(1.2)' : 'scale(1)';
+  });
+}
+function selectWpIcon(ico) {
+  _selectedWpIcon = ico;
+  document.getElementById('new-wp-icon').value = ico;
+  document.querySelectorAll('.icon-opt').forEach(el => {
+    el.classList.toggle('selected', el.dataset.icon === ico);
+  });
+}
+document.addEventListener('DOMContentLoaded', () => {
+  selectWpColor('#7c3aed');
+  selectWpIcon('layer-group');
+});
+
+function openAddWp() {
+  document.getElementById('new-wp-name').value = '';
+  selectWpColor('#7c3aed');
+  selectWpIcon('layer-group');
+  openModal('modal-add-wp');
+  setTimeout(() => document.getElementById('new-wp-name').focus(), 50);
+}
+
+async function submitAddWp() {
+  const name  = document.getElementById('new-wp-name').value.trim();
+  const color = document.getElementById('new-wp-color').value;
+  const icon  = document.getElementById('new-wp-icon').value;
+  if (!name) { alert('Name is required'); return; }
+  const res  = await fetch(`/api/projects/${PID}/work-packages`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({name, color, icon})
+  });
+  const data = await res.json();
+  if (!res.ok) { showToast(data.error || 'Error','error'); return; }
+  closeModal('modal-add-wp');
+  showToast(`Work package "${data.name}" created`, 'success');
+  setTimeout(() => location.reload(), 700);
+}
+
+async function renameWp(id) {
+  const cur  = document.getElementById('wpname-' + id).textContent.trim();
+  const name = prompt('New work package name:', cur);
+  if (!name || name === cur) return;
+  const res  = await fetch(`/api/work-packages/${id}`, {
+    method:'PATCH', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({name})
+  });
+  if (res.ok) {
+    document.getElementById('wpname-' + id).textContent = name;
+    showToast('Work package renamed', 'success');
+  }
+}
+
+async function deleteWp(id, name) {
+  if (!confirm(`Delete work package "${name}"? Elements will be unassigned (not deleted).`)) return;
+  const res = await fetch(`/api/work-packages/${id}`, { method:'DELETE' });
+  if (res.ok) {
+    document.getElementById('wpcard-' + id).remove();
+    showToast(`Work package "${name}" deleted`, 'success');
+  } else {
+    showToast('Error deleting work package','error');
+  }
+}
 </script>
 {% endblock %}

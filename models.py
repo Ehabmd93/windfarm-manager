@@ -139,18 +139,33 @@ class WTGGroup(db.Model):
     elements   = db.relationship('WTG', backref='group', lazy=True)
 
 # ─────────────────────────────────────────────
+# WORK PACKAGES  (scope buckets within a project)
+# ─────────────────────────────────────────────
+class WorkPackage(db.Model):
+    __tablename__ = 'work_packages'
+    id         = db.Column(db.Integer, primary_key=True)
+    project_id = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=False)
+    name       = db.Column(db.String(100), nullable=False)
+    color      = db.Column(db.String(20), default='#3b82f6')
+    icon       = db.Column(db.String(40), default='layer-group')
+    sort_order = db.Column(db.Integer, default=0)
+
+    elements   = db.relationship('WTG', backref='work_package', lazy=True)
+
+# ─────────────────────────────────────────────
 # WIND TURBINE GENERATORS  (elements)
 # ─────────────────────────────────────────────
 class WTG(db.Model):
     __tablename__ = 'wtgs'
-    id           = db.Column(db.Integer, primary_key=True)
-    name         = db.Column(db.String(50), nullable=False)
-    easting      = db.Column(db.Float, nullable=True)
-    northing     = db.Column(db.Float, nullable=True)
-    status       = db.Column(db.String(20), default='in_progress')
-    project_id   = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=True)
-    group_id     = db.Column(db.Integer, db.ForeignKey('wtg_groups.id'), nullable=True)
-    element_type = db.Column(db.String(30), default='wtg')
+    id              = db.Column(db.Integer, primary_key=True)
+    name            = db.Column(db.String(50), nullable=False)
+    easting         = db.Column(db.Float, nullable=True)
+    northing        = db.Column(db.Float, nullable=True)
+    status          = db.Column(db.String(20), default='in_progress')
+    project_id      = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=True)
+    group_id        = db.Column(db.Integer, db.ForeignKey('wtg_groups.id'), nullable=True)
+    work_package_id = db.Column(db.Integer, db.ForeignKey('work_packages.id'), nullable=True)
+    element_type    = db.Column(db.String(30), default='wtg')
 
     areas        = db.relationship('Area', backref='wtg', lazy=True, cascade='all,delete')
 

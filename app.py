@@ -11,7 +11,7 @@ import json as _json
 from models import (db, User, WTG, Area, QATest, TestRecord,
                     Project, ProjectMember, ProjectFeature,
                     PROJECT_TYPES, PROJECT_STATUSES, ALL_FEATURES,
-                    WTGGroup, ELEMENT_TYPES,
+                    WTGGroup, WorkPackage, ELEMENT_TYPES,
                     ProofRollRecord, ProofRollSignatory,
                     ProofRollEquipment, ProofRollPhoto, ProofRollRectPhoto,
                     TempPhotoUpload,
@@ -804,11 +804,13 @@ def dashboard():
 def project_setup(pid):
     if current_user.role not in ('engineer', 'manager', 'admin'):
         abort(403)
-    proj     = Project.query.get_or_404(pid)
-    elements = WTG.query.filter_by(project_id=pid).order_by(WTG.name).all()
-    groups   = WTGGroup.query.filter_by(project_id=pid).order_by(WTGGroup.sort_order, WTGGroup.name).all()
+    proj          = Project.query.get_or_404(pid)
+    elements      = WTG.query.filter_by(project_id=pid).order_by(WTG.name).all()
+    groups        = WTGGroup.query.filter_by(project_id=pid).order_by(WTGGroup.sort_order, WTGGroup.name).all()
+    work_packages = WorkPackage.query.filter_by(project_id=pid).order_by(WorkPackage.sort_order, WorkPackage.name).all()
     return render_template('project_setup.html', proj=proj,
                            elements=elements, groups=groups,
+                           work_packages=work_packages,
                            element_types=ELEMENT_TYPES)
 
 
@@ -856,9 +858,13 @@ def api_element(eid):
     if 'group_id' in data:
         gid = data['group_id']
         el.group_id = int(gid) if gid else None
+    if 'work_package_id' in data:
+        wpid = data['work_package_id']
+        el.work_package_id = int(wpid) if wpid else None
     db.session.commit()
     return jsonify({'id': el.id, 'name': el.name, 'element_type': el.element_type,
-                    'element_type_label': el.element_type_label, 'group_id': el.group_id})
+                    'element_type_label': el.element_type_label,
+                    'group_id': el.group_id, 'work_package_id': el.work_package_id})
 
 
 @app.route('/api/projects/<int:pid>/groups', methods=['POST'])
@@ -900,6 +906,49 @@ def api_group(gid):
         g.color = data['color']
     db.session.commit()
     return jsonify({'id': g.id, 'name': g.name, 'color': g.color})
+
+
+@app.route('/api/projects/<int:pid>/work-packages', methods=['POST'])
+@login_required
+def api_add_work_package(pid):
+    if current_user.role not in ('engineer', 'manager', 'admin'):
+        return jsonify({'error': 'Forbidden'}), 403
+    data  = request.get_json() or {}
+    name  = data.get('name', '').strip()
+    color = data.get('color', '#3b82f6')
+    icon  = data.get('icon', 'layer-group')
+    if not name:
+        return jsonify({'error': 'Name is required'}), 400
+    if WorkPackage.query.filter_by(project_id=pid, name=name).first():
+        return jsonify({'error': f'Work package "{name}" already exists'}), 400
+    wp = WorkPackage(project_id=pid, name=name, color=color, icon=icon,
+                     sort_order=WorkPackage.query.filter_by(project_id=pid).count())
+    db.session.add(wp)
+    db.session.commit()
+    return jsonify({'id': wp.id, 'name': wp.name, 'color': wp.color, 'icon': wp.icon})
+
+
+@app.route('/api/work-packages/<int:wpid>', methods=['PATCH', 'DELETE'])
+@login_required
+def api_work_package(wpid):
+    if current_user.role not in ('engineer', 'manager', 'admin'):
+        return jsonify({'error': 'Forbidden'}), 403
+    wp = WorkPackage.query.get_or_404(wpid)
+    if request.method == 'DELETE':
+        for el in wp.elements:
+            el.work_package_id = None
+        db.session.delete(wp)
+        db.session.commit()
+        return jsonify({'ok': True})
+    data = request.get_json() or {}
+    if 'name' in data:
+        wp.name = data['name'].strip()
+    if 'color' in data:
+        wp.color = data['color']
+    if 'icon' in data:
+        wp.icon = data['icon']
+    db.session.commit()
+    return jsonify({'id': wp.id, 'name': wp.name, 'color': wp.color, 'icon': wp.icon})
 
 
 @app.route('/api/elements/<int:eid>/areas', methods=['POST'])

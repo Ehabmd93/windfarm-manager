@@ -584,6 +584,15 @@ let _pendingView  = null;
 document.addEventListener('DOMContentLoaded', () => {
   applyView(_currentView, false);
   initTreeHover();
+  // Re-draw SVG lines on resize/zoom (ResizeObserver fires on browser zoom too)
+  const _ro = new ResizeObserver(() => {
+    if (document.getElementById('view-tree').style.display !== 'none') drawTreeLines();
+  });
+  const _wrap = document.getElementById('obs-wrap');
+  if (_wrap) {
+    _ro.observe(_wrap);
+    _wrap.addEventListener('scroll', drawTreeLines, { passive: true });
+  }
 });
 
 // ── View panel ─────────────────────────────────────────────────────────────────

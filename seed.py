@@ -75,9 +75,10 @@ def _migrate_projects(app):
     if 'wtgs' in insp.get_table_names():
         cols = [c['name'] for c in insp.get_columns('wtgs')]
         wtg_migrations = [
-            ('project_id',   'ALTER TABLE wtgs ADD COLUMN project_id INTEGER'),
-            ('group_id',     'ALTER TABLE wtgs ADD COLUMN group_id INTEGER'),
-            ('element_type', "ALTER TABLE wtgs ADD COLUMN element_type VARCHAR(30) DEFAULT 'wtg'"),
+            ('project_id',      'ALTER TABLE wtgs ADD COLUMN project_id INTEGER'),
+            ('group_id',        'ALTER TABLE wtgs ADD COLUMN group_id INTEGER'),
+            ('element_type',    "ALTER TABLE wtgs ADD COLUMN element_type VARCHAR(30) DEFAULT 'wtg'"),
+            ('work_package_id', 'ALTER TABLE wtgs ADD COLUMN work_package_id INTEGER'),
         ]
         for col_name, sql in wtg_migrations:
             if col_name not in cols:
