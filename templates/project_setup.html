@@ -11,12 +11,22 @@
   .tab-btn:not(.active):hover { background:#e2e8f0;color:#334155; }
   .tab-panel { display:none; }
   .tab-panel.active { display:block; }
-  .el-row { display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #f1f5f9;transition:background .1s; }
+
+  .el-row {
+    display:flex;align-items:center;gap:10px;padding:10px 14px;
+    border-bottom:1px solid #f1f5f9;transition:background .1s;
+  }
   .el-row:hover { background:#f8fafc; }
+  .el-row.assign-mode { cursor:pointer; }
+  .el-row.assign-mode:hover { background:#eff6ff; }
+  .el-row.selected-for-assign { background:#dbeafe !important;border-left:3px solid #3b82f6; }
+
   .group-card { border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;margin-bottom:16px; }
   .group-header { display:flex;align-items:center;gap:10px;padding:12px 16px;font-weight:700;font-size:14px;color:#1e293b; }
   .color-dot { width:14px;height:14px;border-radius:50%;flex-shrink:0; }
   .badge-type { font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:#f1f5f9;color:#64748b; }
+  .group-badge { font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px; }
+
   .btn-sm { padding:5px 12px;border-radius:7px;font-size:12px;font-weight:600;border:none;cursor:pointer;transition:all .15s; }
   .btn-danger { background:#fee2e2;color:#dc2626; }
   .btn-danger:hover { background:#fecaca; }
@@ -24,12 +34,59 @@
   .btn-primary:hover { background:#1e4976; }
   .btn-ghost { background:#f1f5f9;color:#475569; }
   .btn-ghost:hover { background:#e2e8f0; }
-  input[type=text], select { border:1px solid #e2e8f0;border-radius:8px;padding:7px 11px;font-size:13px;outline:none;transition:border .15s; }
+  .btn-green { background:#dcfce7;color:#16a34a; }
+  .btn-green:hover { background:#bbf7d0; }
+
+  input[type=text], select {
+    border:1px solid #e2e8f0;border-radius:8px;padding:7px 11px;font-size:13px;outline:none;transition:border .15s;
+  }
   input[type=text]:focus, select:focus { border-color:#0ea5e9;box-shadow:0 0 0 3px rgba(14,165,233,.1); }
+
   .empty-state { text-align:center;padding:40px 20px;color:#94a3b8; }
   .area-pill { display:inline-flex;align-items:center;gap:5px;background:#f1f5f9;border-radius:6px;padding:3px 9px;font-size:11px;font-weight:600;color:#475569; }
   .area-pill .del { color:#94a3b8;cursor:pointer;font-size:10px; }
   .area-pill .del:hover { color:#ef4444; }
+
+  /* Assign banner */
+  #assign-banner {
+    display:none;position:sticky;top:0;z-index:50;
+    background:linear-gradient(135deg,#1d4ed8,#3b82f6);
+    color:#fff;border-radius:12px;padding:12px 18px;margin-bottom:12px;
+    box-shadow:0 4px 20px rgba(59,130,246,0.4);
+  }
+  #assign-banner.visible { display:flex;align-items:center;gap:12px; }
+
+  /* Group dropdown popup */
+  #group-dropdown-popup {
+    display:none;position:absolute;background:#fff;border:1px solid #e2e8f0;
+    border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,0.12);z-index:200;
+    min-width:200px;overflow:hidden;
+  }
+  .gdrop-item {
+    display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;
+    font-size:13px;font-weight:600;color:#334155;transition:background .1s;border-bottom:1px solid #f1f5f9;
+  }
+  .gdrop-item:last-child { border-bottom:none; }
+  .gdrop-item:hover { background:#eff6ff; }
+
+  /* Toast */
+  #toast {
+    display:none;position:fixed;bottom:28px;right:28px;z-index:999;
+    background:#0f2942;color:#fff;padding:12px 20px;border-radius:12px;
+    font-size:13px;font-weight:600;box-shadow:0 8px 30px rgba(0,0,0,0.2);
+    transition:opacity .3s;
+  }
+  #toast.show { display:flex;align-items:center;gap:8px; }
+  #toast.success { background:#16a34a; }
+  #toast.error   { background:#dc2626; }
+
+  /* Assign checkbox */
+  .assign-cb { display:none;width:18px;height:18px;border-radius:5px;border:2px solid #cbd5e1;
+               background:#fff;cursor:pointer;flex-shrink:0;position:relative;transition:all .15s; }
+  .assign-cb.checked { background:#3b82f6;border-color:#3b82f6; }
+  .assign-cb.checked::after { content:'✓';position:absolute;color:#fff;font-size:11px;font-weight:900;
+                               top:50%;left:50%;transform:translate(-50%,-50%); }
+  .assign-mode .assign-cb { display:flex;align-items:center;justify-content:center; }
 </style>
 {% endblock %}
 
@@ -45,11 +102,11 @@
 
 <!-- Tabs -->
 <div class="flex gap-2 mb-6">
-  <button class="tab-btn active" onclick="switchTab('elements', this)">
+  <button class="tab-btn active" id="tab-btn-elements" onclick="switchTab('elements', this)">
     <i class="fa-solid fa-tower-broadcast mr-1.5"></i> Elements
-    <span style="background:#e2e8f0;color:#64748b;border-radius:20px;padding:1px 8px;font-size:11px;margin-left:6px;">{{ elements|length }}</span>
+    <span style="background:#e2e8f0;color:#64748b;border-radius:20px;padding:1px 8px;font-size:11px;margin-left:6px;" id="el-count-badge">{{ elements|length }}</span>
   </button>
-  <button class="tab-btn" onclick="switchTab('groups', this)">
+  <button class="tab-btn" id="tab-btn-groups" onclick="switchTab('groups', this)">
     <i class="fa-solid fa-layer-group mr-1.5"></i> Groups
     <span style="background:#e2e8f0;color:#64748b;border-radius:20px;padding:1px 8px;font-size:11px;margin-left:6px;">{{ groups|length }}</span>
   </button>
@@ -57,40 +114,105 @@
 
 <!-- ═══════════════════════════════ ELEMENTS TAB ═════════════════════════════ -->
 <div id="tab-elements" class="tab-panel active">
+
+  <!-- Assign Banner (sticky, appears when assign mode active) -->
+  <div id="assign-banner">
+    <div style="width:34px;height:34px;border-radius:9px;background:rgba(255,255,255,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+      <i class="fa-solid fa-layer-group text-white text-sm"></i>
+    </div>
+    <div style="flex:1;">
+      <p style="font-weight:800;font-size:14px;" id="banner-title">Assigning to group</p>
+      <p style="font-size:12px;opacity:.85;" id="banner-sub">Tick elements below then click Save</p>
+    </div>
+    <button onclick="saveAssignment()" id="banner-save"
+            style="background:#fff;color:#1d4ed8;border:none;padding:8px 18px;border-radius:8px;font-weight:800;font-size:13px;cursor:pointer;">
+      <i class="fa-solid fa-check mr-1"></i> Save
+    </button>
+    <button onclick="cancelAssign()"
+            style="background:rgba(255,255,255,0.15);color:#fff;border:none;padding:8px 14px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;">
+      Cancel
+    </button>
+  </div>
+
   <div class="card p-0 overflow-hidden">
     <!-- Header -->
-    <div style="padding:14px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #f1f5f9;">
+    <div style="padding:14px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #f1f5f9;flex-wrap:wrap;gap:8px;">
       <div>
         <p class="font-bold text-slate-800">Project Elements</p>
-        <p class="text-xs text-slate-400 mt-0.5">Add, rename or remove WTGs, access tracks, crane pads and more</p>
+        <p class="text-xs text-slate-400 mt-0.5">Add, rename or remove elements and manage their QA areas</p>
       </div>
-      <button onclick="openAddElement()" class="btn-sm btn-primary">
-        <i class="fa-solid fa-plus mr-1"></i> Add Element
-      </button>
+      <div class="flex gap-2" style="position:relative;">
+        <!-- Assign to Group button + dropdown -->
+        <div style="position:relative;">
+          <button onclick="toggleGroupDropdown(this)" id="assign-btn"
+                  class="btn-sm" style="background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe;">
+            <i class="fa-solid fa-layer-group mr-1"></i> Assign to Group
+            <i class="fa-solid fa-chevron-down ml-1 text-xs"></i>
+          </button>
+          <!-- Group dropdown -->
+          <div id="group-dropdown-popup">
+            {% if groups %}
+            {% for g in groups %}
+            <div class="gdrop-item" onclick="startAssign({{ g.id }}, '{{ g.name }}', '{{ g.color }}')">
+              <div style="width:10px;height:10px;border-radius:50%;background:{{ g.color }};flex-shrink:0;"></div>
+              {{ g.name }}
+              <span style="margin-left:auto;font-size:10px;color:#94a3b8;">{{ g.elements|length }} elem.</span>
+            </div>
+            {% endfor %}
+            {% else %}
+            <div style="padding:14px 16px;font-size:12px;color:#94a3b8;text-align:center;">
+              No groups yet.<br>
+              <span onclick="switchTab('groups', document.getElementById('tab-btn-groups'));closeGroupDropdown();"
+                    style="color:#3b82f6;cursor:pointer;font-weight:700;">Create a group first →</span>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+        <button onclick="openAddElement()" class="btn-sm btn-primary">
+          <i class="fa-solid fa-plus mr-1"></i> Add Element
+        </button>
+      </div>
     </div>
 
     <!-- Element list -->
     <div id="element-list">
       {% for el in elements %}
-      <div class="el-row" id="elrow-{{ el.id }}">
+      <div class="el-row" id="elrow-{{ el.id }}"
+           data-group-id="{{ el.group_id or '' }}"
+           data-group-name="{{ el.group.name if el.group else '' }}"
+           data-group-color="{{ el.group.color if el.group else '' }}"
+           onclick="rowClick({{ el.id }}, this)">
+
+        <!-- Assign checkbox (hidden until assign mode) -->
+        <div class="assign-cb" id="cb-{{ el.id }}"></div>
+
         <div style="width:34px;height:34px;border-radius:9px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
           <i class="fa-solid fa-tower-broadcast text-slate-400 text-sm"></i>
         </div>
+
         <div style="flex:1;min-width:0;">
           <p class="font-semibold text-slate-800 text-sm" id="elname-{{ el.id }}">{{ el.name }}</p>
-          <div class="flex flex-wrap gap-1 mt-0.5">
+          <div class="flex flex-wrap gap-1 mt-0.5" id="el-badges-{{ el.id }}">
             <span class="badge-type">{{ el.element_type_label }}</span>
             {% if el.group %}
-            <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:{{ el.group.color }}22;color:{{ el.group.color }};">
+            <span class="group-badge" style="background:{{ el.group.color }}22;color:{{ el.group.color }};"
+                  id="el-group-badge-{{ el.id }}">
               {{ el.group.name }}
+              <span onclick="event.stopPropagation();removeFromGroup({{ el.id }})"
+                    style="opacity:.6;cursor:pointer;margin-left:3px;" title="Remove from group">×</span>
             </span>
+            {% else %}
+            <span class="group-badge" style="background:#f1f5f9;color:#94a3b8;display:none;"
+                  id="el-group-badge-{{ el.id }}"></span>
             {% endif %}
           </div>
         </div>
+
         <!-- Areas summary -->
-        <div class="hidden md:flex flex-wrap gap-1 max-w-xs" id="areas-{{ el.id }}">
+        <div class="hidden md:flex flex-wrap gap-1 max-w-xs" id="areas-{{ el.id }}"
+             onclick="event.stopPropagation()">
           {% for area in el.areas %}
-          <span class="area-pill">
+          <span class="area-pill" id="areapill-{{ area.id }}">
             {{ area.label }}
             <span class="del" onclick="deleteArea({{ area.id }}, {{ el.id }})" title="Remove area">×</span>
           </span>
@@ -102,15 +224,9 @@
             + area
           </button>
         </div>
-        <!-- Actions -->
-        <div class="flex gap-2 flex-shrink-0">
-          <select onchange="assignGroup({{ el.id }}, this.value)"
-                  style="font-size:11px;padding:4px 8px;border-radius:7px;border:1px solid #e2e8f0;">
-            <option value="">No group</option>
-            {% for g in groups %}
-            <option value="{{ g.id }}" {% if el.group_id == g.id %}selected{% endif %}>{{ g.name }}</option>
-            {% endfor %}
-          </select>
+
+        <!-- Actions (hidden during assign mode) -->
+        <div class="flex gap-2 flex-shrink-0 el-actions" onclick="event.stopPropagation()">
           <button onclick="renameElement({{ el.id }})" class="btn-sm btn-ghost" title="Rename">
             <i class="fa-solid fa-pen text-xs"></i>
           </button>
@@ -132,7 +248,7 @@
 
 <!-- ═══════════════════════════════ GROUPS TAB ══════════════════════════════ -->
 <div id="tab-groups" class="tab-panel">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
     <div>
       <p class="font-bold text-slate-800">Element Groups</p>
       <p class="text-xs text-slate-400 mt-0.5">Organise elements into zones like CS1, CS2, or any custom grouping</p>
@@ -148,7 +264,11 @@
       <div class="group-header" style="background:{{ g.color }}11;border-bottom:1px solid {{ g.color }}22;">
         <div class="color-dot" style="background:{{ g.color }};"></div>
         <span id="gname-{{ g.id }}" style="flex:1;">{{ g.name }}</span>
-        <span style="font-size:11px;color:#94a3b8;font-weight:500;margin-right:8px;">{{ g.elements|length }} element(s)</span>
+        <span style="font-size:11px;color:#94a3b8;font-weight:500;margin-right:8px;" id="gcount-{{ g.id }}">{{ g.elements|length }} element(s)</span>
+        <button onclick="switchTab('elements', document.getElementById('tab-btn-elements'));startAssign({{ g.id }}, '{{ g.name }}', '{{ g.color }}')"
+                style="background:{{ g.color }}22;color:{{ g.color }};border:none;padding:5px 12px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;margin-right:6px;">
+          <i class="fa-solid fa-plus mr-1"></i> Add Elements
+        </button>
         <button onclick="renameGroup({{ g.id }})" class="btn-sm btn-ghost" style="padding:4px 10px;">
           <i class="fa-solid fa-pen text-xs"></i>
         </button>
@@ -156,15 +276,19 @@
           <i class="fa-solid fa-trash text-xs"></i>
         </button>
       </div>
-      <div style="padding:10px 14px;display:flex;flex-wrap:wrap;gap:8px;">
+      <div style="padding:10px 14px;display:flex;flex-wrap:wrap;gap:8px;" id="gmembers-{{ g.id }}">
         {% for el in g.elements %}
-        <span style="display:inline-flex;align-items:center;gap:6px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:600;color:#334155;">
+        <span style="display:inline-flex;align-items:center;gap:6px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:600;color:#334155;"
+              id="gtag-{{ el.id }}">
           <i class="fa-solid fa-tower-broadcast text-slate-300 text-xs"></i>
           {{ el.name }}
-          <span onclick="assignGroup({{ el.id }}, '', true)" style="color:#94a3b8;cursor:pointer;font-size:11px;" title="Remove from group">×</span>
+          <span onclick="removeFromGroup({{ el.id }}, {{ g.id }})"
+                style="color:#94a3b8;cursor:pointer;font-size:13px;font-weight:900;line-height:1;" title="Remove from group">×</span>
         </span>
         {% else %}
-        <span style="color:#94a3b8;font-size:12px;font-style:italic;">No elements assigned — use the Elements tab to assign</span>
+        <span style="color:#94a3b8;font-size:12px;font-style:italic;" id="gempty-{{ g.id }}">
+          No elements — click "Add Elements" above
+        </span>
         {% endfor %}
       </div>
     </div>
@@ -172,7 +296,7 @@
     <div class="empty-state" id="empty-groups">
       <i class="fa-solid fa-layer-group text-3xl mb-2 block"></i>
       <p class="font-semibold">No groups yet</p>
-      <p class="text-sm mt-1">Groups help you organise elements — e.g. group WTG01–WTG05 as "CS1"</p>
+      <p class="text-sm mt-1">Groups let you organise elements into zones — e.g. CS1, CS2, North Zone</p>
     </div>
     {% endfor %}
   </div>
@@ -182,7 +306,7 @@
 <!-- ══════════════════════════════ MODALS ════════════════════════════════════ -->
 
 <!-- Add Element Modal -->
-<div id="modal-add-element" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:100;display:none;align-items:center;justify-content:center;">
+<div id="modal-add-element" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:300;align-items:center;justify-content:center;">
   <div style="background:#fff;border-radius:16px;padding:24px;width:380px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.2);">
     <p class="font-bold text-slate-800 text-base mb-4">Add New Element</p>
     <div class="flex flex-col gap-3">
@@ -198,15 +322,6 @@
           {% endfor %}
         </select>
       </div>
-      <div>
-        <label class="text-xs font-semibold text-slate-500 block mb-1">Group (optional)</label>
-        <select id="new-el-group" style="width:100%;">
-          <option value="">No group</option>
-          {% for g in groups %}
-          <option value="{{ g.id }}">{{ g.name }}</option>
-          {% endfor %}
-        </select>
-      </div>
     </div>
     <div class="flex gap-2 mt-5 justify-end">
       <button onclick="closeModal('modal-add-element')" class="btn-sm btn-ghost">Cancel</button>
@@ -216,22 +331,22 @@
 </div>
 
 <!-- Add Area Modal -->
-<div id="modal-add-area" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:100;align-items:center;justify-content:center;">
+<div id="modal-add-area" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:300;align-items:center;justify-content:center;">
   <div style="background:#fff;border-radius:16px;padding:24px;width:420px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.2);">
     <p class="font-bold text-slate-800 text-base mb-1">Add Area</p>
     <p id="modal-area-subtitle" class="text-xs text-slate-400 mb-4"></p>
     <div class="flex flex-col gap-3">
       <div>
         <label class="text-xs font-semibold text-slate-500 block mb-1">Area Type Key</label>
-        <input id="new-area-type" type="text" placeholder="e.g. hardstand, crane_pad, road_section_1" style="width:100%;">
-        <p class="text-xs text-slate-400 mt-1">Lowercase, underscores. Used internally.</p>
+        <input id="new-area-type" type="text" placeholder="e.g. hardstand, crane_pad" style="width:100%;">
+        <p class="text-xs text-slate-400 mt-1">Lowercase with underscores. Used internally.</p>
       </div>
       <div>
         <label class="text-xs font-semibold text-slate-500 block mb-1">Display Label</label>
         <input id="new-area-label" type="text" placeholder="e.g. Hardstand, Crane Pad" style="width:100%;">
       </div>
       <div>
-        <label class="text-xs font-semibold text-slate-500 block mb-1">Proof Roll Tests to include</label>
+        <label class="text-xs font-semibold text-slate-500 block mb-1">Include QA tests</label>
         <div style="display:flex;flex-wrap:wrap;gap:6px;" id="test-checkboxes">
           {% for tt, lbl in [
             ('proof_roll_foundation','Foundation'), ('proof_roll_subgrade','Subgrade'),
@@ -255,7 +370,7 @@
 </div>
 
 <!-- Add Group Modal -->
-<div id="modal-add-group" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:100;align-items:center;justify-content:center;">
+<div id="modal-add-group" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:300;align-items:center;justify-content:center;">
   <div style="background:#fff;border-radius:16px;padding:24px;width:340px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.2);">
     <p class="font-bold text-slate-800 text-base mb-4">Create Group</p>
     <div class="flex flex-col gap-3">
@@ -268,7 +383,7 @@
         <div class="flex gap-2 flex-wrap" id="color-options">
           {% for c in ['#0f2942','#0ea5e9','#22c55e','#f59e0b','#ef4444','#8b5cf6','#ec4899','#14b8a6','#f97316','#6366f1'] %}
           <div onclick="selectColor('{{ c }}')" data-color="{{ c }}"
-               style="width:26px;height:26px;border-radius:50%;background:{{ c }};cursor:pointer;border:2px solid transparent;transition:border .15s;"
+               style="width:26px;height:26px;border-radius:50%;background:{{ c }};cursor:pointer;border:2px solid transparent;transition:all .15s;"
                class="color-opt"></div>
           {% endfor %}
         </div>
@@ -282,10 +397,14 @@
   </div>
 </div>
 
+<!-- Toast -->
+<div id="toast"><i class="fa-solid fa-circle-check"></i><span id="toast-msg"></span></div>
+
 
 <script>
 const PID = {{ proj.id }};
 
+// ── Tab switching ────────────────────────────────────────────────────────────
 function switchTab(name, btn) {
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -293,12 +412,174 @@ function switchTab(name, btn) {
   btn.classList.add('active');
 }
 
-function openModal(id) {
-  const m = document.getElementById(id);
-  m.style.display = 'flex';
+// ── Toast ────────────────────────────────────────────────────────────────────
+let _toastTimer;
+function showToast(msg, type='success') {
+  const t = document.getElementById('toast');
+  t.className = 'show ' + type;
+  document.getElementById('toast-msg').textContent = msg;
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => { t.className = ''; }, 3200);
 }
-function closeModal(id) {
-  document.getElementById(id).style.display = 'none';
+
+// ── Modal helpers ────────────────────────────────────────────────────────────
+function openModal(id) { document.getElementById(id).style.display = 'flex'; }
+function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+['modal-add-element','modal-add-area','modal-add-group'].forEach(id => {
+  document.getElementById(id).addEventListener('click', function(e) {
+    if (e.target === this) closeModal(id);
+  });
+});
+
+// ── Assign-to-group flow ─────────────────────────────────────────────────────
+let _assignGroupId   = null;
+let _assignGroupName = '';
+let _assignGroupColor= '';
+let _assignMode      = false;
+let _selectedEls     = new Set();
+
+function toggleGroupDropdown(btn) {
+  const popup = document.getElementById('group-dropdown-popup');
+  const showing = popup.style.display === 'block';
+  popup.style.display = showing ? 'none' : 'block';
+  // Position below button
+  const rect = btn.getBoundingClientRect();
+  popup.style.top  = (btn.offsetTop + btn.offsetHeight + 4) + 'px';
+  popup.style.right = '0px';
+}
+function closeGroupDropdown() {
+  document.getElementById('group-dropdown-popup').style.display = 'none';
+}
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('#assign-btn') && !e.target.closest('#group-dropdown-popup')) {
+    closeGroupDropdown();
+  }
+});
+
+function startAssign(gid, gname, gcolor) {
+  closeGroupDropdown();
+  _assignGroupId   = gid;
+  _assignGroupName = gname;
+  _assignGroupColor= gcolor;
+  _assignMode      = true;
+  _selectedEls     = new Set();
+
+  // Show banner
+  document.getElementById('banner-title').textContent = `Assigning to "${gname}"`;
+  document.getElementById('banner-sub').textContent   = 'Tick the elements below, then click Save';
+  const banner = document.getElementById('assign-banner');
+  banner.style.background = `linear-gradient(135deg, #1d4ed8, ${gcolor})`;
+  banner.classList.add('visible');
+
+  // Enter assign mode on all rows
+  document.querySelectorAll('.el-row').forEach(row => {
+    row.classList.add('assign-mode');
+    row.querySelectorAll('.el-actions').forEach(a => a.style.opacity = '0.3');
+  });
+  document.querySelectorAll('.assign-cb').forEach(cb => { cb.style.display = 'flex'; cb.classList.remove('checked'); });
+
+  // Pre-check elements already in this group
+  document.querySelectorAll('.el-row').forEach(row => {
+    const gid = row.dataset.groupId;
+    const id  = parseInt(row.id.replace('elrow-',''));
+    if (gid == _assignGroupId) {
+      _selectedEls.add(id);
+      document.getElementById('cb-' + id).classList.add('checked');
+      row.classList.add('selected-for-assign');
+    }
+  });
+  showToast(`Select elements to assign to "${gname}"`, 'info');
+}
+
+function rowClick(elId, row) {
+  if (!_assignMode) return;
+  const cb = document.getElementById('cb-' + elId);
+  if (_selectedEls.has(elId)) {
+    _selectedEls.delete(elId);
+    cb.classList.remove('checked');
+    row.classList.remove('selected-for-assign');
+  } else {
+    _selectedEls.add(elId);
+    cb.classList.add('checked');
+    row.classList.add('selected-for-assign');
+  }
+}
+
+async function saveAssignment() {
+  // Get all elements in this project
+  const allRows = document.querySelectorAll('.el-row[id^="elrow-"]');
+  const ops = [];
+  allRows.forEach(row => {
+    const id  = parseInt(row.id.replace('elrow-',''));
+    const cur = parseInt(row.dataset.groupId) || null;
+    if (_selectedEls.has(id) && cur !== _assignGroupId) {
+      ops.push({ id, group_id: _assignGroupId });
+    } else if (!_selectedEls.has(id) && cur === _assignGroupId) {
+      ops.push({ id, group_id: null });
+    }
+  });
+
+  for (const op of ops) {
+    await fetch(`/api/elements/${op.id}`, {
+      method: 'PATCH', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({group_id: op.group_id})
+    });
+  }
+
+  showToast(`Saved! "${_assignGroupName}" updated.`, 'success');
+  cancelAssign();
+  // Update UI without full reload
+  updateGroupBadgesAfterAssign();
+}
+
+function updateGroupBadgesAfterAssign() {
+  document.querySelectorAll('.el-row[id^="elrow-"]').forEach(row => {
+    const id  = parseInt(row.id.replace('elrow-',''));
+    const badge = document.getElementById('el-group-badge-' + id);
+    if (!badge) return;
+    if (_selectedEls.has(id)) {
+      row.dataset.groupId   = _assignGroupId;
+      row.dataset.groupName = _assignGroupName;
+      badge.style.display   = '';
+      badge.style.background= _assignGroupColor + '22';
+      badge.style.color     = _assignGroupColor;
+      badge.innerHTML       = `${_assignGroupName} <span onclick="event.stopPropagation();removeFromGroup(${id})" style="opacity:.6;cursor:pointer;margin-left:3px;" title="Remove from group">×</span>`;
+    } else if (parseInt(row.dataset.groupId) === _assignGroupId) {
+      row.dataset.groupId   = '';
+      row.dataset.groupName = '';
+      badge.style.display   = 'none';
+      badge.innerHTML       = '';
+    }
+  });
+}
+
+function cancelAssign() {
+  _assignMode = false;
+  _selectedEls = new Set();
+  document.getElementById('assign-banner').classList.remove('visible');
+  document.querySelectorAll('.el-row').forEach(row => {
+    row.classList.remove('assign-mode','selected-for-assign');
+    row.querySelectorAll('.el-actions').forEach(a => a.style.opacity = '1');
+  });
+  document.querySelectorAll('.assign-cb').forEach(cb => { cb.style.display = 'none'; cb.classList.remove('checked'); });
+}
+
+// ── Remove from group ────────────────────────────────────────────────────────
+async function removeFromGroup(elId, gidHint) {
+  if (!confirm('Remove this element from its group?')) return;
+  await fetch(`/api/elements/${elId}`, {
+    method: 'PATCH', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({group_id: null})
+  });
+  // Hide badge on element row
+  const badge = document.getElementById('el-group-badge-' + elId);
+  if (badge) { badge.style.display = 'none'; badge.innerHTML = ''; }
+  const row = document.getElementById('elrow-' + elId);
+  if (row) row.dataset.groupId = '';
+  // Remove tag from group card if visible
+  const gtag = document.getElementById('gtag-' + elId);
+  if (gtag) gtag.remove();
+  showToast('Removed from group', 'success');
 }
 
 // ── Add Element ──────────────────────────────────────────────────────────────
@@ -307,27 +588,20 @@ function openAddElement() {
   openModal('modal-add-element');
   setTimeout(() => document.getElementById('new-el-name').focus(), 50);
 }
-
 async function submitAddElement() {
   const name  = document.getElementById('new-el-name').value.trim();
   const etype = document.getElementById('new-el-type').value;
-  const gid   = document.getElementById('new-el-group').value;
   if (!name) { alert('Name is required'); return; }
-  const res = await fetch(`/api/projects/${PID}/elements`, {
-    method: 'POST', headers: {'Content-Type':'application/json'},
+  const res  = await fetch(`/api/projects/${PID}/elements`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({name, element_type: etype})
   });
   const data = await res.json();
-  if (!res.ok) { alert(data.error || 'Error'); return; }
-  // Assign group if selected
-  if (gid) {
-    await fetch(`/api/elements/${data.id}`, {
-      method: 'PATCH', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({group_id: gid})
-    });
-  }
+  if (!res.ok) { showToast(data.error || 'Error', 'error'); return; }
   closeModal('modal-add-element');
-  location.reload();
+  showToast(`"${data.name}" added`, 'success');
+  // Reload to show new row
+  setTimeout(() => location.reload(), 800);
 }
 
 // ── Rename Element ───────────────────────────────────────────────────────────
@@ -335,30 +609,26 @@ async function renameElement(id) {
   const cur = document.getElementById('elname-' + id).textContent.trim();
   const name = prompt('New name:', cur);
   if (!name || name === cur) return;
-  const res = await fetch(`/api/elements/${id}`, {
-    method: 'PATCH', headers: {'Content-Type':'application/json'},
+  const res  = await fetch(`/api/elements/${id}`, {
+    method:'PATCH', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({name})
   });
   const data = await res.json();
-  if (!res.ok) { alert(data.error || 'Error'); return; }
+  if (!res.ok) { showToast(data.error || 'Error', 'error'); return; }
   document.getElementById('elname-' + id).textContent = data.name;
+  showToast('Renamed', 'success');
 }
 
 // ── Delete Element ───────────────────────────────────────────────────────────
 async function deleteElement(id, name) {
   if (!confirm(`Delete "${name}" and all its QA data? This cannot be undone.`)) return;
-  const res = await fetch(`/api/elements/${id}`, { method: 'DELETE' });
-  if (res.ok) document.getElementById('elrow-' + id).remove();
-  else alert('Error deleting element');
-}
-
-// ── Assign Group ─────────────────────────────────────────────────────────────
-async function assignGroup(elId, gid, reload) {
-  await fetch(`/api/elements/${elId}`, {
-    method: 'PATCH', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({group_id: gid || null})
-  });
-  if (reload) location.reload();
+  const res = await fetch(`/api/elements/${id}`, { method:'DELETE' });
+  if (res.ok) {
+    document.getElementById('elrow-' + id).remove();
+    showToast(`"${name}" deleted`, 'success');
+  } else {
+    showToast('Error deleting', 'error');
+  }
 }
 
 // ── Add Area ─────────────────────────────────────────────────────────────────
@@ -371,55 +641,52 @@ function openAddArea(elId, elName) {
   document.querySelectorAll('#test-checkboxes input[type=checkbox]').forEach(cb => cb.checked = false);
   openModal('modal-add-area');
 }
-
 document.getElementById('new-area-type').addEventListener('input', function() {
   const lbl = document.getElementById('new-area-label');
   if (!lbl.value) lbl.value = this.value.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
 });
-
 async function submitAddArea() {
   const area_type = document.getElementById('new-area-type').value.trim().replace(/\s+/g,'_').toLowerCase();
   const label     = document.getElementById('new-area-label').value.trim();
-  const tests     = [...document.querySelectorAll('#test-checkboxes input:checked')].map(c => c.value);
+  const tests     = [...document.querySelectorAll('#test-checkboxes input:checked')].map(c=>c.value);
   if (!area_type) { alert('Area type is required'); return; }
-  const res = await fetch(`/api/elements/${_addAreaElId}/areas`, {
-    method: 'POST', headers: {'Content-Type':'application/json'},
+  const res  = await fetch(`/api/elements/${_addAreaElId}/areas`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({area_type, label, tests})
   });
   const data = await res.json();
-  if (!res.ok) { alert(data.error || 'Error'); return; }
+  if (!res.ok) { showToast(data.error || 'Error','error'); return; }
   closeModal('modal-add-area');
-  // Add pill to UI without reload
   const container = document.getElementById('areas-' + _addAreaElId);
-  const addBtn = container.querySelector('button');
-  const pill = document.createElement('span');
-  pill.className = 'area-pill';
-  pill.id = `areapill-${data.id}`;
-  pill.innerHTML = `${data.label} <span class="del" onclick="deleteArea(${data.id}, ${_addAreaElId})" title="Remove">×</span>`;
+  const addBtn    = container.querySelector('button');
+  const pill      = document.createElement('span');
+  pill.className  = 'area-pill';
+  pill.id         = `areapill-${data.id}`;
+  pill.innerHTML  = `${data.label} <span class="del" onclick="deleteArea(${data.id},${_addAreaElId})" title="Remove">×</span>`;
   container.insertBefore(pill, addBtn);
+  showToast(`Area "${data.label}" added`, 'success');
 }
-
 async function deleteArea(areaId, elId) {
   if (!confirm('Remove this area and all its QA records?')) return;
-  const res = await fetch(`/api/areas/${areaId}`, { method: 'DELETE' });
+  const res = await fetch(`/api/areas/${areaId}`, { method:'DELETE' });
   if (res.ok) {
-    const pill = document.getElementById('areapill-' + areaId);
-    if (pill) pill.remove();
-    else location.reload();
-  } else alert('Error');
+    document.getElementById('areapill-' + areaId)?.remove();
+    showToast('Area removed', 'success');
+  } else {
+    showToast('Error','error');
+  }
 }
 
-// ── Add Group ────────────────────────────────────────────────────────────────
+// ── Groups ───────────────────────────────────────────────────────────────────
 let _selectedColor = '#0f2942';
 function selectColor(c) {
   _selectedColor = c;
   document.getElementById('new-group-color').value = c;
   document.querySelectorAll('.color-opt').forEach(el => {
     el.style.borderColor = el.dataset.color === c ? '#1e293b' : 'transparent';
-    el.style.transform = el.dataset.color === c ? 'scale(1.2)' : 'scale(1)';
+    el.style.transform   = el.dataset.color === c ? 'scale(1.2)' : 'scale(1)';
   });
 }
-// Init first color selected
 document.addEventListener('DOMContentLoaded', () => selectColor('#0f2942'));
 
 function openAddGroup() {
@@ -428,54 +695,46 @@ function openAddGroup() {
   openModal('modal-add-group');
   setTimeout(() => document.getElementById('new-group-name').focus(), 50);
 }
-
 async function submitAddGroup() {
   const name  = document.getElementById('new-group-name').value.trim();
   const color = document.getElementById('new-group-color').value;
   if (!name) { alert('Group name is required'); return; }
-  const res = await fetch(`/api/projects/${PID}/groups`, {
-    method: 'POST', headers: {'Content-Type':'application/json'},
+  const res  = await fetch(`/api/projects/${PID}/groups`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({name, color})
   });
   const data = await res.json();
-  if (!res.ok) { alert(data.error || 'Error'); return; }
+  if (!res.ok) { showToast(data.error || 'Error','error'); return; }
   closeModal('modal-add-group');
-  location.reload();
+  showToast(`Group "${data.name}" created`, 'success');
+  setTimeout(() => location.reload(), 700);
 }
-
 async function renameGroup(id) {
-  const cur = document.getElementById('gname-' + id).textContent.trim();
+  const cur  = document.getElementById('gname-' + id).textContent.trim();
   const name = prompt('New group name:', cur);
   if (!name || name === cur) return;
-  const res = await fetch(`/api/groups/${id}`, {
-    method: 'PATCH', headers: {'Content-Type':'application/json'},
+  const res  = await fetch(`/api/groups/${id}`, {
+    method:'PATCH', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({name})
   });
-  if (res.ok) document.getElementById('gname-' + id).textContent = name;
+  if (res.ok) {
+    document.getElementById('gname-' + id).textContent = name;
+    showToast('Group renamed', 'success');
+  }
 }
-
 async function deleteGroup(id, name) {
   if (!confirm(`Delete group "${name}"? Elements will be ungrouped (not deleted).`)) return;
-  const res = await fetch(`/api/groups/${id}`, { method: 'DELETE' });
-  if (res.ok) { document.getElementById('groupcard-' + id).remove(); }
-  else alert('Error deleting group');
+  const res = await fetch(`/api/groups/${id}`, { method:'DELETE' });
+  if (res.ok) {
+    document.getElementById('groupcard-' + id).remove();
+    showToast(`Group "${name}" deleted`, 'success');
+  } else {
+    showToast('Error deleting group','error');
+  }
 }
 
-// Close modals on backdrop click
-['modal-add-element','modal-add-area','modal-add-group'].forEach(id => {
-  document.getElementById(id).addEventListener('click', function(e) {
-    if (e.target === this) closeModal(id);
-  });
-});
-
-// Enter key on name inputs
-['new-el-name','new-group-name'].forEach(id => {
-  document.getElementById(id)?.addEventListener('keydown', e => {
-    if (e.key === 'Enter') {
-      if (id === 'new-el-name') submitAddElement();
-      else submitAddGroup();
-    }
-  });
-});
+// ── Enter key shortcuts ───────────────────────────────────────────────────────
+document.getElementById('new-el-name')?.addEventListener('keydown',    e => { if(e.key==='Enter') submitAddElement(); });
+document.getElementById('new-group-name')?.addEventListener('keydown', e => { if(e.key==='Enter') submitAddGroup(); });
 </script>
 {% endblock %}
