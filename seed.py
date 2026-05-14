@@ -7,6 +7,7 @@ Seed the database with:
 from werkzeug.security import generate_password_hash
 from models import (db, User, WTG, Area, QATest, ITPRecord, ITPItemStatus,
                     FoundationStage, FoundationStageTemplate, FOUNDATION_STAGES,
+                    WTGGroup, ELEMENT_TYPES,
                     CustomTrackingField, ProgressWidget)
 
 WTG_NAMES = [
@@ -69,18 +70,24 @@ def _migrate_projects(app):
     from sqlalchemy import text, inspect as sa_inspect
     from models import Project, ProjectMember, ProjectFeature, ALL_FEATURES, User, WTG
 
-    # ── 1. Add project_id column to wtgs table if missing ────────────────────
+    # ── 1. Add missing columns to wtgs table ─────────────────────────────────
     insp = sa_inspect(db.engine)
     if 'wtgs' in insp.get_table_names():
         cols = [c['name'] for c in insp.get_columns('wtgs')]
-        if 'project_id' not in cols:
-            try:
-                with db.engine.connect() as conn:
-                    conn.execute(text('ALTER TABLE wtgs ADD COLUMN project_id INTEGER'))
-                    conn.commit()
-                print("Added project_id column to wtgs")
-            except Exception as e:
-                print(f"project_id column note: {e}")
+        wtg_migrations = [
+            ('project_id',   'ALTER TABLE wtgs ADD COLUMN project_id INTEGER'),
+            ('group_id',     'ALTER TABLE wtgs ADD COLUMN group_id INTEGER'),
+            ('element_type', "ALTER TABLE wtgs ADD COLUMN element_type VARCHAR(30) DEFAULT 'wtg'"),
+        ]
+        for col_name, sql in wtg_migrations:
+            if col_name not in cols:
+                try:
+                    with db.engine.connect() as conn:
+                        conn.execute(text(sql))
+                        conn.commit()
+                    print(f"Added {col_name} column to wtgs")
+                except Exception as e:
+                    print(f"{col_name} column note: {e}")
 
     # ── 2. Create King Rocks Wind Farm project if it doesn't exist ───────────
     try:

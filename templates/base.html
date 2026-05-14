@@ -207,6 +207,13 @@
         <span style="margin-left:auto;font-size:9px;font-weight:800;background:rgba(245,158,11,.2);color:#f59e0b;padding:1px 6px;border-radius:99px;">{{ user_projects|length }}</span>
         {% endif %}
       </a>
+      {% if current_user.is_authenticated and current_user.role in ('engineer','manager','admin') and active_project %}
+      <a href="{{ url_for('project_setup', pid=active_project.id) }}"
+         class="sidebar-link {% if request.endpoint=='project_setup' %}active{% endif %}" style="margin-top:3px;">
+        <i class="fa-solid fa-sliders" style="width:16px;color:#a78bfa;"></i>
+        <span>Project Setup</span>
+      </a>
+      {% endif %}
 
       <a href="{{ url_for('documents_list') }}" class="sidebar-link {% if request.endpoint in ['documents_list','document_upload','document_detail'] %}active{% endif %}" style="margin-top:3px;">
         <i class="fa-solid fa-file-circle-check" style="width:16px;color:#38bdf8;"></i>

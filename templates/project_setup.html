@@ -1,0 +1,481 @@
+{% extends 'base.html' %}
+{% block title %}Project Setup – {{ proj.name }}{% endblock %}
+{% block page_title %}Project Setup{% endblock %}
+{% block page_sub %}{{ proj.name }} · Manage elements, groups and QA areas{% endblock %}
+
+{% block head %}
+<style>
+  .tab-btn { padding:8px 18px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all .15s; }
+  .tab-btn.active { background:#0f2942;color:#fff; }
+  .tab-btn:not(.active) { background:#f1f5f9;color:#64748b; }
+  .tab-btn:not(.active):hover { background:#e2e8f0;color:#334155; }
+  .tab-panel { display:none; }
+  .tab-panel.active { display:block; }
+  .el-row { display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #f1f5f9;transition:background .1s; }
+  .el-row:hover { background:#f8fafc; }
+  .group-card { border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;margin-bottom:16px; }
+  .group-header { display:flex;align-items:center;gap:10px;padding:12px 16px;font-weight:700;font-size:14px;color:#1e293b; }
+  .color-dot { width:14px;height:14px;border-radius:50%;flex-shrink:0; }
+  .badge-type { font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:#f1f5f9;color:#64748b; }
+  .btn-sm { padding:5px 12px;border-radius:7px;font-size:12px;font-weight:600;border:none;cursor:pointer;transition:all .15s; }
+  .btn-danger { background:#fee2e2;color:#dc2626; }
+  .btn-danger:hover { background:#fecaca; }
+  .btn-primary { background:#0f2942;color:#fff; }
+  .btn-primary:hover { background:#1e4976; }
+  .btn-ghost { background:#f1f5f9;color:#475569; }
+  .btn-ghost:hover { background:#e2e8f0; }
+  input[type=text], select { border:1px solid #e2e8f0;border-radius:8px;padding:7px 11px;font-size:13px;outline:none;transition:border .15s; }
+  input[type=text]:focus, select:focus { border-color:#0ea5e9;box-shadow:0 0 0 3px rgba(14,165,233,.1); }
+  .empty-state { text-align:center;padding:40px 20px;color:#94a3b8; }
+  .area-pill { display:inline-flex;align-items:center;gap:5px;background:#f1f5f9;border-radius:6px;padding:3px 9px;font-size:11px;font-weight:600;color:#475569; }
+  .area-pill .del { color:#94a3b8;cursor:pointer;font-size:10px; }
+  .area-pill .del:hover { color:#ef4444; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="flex items-center gap-3 mb-6">
+  <a href="{{ url_for('project_settings', pid=proj.id) }}"
+     class="text-slate-400 hover:text-slate-600 text-sm flex items-center gap-1">
+    <i class="fa-solid fa-chevron-left text-xs"></i> Project Settings
+  </a>
+  <span class="text-slate-300">·</span>
+  <span class="text-slate-600 font-semibold text-sm">{{ proj.name }}</span>
+</div>
+
+<!-- Tabs -->
+<div class="flex gap-2 mb-6">
+  <button class="tab-btn active" onclick="switchTab('elements', this)">
+    <i class="fa-solid fa-tower-broadcast mr-1.5"></i> Elements
+    <span style="background:#e2e8f0;color:#64748b;border-radius:20px;padding:1px 8px;font-size:11px;margin-left:6px;">{{ elements|length }}</span>
+  </button>
+  <button class="tab-btn" onclick="switchTab('groups', this)">
+    <i class="fa-solid fa-layer-group mr-1.5"></i> Groups
+    <span style="background:#e2e8f0;color:#64748b;border-radius:20px;padding:1px 8px;font-size:11px;margin-left:6px;">{{ groups|length }}</span>
+  </button>
+</div>
+
+<!-- ═══════════════════════════════ ELEMENTS TAB ═════════════════════════════ -->
+<div id="tab-elements" class="tab-panel active">
+  <div class="card p-0 overflow-hidden">
+    <!-- Header -->
+    <div style="padding:14px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #f1f5f9;">
+      <div>
+        <p class="font-bold text-slate-800">Project Elements</p>
+        <p class="text-xs text-slate-400 mt-0.5">Add, rename or remove WTGs, access tracks, crane pads and more</p>
+      </div>
+      <button onclick="openAddElement()" class="btn-sm btn-primary">
+        <i class="fa-solid fa-plus mr-1"></i> Add Element
+      </button>
+    </div>
+
+    <!-- Element list -->
+    <div id="element-list">
+      {% for el in elements %}
+      <div class="el-row" id="elrow-{{ el.id }}">
+        <div style="width:34px;height:34px;border-radius:9px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <i class="fa-solid fa-tower-broadcast text-slate-400 text-sm"></i>
+        </div>
+        <div style="flex:1;min-width:0;">
+          <p class="font-semibold text-slate-800 text-sm" id="elname-{{ el.id }}">{{ el.name }}</p>
+          <div class="flex flex-wrap gap-1 mt-0.5">
+            <span class="badge-type">{{ el.element_type_label }}</span>
+            {% if el.group %}
+            <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:{{ el.group.color }}22;color:{{ el.group.color }};">
+              {{ el.group.name }}
+            </span>
+            {% endif %}
+          </div>
+        </div>
+        <!-- Areas summary -->
+        <div class="hidden md:flex flex-wrap gap-1 max-w-xs" id="areas-{{ el.id }}">
+          {% for area in el.areas %}
+          <span class="area-pill">
+            {{ area.label }}
+            <span class="del" onclick="deleteArea({{ area.id }}, {{ el.id }})" title="Remove area">×</span>
+          </span>
+          {% endfor %}
+          <button onclick="openAddArea({{ el.id }}, '{{ el.name }}')"
+                  style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:6px;background:transparent;border:1px dashed #cbd5e1;color:#94a3b8;cursor:pointer;"
+                  onmouseover="this.style.borderColor='#0ea5e9';this.style.color='#0ea5e9'"
+                  onmouseout="this.style.borderColor='#cbd5e1';this.style.color='#94a3b8'">
+            + area
+          </button>
+        </div>
+        <!-- Actions -->
+        <div class="flex gap-2 flex-shrink-0">
+          <select onchange="assignGroup({{ el.id }}, this.value)"
+                  style="font-size:11px;padding:4px 8px;border-radius:7px;border:1px solid #e2e8f0;">
+            <option value="">No group</option>
+            {% for g in groups %}
+            <option value="{{ g.id }}" {% if el.group_id == g.id %}selected{% endif %}>{{ g.name }}</option>
+            {% endfor %}
+          </select>
+          <button onclick="renameElement({{ el.id }})" class="btn-sm btn-ghost" title="Rename">
+            <i class="fa-solid fa-pen text-xs"></i>
+          </button>
+          <button onclick="deleteElement({{ el.id }}, '{{ el.name }}')" class="btn-sm btn-danger" title="Delete">
+            <i class="fa-solid fa-trash text-xs"></i>
+          </button>
+        </div>
+      </div>
+      {% else %}
+      <div class="empty-state" id="empty-elements">
+        <i class="fa-solid fa-tower-broadcast text-3xl mb-2 block"></i>
+        <p class="font-semibold">No elements yet</p>
+        <p class="text-sm mt-1">Click "Add Element" to create WTGs, access tracks and more</p>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ GROUPS TAB ══════════════════════════════ -->
+<div id="tab-groups" class="tab-panel">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+    <div>
+      <p class="font-bold text-slate-800">Element Groups</p>
+      <p class="text-xs text-slate-400 mt-0.5">Organise elements into zones like CS1, CS2, or any custom grouping</p>
+    </div>
+    <button onclick="openAddGroup()" class="btn-sm btn-primary">
+      <i class="fa-solid fa-plus mr-1"></i> Create Group
+    </button>
+  </div>
+
+  <div id="group-list">
+    {% for g in groups %}
+    <div class="group-card" id="groupcard-{{ g.id }}">
+      <div class="group-header" style="background:{{ g.color }}11;border-bottom:1px solid {{ g.color }}22;">
+        <div class="color-dot" style="background:{{ g.color }};"></div>
+        <span id="gname-{{ g.id }}" style="flex:1;">{{ g.name }}</span>
+        <span style="font-size:11px;color:#94a3b8;font-weight:500;margin-right:8px;">{{ g.elements|length }} element(s)</span>
+        <button onclick="renameGroup({{ g.id }})" class="btn-sm btn-ghost" style="padding:4px 10px;">
+          <i class="fa-solid fa-pen text-xs"></i>
+        </button>
+        <button onclick="deleteGroup({{ g.id }}, '{{ g.name }}')" class="btn-sm btn-danger" style="padding:4px 10px;">
+          <i class="fa-solid fa-trash text-xs"></i>
+        </button>
+      </div>
+      <div style="padding:10px 14px;display:flex;flex-wrap:wrap;gap:8px;">
+        {% for el in g.elements %}
+        <span style="display:inline-flex;align-items:center;gap:6px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:600;color:#334155;">
+          <i class="fa-solid fa-tower-broadcast text-slate-300 text-xs"></i>
+          {{ el.name }}
+          <span onclick="assignGroup({{ el.id }}, '', true)" style="color:#94a3b8;cursor:pointer;font-size:11px;" title="Remove from group">×</span>
+        </span>
+        {% else %}
+        <span style="color:#94a3b8;font-size:12px;font-style:italic;">No elements assigned — use the Elements tab to assign</span>
+        {% endfor %}
+      </div>
+    </div>
+    {% else %}
+    <div class="empty-state" id="empty-groups">
+      <i class="fa-solid fa-layer-group text-3xl mb-2 block"></i>
+      <p class="font-semibold">No groups yet</p>
+      <p class="text-sm mt-1">Groups help you organise elements — e.g. group WTG01–WTG05 as "CS1"</p>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════ MODALS ════════════════════════════════════ -->
+
+<!-- Add Element Modal -->
+<div id="modal-add-element" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:100;display:none;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:16px;padding:24px;width:380px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.2);">
+    <p class="font-bold text-slate-800 text-base mb-4">Add New Element</p>
+    <div class="flex flex-col gap-3">
+      <div>
+        <label class="text-xs font-semibold text-slate-500 block mb-1">Element Name</label>
+        <input id="new-el-name" type="text" placeholder="e.g. WTG01, AT-North, HS-01" style="width:100%;">
+      </div>
+      <div>
+        <label class="text-xs font-semibold text-slate-500 block mb-1">Type</label>
+        <select id="new-el-type" style="width:100%;">
+          {% for key, label in element_types %}
+          <option value="{{ key }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="text-xs font-semibold text-slate-500 block mb-1">Group (optional)</label>
+        <select id="new-el-group" style="width:100%;">
+          <option value="">No group</option>
+          {% for g in groups %}
+          <option value="{{ g.id }}">{{ g.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="flex gap-2 mt-5 justify-end">
+      <button onclick="closeModal('modal-add-element')" class="btn-sm btn-ghost">Cancel</button>
+      <button onclick="submitAddElement()" class="btn-sm btn-primary">Add Element</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Area Modal -->
+<div id="modal-add-area" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:100;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:16px;padding:24px;width:420px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.2);">
+    <p class="font-bold text-slate-800 text-base mb-1">Add Area</p>
+    <p id="modal-area-subtitle" class="text-xs text-slate-400 mb-4"></p>
+    <div class="flex flex-col gap-3">
+      <div>
+        <label class="text-xs font-semibold text-slate-500 block mb-1">Area Type Key</label>
+        <input id="new-area-type" type="text" placeholder="e.g. hardstand, crane_pad, road_section_1" style="width:100%;">
+        <p class="text-xs text-slate-400 mt-1">Lowercase, underscores. Used internally.</p>
+      </div>
+      <div>
+        <label class="text-xs font-semibold text-slate-500 block mb-1">Display Label</label>
+        <input id="new-area-label" type="text" placeholder="e.g. Hardstand, Crane Pad" style="width:100%;">
+      </div>
+      <div>
+        <label class="text-xs font-semibold text-slate-500 block mb-1">Proof Roll Tests to include</label>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;" id="test-checkboxes">
+          {% for tt, lbl in [
+            ('proof_roll_foundation','Foundation'), ('proof_roll_subgrade','Subgrade'),
+            ('proof_roll_subbase','Subbase'), ('proof_roll_basecourse','Basecourse'),
+            ('dcp','DCP Test'), ('subgrade_compaction','Subgrade Compaction'),
+            ('subbase_compaction','Subbase Compaction'), ('basecourse_compaction','Basecourse Compaction'),
+            ('plate_load_test','Plate Load Test')
+          ] %}
+          <label style="display:flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:#475569;background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;padding:4px 9px;cursor:pointer;">
+            <input type="checkbox" value="{{ tt }}" style="width:13px;height:13px;"> {{ lbl }}
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    <div class="flex gap-2 mt-5 justify-end">
+      <button onclick="closeModal('modal-add-area')" class="btn-sm btn-ghost">Cancel</button>
+      <button onclick="submitAddArea()" class="btn-sm btn-primary">Add Area</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Group Modal -->
+<div id="modal-add-group" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:100;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:16px;padding:24px;width:340px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.2);">
+    <p class="font-bold text-slate-800 text-base mb-4">Create Group</p>
+    <div class="flex flex-col gap-3">
+      <div>
+        <label class="text-xs font-semibold text-slate-500 block mb-1">Group Name</label>
+        <input id="new-group-name" type="text" placeholder="e.g. CS1, CS2, North Zone" style="width:100%;">
+      </div>
+      <div>
+        <label class="text-xs font-semibold text-slate-500 block mb-1">Color</label>
+        <div class="flex gap-2 flex-wrap" id="color-options">
+          {% for c in ['#0f2942','#0ea5e9','#22c55e','#f59e0b','#ef4444','#8b5cf6','#ec4899','#14b8a6','#f97316','#6366f1'] %}
+          <div onclick="selectColor('{{ c }}')" data-color="{{ c }}"
+               style="width:26px;height:26px;border-radius:50%;background:{{ c }};cursor:pointer;border:2px solid transparent;transition:border .15s;"
+               class="color-opt"></div>
+          {% endfor %}
+        </div>
+        <input type="hidden" id="new-group-color" value="#0f2942">
+      </div>
+    </div>
+    <div class="flex gap-2 mt-5 justify-end">
+      <button onclick="closeModal('modal-add-group')" class="btn-sm btn-ghost">Cancel</button>
+      <button onclick="submitAddGroup()" class="btn-sm btn-primary">Create Group</button>
+    </div>
+  </div>
+</div>
+
+
+<script>
+const PID = {{ proj.id }};
+
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  btn.classList.add('active');
+}
+
+function openModal(id) {
+  const m = document.getElementById(id);
+  m.style.display = 'flex';
+}
+function closeModal(id) {
+  document.getElementById(id).style.display = 'none';
+}
+
+// ── Add Element ──────────────────────────────────────────────────────────────
+function openAddElement() {
+  document.getElementById('new-el-name').value = '';
+  openModal('modal-add-element');
+  setTimeout(() => document.getElementById('new-el-name').focus(), 50);
+}
+
+async function submitAddElement() {
+  const name  = document.getElementById('new-el-name').value.trim();
+  const etype = document.getElementById('new-el-type').value;
+  const gid   = document.getElementById('new-el-group').value;
+  if (!name) { alert('Name is required'); return; }
+  const res = await fetch(`/api/projects/${PID}/elements`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({name, element_type: etype})
+  });
+  const data = await res.json();
+  if (!res.ok) { alert(data.error || 'Error'); return; }
+  // Assign group if selected
+  if (gid) {
+    await fetch(`/api/elements/${data.id}`, {
+      method: 'PATCH', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({group_id: gid})
+    });
+  }
+  closeModal('modal-add-element');
+  location.reload();
+}
+
+// ── Rename Element ───────────────────────────────────────────────────────────
+async function renameElement(id) {
+  const cur = document.getElementById('elname-' + id).textContent.trim();
+  const name = prompt('New name:', cur);
+  if (!name || name === cur) return;
+  const res = await fetch(`/api/elements/${id}`, {
+    method: 'PATCH', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({name})
+  });
+  const data = await res.json();
+  if (!res.ok) { alert(data.error || 'Error'); return; }
+  document.getElementById('elname-' + id).textContent = data.name;
+}
+
+// ── Delete Element ───────────────────────────────────────────────────────────
+async function deleteElement(id, name) {
+  if (!confirm(`Delete "${name}" and all its QA data? This cannot be undone.`)) return;
+  const res = await fetch(`/api/elements/${id}`, { method: 'DELETE' });
+  if (res.ok) document.getElementById('elrow-' + id).remove();
+  else alert('Error deleting element');
+}
+
+// ── Assign Group ─────────────────────────────────────────────────────────────
+async function assignGroup(elId, gid, reload) {
+  await fetch(`/api/elements/${elId}`, {
+    method: 'PATCH', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({group_id: gid || null})
+  });
+  if (reload) location.reload();
+}
+
+// ── Add Area ─────────────────────────────────────────────────────────────────
+let _addAreaElId = null;
+function openAddArea(elId, elName) {
+  _addAreaElId = elId;
+  document.getElementById('modal-area-subtitle').textContent = `Adding to: ${elName}`;
+  document.getElementById('new-area-type').value  = '';
+  document.getElementById('new-area-label').value = '';
+  document.querySelectorAll('#test-checkboxes input[type=checkbox]').forEach(cb => cb.checked = false);
+  openModal('modal-add-area');
+}
+
+document.getElementById('new-area-type').addEventListener('input', function() {
+  const lbl = document.getElementById('new-area-label');
+  if (!lbl.value) lbl.value = this.value.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+});
+
+async function submitAddArea() {
+  const area_type = document.getElementById('new-area-type').value.trim().replace(/\s+/g,'_').toLowerCase();
+  const label     = document.getElementById('new-area-label').value.trim();
+  const tests     = [...document.querySelectorAll('#test-checkboxes input:checked')].map(c => c.value);
+  if (!area_type) { alert('Area type is required'); return; }
+  const res = await fetch(`/api/elements/${_addAreaElId}/areas`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({area_type, label, tests})
+  });
+  const data = await res.json();
+  if (!res.ok) { alert(data.error || 'Error'); return; }
+  closeModal('modal-add-area');
+  // Add pill to UI without reload
+  const container = document.getElementById('areas-' + _addAreaElId);
+  const addBtn = container.querySelector('button');
+  const pill = document.createElement('span');
+  pill.className = 'area-pill';
+  pill.id = `areapill-${data.id}`;
+  pill.innerHTML = `${data.label} <span class="del" onclick="deleteArea(${data.id}, ${_addAreaElId})" title="Remove">×</span>`;
+  container.insertBefore(pill, addBtn);
+}
+
+async function deleteArea(areaId, elId) {
+  if (!confirm('Remove this area and all its QA records?')) return;
+  const res = await fetch(`/api/areas/${areaId}`, { method: 'DELETE' });
+  if (res.ok) {
+    const pill = document.getElementById('areapill-' + areaId);
+    if (pill) pill.remove();
+    else location.reload();
+  } else alert('Error');
+}
+
+// ── Add Group ────────────────────────────────────────────────────────────────
+let _selectedColor = '#0f2942';
+function selectColor(c) {
+  _selectedColor = c;
+  document.getElementById('new-group-color').value = c;
+  document.querySelectorAll('.color-opt').forEach(el => {
+    el.style.borderColor = el.dataset.color === c ? '#1e293b' : 'transparent';
+    el.style.transform = el.dataset.color === c ? 'scale(1.2)' : 'scale(1)';
+  });
+}
+// Init first color selected
+document.addEventListener('DOMContentLoaded', () => selectColor('#0f2942'));
+
+function openAddGroup() {
+  document.getElementById('new-group-name').value = '';
+  selectColor('#0f2942');
+  openModal('modal-add-group');
+  setTimeout(() => document.getElementById('new-group-name').focus(), 50);
+}
+
+async function submitAddGroup() {
+  const name  = document.getElementById('new-group-name').value.trim();
+  const color = document.getElementById('new-group-color').value;
+  if (!name) { alert('Group name is required'); return; }
+  const res = await fetch(`/api/projects/${PID}/groups`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({name, color})
+  });
+  const data = await res.json();
+  if (!res.ok) { alert(data.error || 'Error'); return; }
+  closeModal('modal-add-group');
+  location.reload();
+}
+
+async function renameGroup(id) {
+  const cur = document.getElementById('gname-' + id).textContent.trim();
+  const name = prompt('New group name:', cur);
+  if (!name || name === cur) return;
+  const res = await fetch(`/api/groups/${id}`, {
+    method: 'PATCH', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({name})
+  });
+  if (res.ok) document.getElementById('gname-' + id).textContent = name;
+}
+
+async function deleteGroup(id, name) {
+  if (!confirm(`Delete group "${name}"? Elements will be ungrouped (not deleted).`)) return;
+  const res = await fetch(`/api/groups/${id}`, { method: 'DELETE' });
+  if (res.ok) { document.getElementById('groupcard-' + id).remove(); }
+  else alert('Error deleting group');
+}
+
+// Close modals on backdrop click
+['modal-add-element','modal-add-area','modal-add-group'].forEach(id => {
+  document.getElementById(id).addEventListener('click', function(e) {
+    if (e.target === this) closeModal(id);
+  });
+});
+
+// Enter key on name inputs
+['new-el-name','new-group-name'].forEach(id => {
+  document.getElementById(id)?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      if (id === 'new-el-name') submitAddElement();
+      else submitAddGroup();
+    }
+  });
+});
+</script>
+{% endblock %}

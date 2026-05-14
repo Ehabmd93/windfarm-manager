@@ -11,6 +11,7 @@ import json as _json
 from models import (db, User, WTG, Area, QATest, TestRecord,
                     Project, ProjectMember, ProjectFeature,
                     PROJECT_TYPES, PROJECT_STATUSES, ALL_FEATURES,
+                    WTGGroup, ELEMENT_TYPES,
                     ProofRollRecord, ProofRollSignatory,
                     ProofRollEquipment, ProofRollPhoto, ProofRollRectPhoto,
                     TempPhotoUpload,
@@ -133,6 +134,7 @@ def inject_now():
         'DOCUMENT_CATEGORIES':  DOCUMENT_CATEGORIES,
         'DOCUMENT_LINK_TYPES':  DOCUMENT_LINK_TYPES,
         'DOCUMENT_LINK_DICT':   DOCUMENT_LINK_DICT,
+        'ELEMENT_TYPES':        ELEMENT_TYPES,
     }
 
 # ─── Context helpers ─────────────────────────────────────────────────────────
@@ -796,6 +798,170 @@ def dashboard():
                            in_prog=in_prog,
                            not_started=not_started)
 
+# ─── Project Setup (elements + groups) ──────────────────────────────────────
+@app.route('/projects/<int:pid>/setup')
+@login_required
+def project_setup(pid):
+    if current_user.role not in ('engineer', 'manager', 'admin'):
+        abort(403)
+    proj     = Project.query.get_or_404(pid)
+    elements = WTG.query.filter_by(project_id=pid).order_by(WTG.name).all()
+    groups   = WTGGroup.query.filter_by(project_id=pid).order_by(WTGGroup.sort_order, WTGGroup.name).all()
+    return render_template('project_setup.html', proj=proj,
+                           elements=elements, groups=groups,
+                           element_types=ELEMENT_TYPES)
+
+
+@app.route('/api/projects/<int:pid>/elements', methods=['POST'])
+@login_required
+def api_add_element(pid):
+    if current_user.role not in ('engineer', 'manager', 'admin'):
+        return jsonify({'error': 'Forbidden'}), 403
+    data = request.get_json() or {}
+    name = data.get('name', '').strip()
+    etype = data.get('element_type', 'wtg')
+    if not name:
+        return jsonify({'error': 'Name is required'}), 400
+    # Check duplicate name within project
+    if WTG.query.filter_by(project_id=pid, name=name).first():
+        return jsonify({'error': f'An element named "{name}" already exists in this project'}), 400
+    el = WTG(name=name, element_type=etype, project_id=pid)
+    db.session.add(el)
+    db.session.commit()
+    return jsonify({'id': el.id, 'name': el.name, 'element_type': el.element_type,
+                    'element_type_label': el.element_type_label, 'group_id': el.group_id})
+
+
+@app.route('/api/elements/<int:eid>', methods=['PATCH', 'DELETE'])
+@login_required
+def api_element(eid):
+    if current_user.role not in ('engineer', 'manager', 'admin'):
+        return jsonify({'error': 'Forbidden'}), 403
+    el = WTG.query.get_or_404(eid)
+    if request.method == 'DELETE':
+        db.session.delete(el)
+        db.session.commit()
+        return jsonify({'ok': True})
+    data = request.get_json() or {}
+    if 'name' in data:
+        new_name = data['name'].strip()
+        if not new_name:
+            return jsonify({'error': 'Name is required'}), 400
+        dup = WTG.query.filter_by(project_id=el.project_id, name=new_name).first()
+        if dup and dup.id != el.id:
+            return jsonify({'error': f'"{new_name}" already exists'}), 400
+        el.name = new_name
+    if 'element_type' in data:
+        el.element_type = data['element_type']
+    if 'group_id' in data:
+        gid = data['group_id']
+        el.group_id = int(gid) if gid else None
+    db.session.commit()
+    return jsonify({'id': el.id, 'name': el.name, 'element_type': el.element_type,
+                    'element_type_label': el.element_type_label, 'group_id': el.group_id})
+
+
+@app.route('/api/projects/<int:pid>/groups', methods=['POST'])
+@login_required
+def api_add_group(pid):
+    if current_user.role not in ('engineer', 'manager', 'admin'):
+        return jsonify({'error': 'Forbidden'}), 403
+    data  = request.get_json() or {}
+    name  = data.get('name', '').strip()
+    color = data.get('color', '#0f2942')
+    if not name:
+        return jsonify({'error': 'Name is required'}), 400
+    if WTGGroup.query.filter_by(project_id=pid, name=name).first():
+        return jsonify({'error': f'Group "{name}" already exists'}), 400
+    g = WTGGroup(project_id=pid, name=name, color=color,
+                 sort_order=WTGGroup.query.filter_by(project_id=pid).count())
+    db.session.add(g)
+    db.session.commit()
+    return jsonify({'id': g.id, 'name': g.name, 'color': g.color})
+
+
+@app.route('/api/groups/<int:gid>', methods=['PATCH', 'DELETE'])
+@login_required
+def api_group(gid):
+    if current_user.role not in ('engineer', 'manager', 'admin'):
+        return jsonify({'error': 'Forbidden'}), 403
+    g = WTGGroup.query.get_or_404(gid)
+    if request.method == 'DELETE':
+        # Unlink elements from this group before deleting
+        for el in g.elements:
+            el.group_id = None
+        db.session.delete(g)
+        db.session.commit()
+        return jsonify({'ok': True})
+    data = request.get_json() or {}
+    if 'name' in data:
+        g.name = data['name'].strip()
+    if 'color' in data:
+        g.color = data['color']
+    db.session.commit()
+    return jsonify({'id': g.id, 'name': g.name, 'color': g.color})
+
+
+@app.route('/api/elements/<int:eid>/areas', methods=['POST'])
+@login_required
+def api_add_area(eid):
+    if current_user.role not in ('engineer', 'manager', 'admin'):
+        return jsonify({'error': 'Forbidden'}), 403
+    el   = WTG.query.get_or_404(eid)
+    data = request.get_json() or {}
+    area_type = data.get('area_type', '').strip()
+    label     = data.get('label', '').strip() or area_type.replace('_', ' ').title()
+    tests     = data.get('tests', [])   # list of test_type strings
+    if not area_type:
+        return jsonify({'error': 'area_type is required'}), 400
+    area = Area(wtg_id=el.id, area_type=area_type, label=label)
+    db.session.add(area)
+    db.session.flush()
+    for tt in tests:
+        db.session.add(QATest(area_id=area.id, test_type=tt))
+    db.session.commit()
+    return jsonify({'id': area.id, 'area_type': area.area_type, 'label': area.label,
+                    'test_count': len(area.required_tests)})
+
+
+@app.route('/api/areas/<int:aid>', methods=['DELETE'])
+@login_required
+def api_delete_area(aid):
+    if current_user.role not in ('engineer', 'manager', 'admin'):
+        return jsonify({'error': 'Forbidden'}), 403
+    area = Area.query.get_or_404(aid)
+    db.session.delete(area)
+    db.session.commit()
+    return jsonify({'ok': True})
+
+
+@app.route('/api/areas/<int:aid>/tests', methods=['POST'])
+@login_required
+def api_add_test(aid):
+    if current_user.role not in ('engineer', 'manager', 'admin'):
+        return jsonify({'error': 'Forbidden'}), 403
+    area = Area.query.get_or_404(aid)
+    data = request.get_json() or {}
+    test_type = data.get('test_type', '').strip()
+    if not test_type:
+        return jsonify({'error': 'test_type is required'}), 400
+    t = QATest(area_id=area.id, test_type=test_type)
+    db.session.add(t)
+    db.session.commit()
+    return jsonify({'id': t.id, 'test_type': t.test_type, 'display_name': t.display_name})
+
+
+@app.route('/api/tests/<int:tid>', methods=['DELETE'])
+@login_required
+def api_delete_test(tid):
+    if current_user.role not in ('engineer', 'manager', 'admin'):
+        return jsonify({'error': 'Forbidden'}), 403
+    t = QATest.query.get_or_404(tid)
+    db.session.delete(t)
+    db.session.commit()
+    return jsonify({'ok': True})
+
+
 # ─── WTG Detail ──────────────────────────────────────────────────────────────
 @app.route('/wtg/<int:wtg_id>')
 @login_required
@@ -876,12 +1042,17 @@ def test_record(test_id):
 @app.route('/proof-rolls')
 @login_required
 def proof_roll_index():
-    """Proof Rolling landing page — shows all WTGs with proof roll status."""
-    wtgs = WTG.query.order_by(WTG.name).all()
+    """Proof Rolling landing page — shows all WTGs with proof roll status, grouped."""
+    from flask import g
+    proj = getattr(g, 'project', None)
+    q = WTG.query.order_by(WTG.name)
+    if proj:
+        q = q.filter_by(project_id=proj.id)
+    wtgs = q.all()
+
     summary = []
     total_records = total_passed = total_failed = total_pending = 0
 
-    # Pre-fetch document link counts keyed by proof_roll id
     from sqlalchemy import func
     pr_doc_counts = {}
     for row in (db.session.query(DocumentLink.link_id, func.count(DocumentLink.id))
@@ -891,7 +1062,7 @@ def proof_roll_index():
 
     for wtg in wtgs:
         wtg_entry = {'wtg': wtg, 'areas': []}
-        for area in sorted(wtg.areas, key=lambda a: ['hardstand','crane_pad','boom_pad','blade_fingers'].index(a.area_type) if a.area_type in ['hardstand','crane_pad','boom_pad','blade_fingers'] else 99):
+        for area in sorted(wtg.areas, key=lambda a: a.label):
             pr_tests = [t for t in area.required_tests if t.test_type.startswith('proof_roll')]
             if not pr_tests:
                 continue
@@ -910,8 +1081,24 @@ def proof_roll_index():
             wtg_entry['areas'].append({'area': area, 'tests': area_rows})
         summary.append(wtg_entry)
 
+    # Build grouped structure: {group_obj_or_None: [wtg_entry, ...]}
+    groups_map = {}   # group_id → {'group': obj, 'entries': []}
+    ungrouped  = []
+    for entry in summary:
+        g_obj = entry['wtg'].group
+        if g_obj:
+            if g_obj.id not in groups_map:
+                groups_map[g_obj.id] = {'group': g_obj, 'entries': []}
+            groups_map[g_obj.id]['entries'].append(entry)
+        else:
+            ungrouped.append(entry)
+    grouped = sorted(groups_map.values(), key=lambda x: (x['group'].sort_order, x['group'].name))
+
     return render_template('proof_roll_index.html',
                            summary=summary,
+                           grouped=grouped,
+                           ungrouped=ungrouped,
+                           proj=proj,
                            total_records=total_records,
                            total_passed=total_passed,
                            total_failed=total_failed,
@@ -1616,9 +1803,14 @@ def get_active_stages():
 @app.route('/foundation')
 @login_required
 def foundation_index():
-    wtgs      = WTG.query.order_by(WTG.name).all()
+    from flask import g
+    proj = getattr(g, 'project', None)
+    q = WTG.query.order_by(WTG.name)
+    if proj:
+        q = q.filter_by(project_id=proj.id)
+    wtgs = q.all()
+
     active_stages = get_active_stages()
-    # Ensure all foundation stages exist for every WTG
     existing = {(s.wtg_id, s.stage_key) for s in FoundationStage.query.all()}
     new_stages = []
     for wtg in wtgs:
@@ -1629,19 +1821,31 @@ def foundation_index():
         db.session.add_all(new_stages)
         db.session.commit()
     all_stages = FoundationStage.query.all()
-    # Build stage_map: {wtg_id: {stage_key: stage_obj}}
     stage_map = {}
     for s in all_stages:
         stage_map.setdefault(s.wtg_id, {})[s.stage_key] = s
-    # Aggregate counts — only count active stages
     active_keys = {k for k, _ in active_stages}
     active_all  = [s for s in all_stages if s.stage_key in active_keys]
-    total_stages      = len(active_all)
-    complete_stages   = sum(1 for s in active_all if s.status == 'complete')
-    in_progress_stages= sum(1 for s in active_all if s.status == 'in_progress')
-    not_started_stages= sum(1 for s in active_all if s.status == 'not_started')
+    total_stages       = len(active_all)
+    complete_stages    = sum(1 for s in active_all if s.status == 'complete')
+    in_progress_stages = sum(1 for s in active_all if s.status == 'in_progress')
+    not_started_stages = sum(1 for s in active_all if s.status == 'not_started')
+
+    # Build grouped structure
+    groups_map = {}
+    ungrouped  = []
+    for wtg in wtgs:
+        if wtg.group:
+            if wtg.group.id not in groups_map:
+                groups_map[wtg.group.id] = {'group': wtg.group, 'wtgs': []}
+            groups_map[wtg.group.id]['wtgs'].append(wtg)
+        else:
+            ungrouped.append(wtg)
+    grouped = sorted(groups_map.values(), key=lambda x: (x['group'].sort_order, x['group'].name))
+
     return render_template('foundation_index.html', wtgs=wtgs, stage_map=stage_map,
-                           stages=active_stages,
+                           stages=active_stages, grouped=grouped, ungrouped=ungrouped,
+                           proj=proj,
                            total_stages=total_stages, complete_stages=complete_stages,
                            in_progress_stages=in_progress_stages,
                            not_started_stages=not_started_stages)

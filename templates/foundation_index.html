@@ -98,7 +98,7 @@
   </div>
 </div>
 
-<!-- Legend + Settings button -->
+<!-- Legend + Toolbar -->
 <div class="flex flex-wrap items-center gap-3 mb-5 text-xs font-medium">
   <span class="flex items-center gap-1.5">
     <span class="w-5 h-5 rounded status-complete inline-flex items-center justify-center text-xs">✓</span> Complete
@@ -116,11 +116,17 @@
     <span class="w-5 h-5 rounded status-not_started inline-flex items-center justify-center text-xs">–</span> Not Started
   </span>
   <span class="ml-auto flex items-center gap-3">
-    <span class="text-slate-400 italic">Click any cell → open WTG detail</span>
-    {% if current_user.role == 'admin' %}
+    <span class="text-slate-400 italic">Click any cell → open detail</span>
+    {% if current_user.role in ('engineer','manager','admin') and proj %}
+    <a href="{{ url_for('project_setup', pid=proj.id) }}"
+       style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;background:#0f2942;color:#fff;border-radius:8px;font-weight:700;font-size:11px;text-decoration:none;">
+      <i class="fa-solid fa-sliders"></i> Manage Elements
+    </a>
+    {% endif %}
+    {% if current_user.role in ('engineer','admin') %}
     <a href="{{ url_for('foundation_stage_settings') }}"
        style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;background:#fb923c;color:#fff;border-radius:8px;font-weight:700;font-size:11px;text-decoration:none;">
-      <i class="fa-solid fa-sliders"></i> Manage Stages
+      <i class="fa-solid fa-list-check"></i> Manage Stages
     </a>
     {% endif %}
   </span>
@@ -149,24 +155,21 @@
       </tr>
     </thead>
     <tbody>
-      {% for wtg in wtgs %}
+      {# ── Macro: render one WTG row ── #}
+      {% macro wtg_row(wtg) %}
       {% set wtg_stages = stage_map.get(wtg.id, {}) %}
-      {% set active_keys = stages | map(attribute=0) | list %}
-      {% set complete_count = namespace(v=0) %}
       {% set total_count = stages | length %}
+      {% set cc = namespace(v=0) %}
       {% for key, _ in stages %}
         {% set s = wtg_stages.get(key) %}
-        {% if s and s.status == 'complete' %}{% set complete_count.v = complete_count.v + 1 %}{% endif %}
+        {% if s and s.status == 'complete' %}{% set cc.v = cc.v + 1 %}{% endif %}
       {% endfor %}
-      {% set pct = ((complete_count.v / total_count * 100) | int) if total_count > 0 else 0 %}
+      {% set pct = ((cc.v / total_count * 100) | int) if total_count > 0 else 0 %}
       <tr style="border-bottom:1px solid #f1f5f9;">
-        <!-- Sticky WTG name -->
-        <td style="padding:10px 16px;position:sticky;left:0;background:#fff;z-index:10;
-                   border-right:1px solid #f1f5f9;font-weight:700;">
+        <td style="padding:10px 16px;position:sticky;left:0;background:#fff;z-index:10;border-right:1px solid #f1f5f9;font-weight:700;">
           <a href="{{ url_for('foundation_detail', wtg_id=wtg.id) }}"
              style="color:#1d4ed8;text-decoration:none;font-size:13px;">{{ wtg.name }}</a>
         </td>
-
         {% for key, label in stages %}
         {% set s = wtg_stages.get(key) %}
         <td style="padding:8px 4px;text-align:center;vertical-align:middle;">
@@ -187,21 +190,49 @@
           </div>
         </td>
         {% endfor %}
-
-        <!-- Progress bar -->
         <td style="padding:10px 16px;text-align:center;min-width:110px;">
           <div style="width:100%;background:#f1f5f9;border-radius:99px;height:6px;margin-bottom:4px;">
             <div style="height:6px;border-radius:99px;width:{{ pct }}%;
-              background:{% if pct == 100 %}#16a34a{% elif pct > 0 %}#3b82f6{% else %}#cbd5e1{% endif %};
-              transition:width .4s;"></div>
+              background:{% if pct==100 %}#16a34a{% elif pct>0 %}#3b82f6{% else %}#cbd5e1{% endif %};transition:width .4s;"></div>
           </div>
-          <span style="font-size:11px;font-weight:700;
-            color:{% if pct == 100 %}#16a34a{% elif pct > 0 %}#3b82f6{% else %}#94a3b8{% endif %};">
-            {{ complete_count.v }}/{{ total_count }}
+          <span style="font-size:11px;font-weight:700;color:{% if pct==100 %}#16a34a{% elif pct>0 %}#3b82f6{% else %}#94a3b8{% endif %};">
+            {{ cc.v }}/{{ total_count }}
           </span>
         </td>
       </tr>
+      {% endmacro %}
+
+      {# ── Grouped rows ── #}
+      {% for g in grouped %}
+      <tr>
+        <td colspan="{{ stages|length + 2 }}"
+            style="padding:8px 16px;background:#f8fafc;border-top:2px solid #e2e8f0;border-bottom:1px solid #e2e8f0;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div style="width:9px;height:9px;border-radius:50%;background:{{ g.group.color }};box-shadow:0 0 5px {{ g.group.color }}66;flex-shrink:0;"></div>
+            <span style="font-size:11px;font-weight:800;color:#334155;text-transform:uppercase;letter-spacing:.07em;">{{ g.group.name }}</span>
+            <span style="font-size:10px;color:#94a3b8;font-weight:500;">{{ g.wtgs|length }} element(s)</span>
+          </div>
+        </td>
+      </tr>
+      {% for wtg in g.wtgs %}{{ wtg_row(wtg) }}{% endfor %}
       {% endfor %}
+
+      {# ── Ungrouped rows ── #}
+      {% if ungrouped %}
+        {% if grouped %}
+        <tr>
+          <td colspan="{{ stages|length + 2 }}"
+              style="padding:8px 16px;background:#f8fafc;border-top:2px solid #e2e8f0;border-bottom:1px solid #e2e8f0;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <div style="width:9px;height:9px;border-radius:50%;background:#94a3b8;flex-shrink:0;"></div>
+              <span style="font-size:11px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.07em;">Ungrouped</span>
+              <span style="font-size:10px;color:#94a3b8;font-weight:500;">{{ ungrouped|length }} element(s)</span>
+            </div>
+          </td>
+        </tr>
+        {% endif %}
+        {% for wtg in ungrouped %}{{ wtg_row(wtg) }}{% endfor %}
+      {% endif %}
     </tbody>
   </table>
 </div>

@@ -117,18 +117,46 @@ class ProjectFeature(db.Model):
 
 
 # ─────────────────────────────────────────────
-# WIND TURBINE GENERATORS
+# ELEMENT GROUPS  (engineer-defined groupings)
+# ─────────────────────────────────────────────
+ELEMENT_TYPES = [
+    ('wtg',          'Wind Turbine (WTG)'),
+    ('access_track', 'Access Track'),
+    ('hardstand',    'Hardstand'),
+    ('crane_pad',    'Crane Pad'),
+    ('substation',   'Substation'),
+    ('other',        'Other'),
+]
+
+class WTGGroup(db.Model):
+    __tablename__ = 'wtg_groups'
+    id         = db.Column(db.Integer, primary_key=True)
+    project_id = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=False)
+    name       = db.Column(db.String(100), nullable=False)
+    color      = db.Column(db.String(20), default='#0f2942')
+    sort_order = db.Column(db.Integer, default=0)
+
+    elements   = db.relationship('WTG', backref='group', lazy=True)
+
+# ─────────────────────────────────────────────
+# WIND TURBINE GENERATORS  (elements)
 # ─────────────────────────────────────────────
 class WTG(db.Model):
     __tablename__ = 'wtgs'
-    id         = db.Column(db.Integer, primary_key=True)
-    name       = db.Column(db.String(20), unique=True, nullable=False)
-    easting    = db.Column(db.Float, nullable=True)
-    northing   = db.Column(db.Float, nullable=True)
-    status     = db.Column(db.String(20), default='in_progress')
-    project_id = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=True)
+    id           = db.Column(db.Integer, primary_key=True)
+    name         = db.Column(db.String(50), nullable=False)
+    easting      = db.Column(db.Float, nullable=True)
+    northing     = db.Column(db.Float, nullable=True)
+    status       = db.Column(db.String(20), default='in_progress')
+    project_id   = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=True)
+    group_id     = db.Column(db.Integer, db.ForeignKey('wtg_groups.id'), nullable=True)
+    element_type = db.Column(db.String(30), default='wtg')
 
-    areas      = db.relationship('Area', backref='wtg', lazy=True, cascade='all,delete')
+    areas        = db.relationship('Area', backref='wtg', lazy=True, cascade='all,delete')
+
+    @property
+    def element_type_label(self):
+        return next((lbl for key, lbl in ELEMENT_TYPES if key == self.element_type), self.element_type.replace('_', ' ').title())
 
     @property
     def completion_pct(self):
