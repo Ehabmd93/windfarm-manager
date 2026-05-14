@@ -130,6 +130,10 @@
   .wp-card { border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;margin-bottom:16px; }
   .wp-header { display:flex;align-items:center;gap:10px;padding:12px 16px;font-weight:700;font-size:14px;color:#1e293b; }
 
+  /* WP color palette — more options */
+  .wp-color-opt { width:22px;height:22px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:all .15s;flex-shrink:0; }
+  .wp-color-opt:hover { transform:scale(1.15); }
+
   /* Icon picker */
   .icon-opt { width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;
               cursor:pointer;font-size:14px;border:2px solid transparent;background:#f1f5f9;color:#64748b;
@@ -217,8 +221,13 @@
             {% for wp in work_packages %}
             <div class="wpdrop-item" onclick="startAssignWp({{ wp.id }}, '{{ wp.name }}', '{{ wp.color }}')">
               <div style="width:10px;height:10px;border-radius:50%;background:{{ wp.color }};flex-shrink:0;"></div>
-              {{ wp.name }}
-              <span style="margin-left:auto;font-size:10px;color:#94a3b8;">{{ wp.elements|length }} elem.</span>
+              <div style="flex:1;min-width:0;">
+                <div style="font-weight:700;font-size:13px;color:#1e293b;">{{ wp.name }}</div>
+                {% if wp.group %}
+                <div style="font-size:10px;font-weight:600;color:{{ wp.group.color }};">{{ wp.group.name }}</div>
+                {% endif %}
+              </div>
+              <span style="font-size:10px;color:#94a3b8;">{{ wp.elements|length }} elem.</span>
             </div>
             {% endfor %}
             {% else %}
@@ -574,13 +583,19 @@
     <p id="modal-wp-group-hint" class="text-xs text-slate-400 mb-4"></p>
     <div class="flex flex-col gap-3">
       <div>
-        <label class="text-xs font-semibold text-slate-500 block mb-1">Assign to Group <span style="color:#ef4444;">*</span></label>
-        <select id="new-wp-group" style="width:100%;">
-          <option value="">— Select a group —</option>
+        <label class="text-xs font-semibold text-slate-500 block mb-1">Assign to Group(s) <span style="color:#ef4444;">*</span> <span style="font-weight:400;color:#94a3b8;">tick one or more</span></label>
+        <div id="wp-group-checkboxes" style="display:flex;flex-wrap:wrap;gap:6px;">
           {% for g in groups %}
-          <option value="{{ g.id }}" data-color="{{ g.color }}">{{ g.name }}</option>
+          <label style="display:flex;align-items:center;gap:6px;padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;color:#334155;transition:all .15s;"
+                 onmouseover="this.style.borderColor='{{ g.color }}'" onmouseout="this.style.borderColor=this.querySelector('input').checked?'{{ g.color }}':'#e2e8f0'">
+            <input type="checkbox" value="{{ g.id }}" data-color="{{ g.color }}" data-name="{{ g.name }}"
+                   style="width:14px;height:14px;accent-color:{{ g.color }};"
+                   onchange="this.closest('label').style.borderColor=this.checked?'{{ g.color }}':'#e2e8f0';this.closest('label').style.background=this.checked?'{{ g.color }}11':'#fff'">
+            <div style="width:8px;height:8px;border-radius:50%;background:{{ g.color }};flex-shrink:0;"></div>
+            {{ g.name }}
+          </label>
           {% endfor %}
-        </select>
+        </div>
       </div>
       <div>
         <label class="text-xs font-semibold text-slate-500 block mb-1">Work Package Name <span style="color:#ef4444;">*</span></label>
@@ -589,10 +604,11 @@
       <div>
         <label class="text-xs font-semibold text-slate-500 block mb-1">Color</label>
         <div class="flex gap-2 flex-wrap" id="wp-color-options">
-          {% for c in ['#7c3aed','#0ea5e9','#22c55e','#f59e0b','#ef4444','#ec4899','#14b8a6','#f97316','#6366f1','#0f2942'] %}
-          <div onclick="selectWpColor('{{ c }}')" data-color="{{ c }}"
-               style="width:26px;height:26px;border-radius:50%;background:{{ c }};cursor:pointer;border:2px solid transparent;transition:all .15s;"
-               class="wp-color-opt"></div>
+          {% for c in ['#7c3aed','#6366f1','#3b82f6','#0ea5e9','#06b6d4','#14b8a6','#22c55e','#84cc16',
+                       '#f59e0b','#f97316','#ef4444','#ec4899','#a855f7','#8b5cf6','#0f2942','#334155',
+                       '#dc2626','#16a34a','#0891b2','#d97706'] %}
+          <div onclick="selectWpColor('{{ c }}')" data-color="{{ c }}" class="wp-color-opt"
+               style="width:22px;height:22px;border-radius:50%;background:{{ c }};cursor:pointer;border:2px solid transparent;transition:all .15s;"></div>
           {% endfor %}
         </div>
         <input type="hidden" id="new-wp-color" value="#7c3aed">
@@ -967,9 +983,9 @@ async function saveAssignmentWp() {
     });
   }
 
-  showToast(`Saved! "${_assignWpName}" updated.`, 'success');
+  showToast(`Saved!`, 'success');
   cancelAssignWp();
-  updateWpBadgesAfterAssign();
+  setTimeout(() => location.reload(), 600);
 }
 
 function updateWpBadgesAfterAssign() {
@@ -1049,31 +1065,49 @@ function openAddWp(preGroupId, preGroupName, preGroupColor) {
   document.getElementById('new-wp-name').value = '';
   selectWpColor('#7c3aed');
   selectWpIcon('layer-group');
-  // Pre-select group if opened from a group card
-  const sel = document.getElementById('new-wp-group');
-  sel.value = preGroupId || '';
+  // Uncheck all, then pre-check the group this was opened from
+  document.querySelectorAll('#wp-group-checkboxes input[type=checkbox]').forEach(cb => {
+    cb.checked = false;
+    cb.closest('label').style.borderColor = '#e2e8f0';
+    cb.closest('label').style.background  = '#fff';
+  });
+  if (preGroupId) {
+    const cb = document.querySelector(`#wp-group-checkboxes input[value="${preGroupId}"]`);
+    if (cb) {
+      cb.checked = true;
+      cb.closest('label').style.borderColor = preGroupColor || '#7c3aed';
+      cb.closest('label').style.background  = (preGroupColor || '#7c3aed') + '11';
+    }
+  }
   const hint = document.getElementById('modal-wp-group-hint');
-  hint.textContent = preGroupName ? `Adding to group: ${preGroupName}` : 'Choose which group this Work Package belongs to';
+  hint.textContent = preGroupName ? `Pre-selected: ${preGroupName}` : 'Tick one or more groups';
   openModal('modal-add-wp');
   setTimeout(() => document.getElementById('new-wp-name').focus(), 50);
 }
 
 async function submitAddWp() {
-  const name     = document.getElementById('new-wp-name').value.trim();
-  const color    = document.getElementById('new-wp-color').value;
-  const icon     = document.getElementById('new-wp-icon').value;
-  const group_id = document.getElementById('new-wp-group').value || null;
-  if (!name) { alert('Work package name is required'); return; }
-  if (!group_id) { alert('Please assign this Work Package to a Group'); return; }
-  const res  = await fetch(`/api/projects/${PID}/work-packages`, {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({name, color, icon, group_id})
-  });
-  const data = await res.json();
-  if (!res.ok) { showToast(data.error || 'Error','error'); return; }
+  const name    = document.getElementById('new-wp-name').value.trim();
+  const color   = document.getElementById('new-wp-color').value;
+  const icon    = document.getElementById('new-wp-icon').value;
+  const checked = [...document.querySelectorAll('#wp-group-checkboxes input:checked')];
+  if (!name)           { showToast('Work package name is required', 'error'); return; }
+  if (!checked.length) { showToast('Tick at least one group', 'error'); return; }
+  let created = 0, errors = 0;
+  for (const cb of checked) {
+    const group_id = cb.value;
+    const res  = await fetch(`/api/projects/${PID}/work-packages`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({name, color, icon, group_id})
+    });
+    const data = await res.json();
+    if (!res.ok) { showToast(data.error || 'Error', 'error'); errors++; }
+    else created++;
+  }
   closeModal('modal-add-wp');
-  showToast(`Work package "${data.name}" created`, 'success');
-  setTimeout(() => location.reload(), 700);
+  if (created) {
+    showToast(`"${name}" created in ${created} group(s)`, 'success');
+    setTimeout(() => location.reload(), 700);
+  }
 }
 
 // ── Reassign WP to a different group ────────────────────────────────────────
