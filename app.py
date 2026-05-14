@@ -12,6 +12,7 @@ from models import (db, User, WTG, Area, QATest, TestRecord,
                     Project, ProjectMember, ProjectFeature,
                     PROJECT_TYPES, PROJECT_STATUSES, ALL_FEATURES,
                     WTGGroup, WorkPackage, ELEMENT_TYPES,
+                    Activity, ACTIVITY_TYPES,
                     ProofRollRecord, ProofRollSignatory,
                     ProofRollEquipment, ProofRollPhoto, ProofRollRectPhoto,
                     TempPhotoUpload,
@@ -811,7 +812,8 @@ def project_setup(pid):
     return render_template('project_setup.html', proj=proj,
                            elements=elements, groups=groups,
                            work_packages=work_packages,
-                           element_types=ELEMENT_TYPES)
+                           element_types=ELEMENT_TYPES,
+                           activity_types=ACTIVITY_TYPES)
 
 
 @app.route('/api/projects/<int:pid>/elements', methods=['POST'])
@@ -913,19 +915,22 @@ def api_group(gid):
 def api_add_work_package(pid):
     if current_user.role not in ('engineer', 'manager', 'admin'):
         return jsonify({'error': 'Forbidden'}), 403
-    data  = request.get_json() or {}
-    name  = data.get('name', '').strip()
-    color = data.get('color', '#3b82f6')
-    icon  = data.get('icon', 'layer-group')
+    data     = request.get_json() or {}
+    name     = data.get('name', '').strip()
+    color    = data.get('color', '#7c3aed')
+    icon     = data.get('icon', 'layer-group')
+    group_id = data.get('group_id') or None
     if not name:
         return jsonify({'error': 'Name is required'}), 400
     if WorkPackage.query.filter_by(project_id=pid, name=name).first():
         return jsonify({'error': f'Work package "{name}" already exists'}), 400
     wp = WorkPackage(project_id=pid, name=name, color=color, icon=icon,
+                     group_id=int(group_id) if group_id else None,
                      sort_order=WorkPackage.query.filter_by(project_id=pid).count())
     db.session.add(wp)
     db.session.commit()
-    return jsonify({'id': wp.id, 'name': wp.name, 'color': wp.color, 'icon': wp.icon})
+    return jsonify({'id': wp.id, 'name': wp.name, 'color': wp.color, 'icon': wp.icon,
+                    'group_id': wp.group_id})
 
 
 @app.route('/api/work-packages/<int:wpid>', methods=['PATCH', 'DELETE'])
@@ -947,8 +952,61 @@ def api_work_package(wpid):
         wp.color = data['color']
     if 'icon' in data:
         wp.icon = data['icon']
+    if 'group_id' in data:
+        wp.group_id = int(data['group_id']) if data['group_id'] else None
     db.session.commit()
-    return jsonify({'id': wp.id, 'name': wp.name, 'color': wp.color, 'icon': wp.icon})
+    return jsonify({'id': wp.id, 'name': wp.name, 'color': wp.color, 'icon': wp.icon,
+                    'group_id': wp.group_id})
+
+
+@app.route('/api/areas/<int:aid>/activities', methods=['GET', 'POST'])
+@login_required
+def api_area_activities(aid):
+    area = Area.query.get_or_404(aid)
+    if request.method == 'GET':
+        return jsonify([{
+            'id': a.id, 'name': a.name, 'activity_type': a.activity_type,
+            'type_label': a.type_label, 'status': a.status,
+            'status_label': a.status_label, 'status_color': a.status_color,
+            'sort_order': a.sort_order
+        } for a in sorted(area.activities, key=lambda x: (x.sort_order, x.name))])
+    if current_user.role not in ('engineer', 'manager', 'admin'):
+        return jsonify({'error': 'Forbidden'}), 403
+    data          = request.get_json() or {}
+    name          = data.get('name', '').strip()
+    activity_type = data.get('activity_type', 'general')
+    if not name:
+        return jsonify({'error': 'Name is required'}), 400
+    act = Activity(area_id=aid, name=name, activity_type=activity_type,
+                   sort_order=Activity.query.filter_by(area_id=aid).count())
+    db.session.add(act)
+    db.session.commit()
+    return jsonify({'id': act.id, 'name': act.name, 'activity_type': act.activity_type,
+                    'type_label': act.type_label, 'status': act.status,
+                    'status_label': act.status_label, 'status_color': act.status_color}), 201
+
+
+@app.route('/api/activities/<int:actid>', methods=['PATCH', 'DELETE'])
+@login_required
+def api_activity(actid):
+    if current_user.role not in ('engineer', 'manager', 'admin'):
+        return jsonify({'error': 'Forbidden'}), 403
+    act = Activity.query.get_or_404(actid)
+    if request.method == 'DELETE':
+        db.session.delete(act)
+        db.session.commit()
+        return jsonify({'ok': True})
+    data = request.get_json() or {}
+    if 'name' in data:
+        act.name = data['name'].strip()
+    if 'activity_type' in data:
+        act.activity_type = data['activity_type']
+    if 'status' in data:
+        act.status = data['status']
+    db.session.commit()
+    return jsonify({'id': act.id, 'name': act.name, 'activity_type': act.activity_type,
+                    'type_label': act.type_label, 'status': act.status,
+                    'status_label': act.status_label, 'status_color': act.status_color})
 
 
 @app.route('/api/elements/<int:eid>/areas', methods=['POST'])

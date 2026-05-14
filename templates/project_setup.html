@@ -149,13 +149,19 @@
   <span class="text-slate-600 font-semibold text-sm">{{ proj.name }}</span>
 </div>
 
+<!-- Hierarchy hint -->
+<div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:10px 16px;margin-bottom:16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;font-weight:700;color:#0369a1;">
+  <i class="fa-solid fa-sitemap"></i>
+  <span style="color:#64748b;font-weight:600;">Project Hierarchy:</span>
+  <span>Group</span><span style="color:#94a3b8;">→</span>
+  <span style="color:#7c3aed;">Work Package</span><span style="color:#94a3b8;">→</span>
+  <span style="color:#0ea5e9;">Element</span><span style="color:#94a3b8;">→</span>
+  <span style="color:#22c55e;">Area</span><span style="color:#94a3b8;">→</span>
+  <span style="color:#f59e0b;">Activity</span>
+</div>
 <!-- Tabs -->
 <div class="flex gap-2 mb-6 flex-wrap">
-  <button class="tab-btn active" id="tab-btn-elements" onclick="switchTab('elements', this)">
-    <i class="fa-solid fa-tower-broadcast mr-1.5"></i> Elements
-    <span style="background:#e2e8f0;color:#64748b;border-radius:20px;padding:1px 8px;font-size:11px;margin-left:6px;" id="el-count-badge">{{ elements|length }}</span>
-  </button>
-  <button class="tab-btn" id="tab-btn-groups" onclick="switchTab('groups', this)">
+  <button class="tab-btn active" id="tab-btn-groups" onclick="switchTab('groups', this)">
     <i class="fa-solid fa-layer-group mr-1.5"></i> Groups
     <span style="background:#e2e8f0;color:#64748b;border-radius:20px;padding:1px 8px;font-size:11px;margin-left:6px;">{{ groups|length }}</span>
   </button>
@@ -163,29 +169,14 @@
     <i class="fa-solid fa-boxes-stacked mr-1.5"></i> Work Packages
     <span style="background:#e2e8f0;color:#64748b;border-radius:20px;padding:1px 8px;font-size:11px;margin-left:6px;">{{ work_packages|length }}</span>
   </button>
+  <button class="tab-btn" id="tab-btn-elements" onclick="switchTab('elements', this)">
+    <i class="fa-solid fa-tower-broadcast mr-1.5"></i> Elements
+    <span style="background:#e2e8f0;color:#64748b;border-radius:20px;padding:1px 8px;font-size:11px;margin-left:6px;" id="el-count-badge">{{ elements|length }}</span>
+  </button>
 </div>
 
 <!-- ═══════════════════════════════ ELEMENTS TAB ═════════════════════════════ -->
-<div id="tab-elements" class="tab-panel active">
-
-  <!-- Assign Banner (sticky, appears when assign mode active) -->
-  <div id="assign-banner">
-    <div style="width:34px;height:34px;border-radius:9px;background:rgba(255,255,255,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-      <i class="fa-solid fa-layer-group text-white text-sm"></i>
-    </div>
-    <div style="flex:1;">
-      <p style="font-weight:800;font-size:14px;" id="banner-title">Assigning to group</p>
-      <p style="font-size:12px;opacity:.85;" id="banner-sub">Tick elements below then click Save</p>
-    </div>
-    <button onclick="saveAssignment()" id="banner-save"
-            style="background:#fff;color:#1d4ed8;border:none;padding:8px 18px;border-radius:8px;font-weight:800;font-size:13px;cursor:pointer;">
-      <i class="fa-solid fa-check mr-1"></i> Save
-    </button>
-    <button onclick="cancelAssign()"
-            style="background:rgba(255,255,255,0.15);color:#fff;border:none;padding:8px 14px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;">
-      Cancel
-    </button>
-  </div>
+<div id="tab-elements" class="tab-panel">
 
   <!-- WP Assign Banner -->
   <div id="wp-assign-banner">
@@ -214,32 +205,6 @@
         <p class="text-xs text-slate-400 mt-0.5">Add, rename or remove elements and manage their QA areas</p>
       </div>
       <div class="flex gap-2" style="position:relative;">
-        <!-- Assign to Group button + dropdown -->
-        <div style="position:relative;">
-          <button onclick="toggleGroupDropdown(this)" id="assign-btn"
-                  class="btn-sm" style="background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe;">
-            <i class="fa-solid fa-layer-group mr-1"></i> Assign to Group
-            <i class="fa-solid fa-chevron-down ml-1 text-xs"></i>
-          </button>
-          <!-- Group dropdown -->
-          <div id="group-dropdown-popup">
-            {% if groups %}
-            {% for g in groups %}
-            <div class="gdrop-item" onclick="startAssign({{ g.id }}, '{{ g.name }}', '{{ g.color }}')">
-              <div style="width:10px;height:10px;border-radius:50%;background:{{ g.color }};flex-shrink:0;"></div>
-              {{ g.name }}
-              <span style="margin-left:auto;font-size:10px;color:#94a3b8;">{{ g.elements|length }} elem.</span>
-            </div>
-            {% endfor %}
-            {% else %}
-            <div style="padding:14px 16px;font-size:12px;color:#94a3b8;text-align:center;">
-              No groups yet.<br>
-              <span onclick="switchTab('groups', document.getElementById('tab-btn-groups'));closeGroupDropdown();"
-                    style="color:#3b82f6;cursor:pointer;font-weight:700;">Create a group first →</span>
-            </div>
-            {% endif %}
-          </div>
-        </div>
         <!-- Assign to Work Package button + dropdown -->
         <div style="position:relative;">
           <button onclick="toggleWpDropdown(this)" id="wp-assign-btn"
@@ -294,27 +259,22 @@
           <p class="font-semibold text-slate-800 text-sm" id="elname-{{ el.id }}">{{ el.name }}</p>
           <div class="flex flex-wrap gap-1 mt-0.5" id="el-badges-{{ el.id }}">
             <span class="badge-type">{{ el.element_type_label }}</span>
-            {% if el.group %}
-            <span class="group-badge" style="background:{{ el.group.color }}22;color:{{ el.group.color }};"
-                  id="el-group-badge-{{ el.id }}">
-              {{ el.group.name }}
-              <span onclick="event.stopPropagation();removeFromGroup({{ el.id }})"
-                    style="opacity:.6;cursor:pointer;margin-left:3px;" title="Remove from group">×</span>
-            </span>
-            {% else %}
-            <span class="group-badge" style="background:#f1f5f9;color:#94a3b8;display:none;"
-                  id="el-group-badge-{{ el.id }}"></span>
-            {% endif %}
             {% if el.work_package %}
+            {% set eff_group = el.work_package.group %}
+            {% if eff_group %}
+            <span class="group-badge" style="background:{{ eff_group.color }}22;color:{{ eff_group.color }};">
+              {{ eff_group.name }}
+            </span>
+            {% endif %}
             <span class="group-badge" style="background:{{ el.work_package.color }}22;color:{{ el.work_package.color }};"
                   id="el-wp-badge-{{ el.id }}">
               <i class="fa-solid fa-boxes-stacked" style="font-size:9px;margin-right:3px;"></i>{{ el.work_package.name }}
               <span onclick="event.stopPropagation();removeFromWp({{ el.id }})"
-                    style="opacity:.6;cursor:pointer;margin-left:3px;" title="Remove from work package">×</span>
+                    style="opacity:.6;cursor:pointer;margin-left:3px;" title="Remove from WP">×</span>
             </span>
             {% else %}
-            <span class="group-badge" style="background:#f1f5f9;color:#94a3b8;display:none;"
-                  id="el-wp-badge-{{ el.id }}"></span>
+            <span class="group-badge" style="background:#f1f5f9;color:#94a3b8;font-style:italic;"
+                  id="el-wp-badge-{{ el.id }}">unassigned</span>
             {% endif %}
           </div>
         </div>
@@ -323,9 +283,14 @@
         <div class="hidden md:flex flex-wrap gap-1 max-w-xs" id="areas-{{ el.id }}"
              onclick="event.stopPropagation()">
           {% for area in el.areas %}
-          <span class="area-pill" id="areapill-{{ area.id }}">
+          <span class="area-pill" id="areapill-{{ area.id }}" style="cursor:pointer;"
+                onclick="openActivityModal({{ area.id }}, '{{ area.label }}', '{{ el.name }}')"
+                title="Manage activities for {{ area.label }}">
             {{ area.label }}
-            <span class="del" onclick="deleteArea({{ area.id }}, {{ el.id }})" title="Remove area">×</span>
+            {% if area.activities %}
+            <span style="background:#f59e0b;color:#fff;border-radius:20px;padding:0px 5px;font-size:9px;font-weight:800;margin-left:2px;">{{ area.activities|length }}</span>
+            {% endif %}
+            <span class="del" onclick="event.stopPropagation();deleteArea({{ area.id }}, {{ el.id }})" title="Remove area">×</span>
           </span>
           {% endfor %}
           <button onclick="openAddArea({{ el.id }}, '{{ el.name }}')"
@@ -358,11 +323,11 @@
 </div>
 
 <!-- ═══════════════════════════════ GROUPS TAB ══════════════════════════════ -->
-<div id="tab-groups" class="tab-panel">
+<div id="tab-groups" class="tab-panel active">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
     <div>
-      <p class="font-bold text-slate-800">Element Groups</p>
-      <p class="text-xs text-slate-400 mt-0.5">Organise elements into zones like CS1, CS2, or any custom grouping</p>
+      <p class="font-bold text-slate-800">Groups</p>
+      <p class="text-xs text-slate-400 mt-0.5">Each group contains Work Packages → Elements → Areas → Activities</p>
     </div>
     <button onclick="openAddGroup()" class="btn-sm btn-primary">
       <i class="fa-solid fa-plus mr-1"></i> Create Group
@@ -372,14 +337,13 @@
   <div id="group-list">
     {% for g in groups %}
     <div class="group-card" id="groupcard-{{ g.id }}">
+      <!-- Group header -->
       <div class="group-header" style="background:{{ g.color }}11;border-bottom:1px solid {{ g.color }}22;">
         <div class="color-dot" style="background:{{ g.color }};"></div>
-        <span id="gname-{{ g.id }}" style="flex:1;">{{ g.name }}</span>
-        <span style="font-size:13px;font-weight:800;padding:3px 12px;border-radius:20px;background:{{ g.color }}22;color:{{ g.color }};margin-right:8px;" id="gcount-{{ g.id }}">{{ g.elements|length }} element(s)</span>
-        <button onclick="switchTab('elements', document.getElementById('tab-btn-elements'));startAssign({{ g.id }}, '{{ g.name }}', '{{ g.color }}')"
-                style="background:{{ g.color }}22;color:{{ g.color }};border:none;padding:5px 12px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;margin-right:6px;">
-          <i class="fa-solid fa-plus mr-1"></i> Add Elements
-        </button>
+        <span id="gname-{{ g.id }}" style="flex:1;font-size:15px;">{{ g.name }}</span>
+        <span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;background:{{ g.color }}22;color:{{ g.color }};margin-right:6px;">
+          {{ g.work_packages|length }} WP(s)
+        </span>
         <button onclick="renameGroup({{ g.id }})" class="btn-sm btn-ghost" style="padding:4px 10px;">
           <i class="fa-solid fa-pen text-xs"></i>
         </button>
@@ -387,27 +351,44 @@
           <i class="fa-solid fa-trash text-xs"></i>
         </button>
       </div>
-      <div style="padding:10px 14px;display:flex;flex-wrap:wrap;gap:8px;" id="gmembers-{{ g.id }}">
-        {% for el in g.elements %}
-        <span style="display:inline-flex;align-items:center;gap:6px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:600;color:#334155;"
-              id="gtag-{{ el.id }}">
-          <i class="fa-solid fa-tower-broadcast text-slate-300 text-xs"></i>
-          {{ el.name }}
-          <span onclick="removeFromGroup({{ el.id }}, {{ g.id }})"
-                style="color:#94a3b8;cursor:pointer;font-size:13px;font-weight:900;line-height:1;" title="Remove from group">×</span>
-        </span>
-        {% else %}
-        <span style="color:#94a3b8;font-size:12px;font-style:italic;" id="gempty-{{ g.id }}">
-          No elements — click "Add Elements" above
-        </span>
+      <!-- Work Packages nested inside this group -->
+      <div style="padding:12px 16px;" id="gwp-list-{{ g.id }}">
+        {% for wp in g.work_packages %}
+        <div style="display:flex;align-items:center;gap:8px;padding:9px 12px;background:#fafafa;border:1px solid #e2e8f0;border-radius:10px;margin-bottom:8px;"
+             id="gwp-{{ wp.id }}">
+          <div style="width:28px;height:28px;border-radius:7px;background:{{ wp.color }}22;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <i class="fa-solid fa-{{ wp.icon }}" style="color:{{ wp.color }};font-size:12px;"></i>
+          </div>
+          <span style="flex:1;font-size:13px;font-weight:700;color:#1e293b;">{{ wp.name }}</span>
+          <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;background:{{ wp.color }}22;color:{{ wp.color }};" id="gwpcount-{{ wp.id }}">
+            {{ wp.elements|length }} elem.
+          </span>
+          <button onclick="switchTab('elements',document.getElementById('tab-btn-elements'));startAssignWp({{ wp.id }},'{{ wp.name }}','{{ wp.color }}')"
+                  style="background:{{ wp.color }}22;color:{{ wp.color }};border:none;padding:4px 10px;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;">
+            <i class="fa-solid fa-plus mr-1"></i>Elements
+          </button>
+          <button onclick="renameWp({{ wp.id }})" class="btn-sm btn-ghost" style="padding:4px 8px;">
+            <i class="fa-solid fa-pen text-xs"></i>
+          </button>
+          <button onclick="deleteWp({{ wp.id }},'{{ wp.name }}')" class="btn-sm btn-danger" style="padding:4px 8px;">
+            <i class="fa-solid fa-trash text-xs"></i>
+          </button>
+        </div>
         {% endfor %}
+        <!-- Add WP to this group -->
+        <button onclick="openAddWp({{ g.id }},'{{ g.name }}','{{ g.color }}')"
+                style="width:100%;padding:9px;border:1.5px dashed #e2e8f0;border-radius:9px;background:transparent;color:#94a3b8;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:all .15s;"
+                onmouseover="this.style.borderColor='#7c3aed';this.style.color='#7c3aed'"
+                onmouseout="this.style.borderColor='#e2e8f0';this.style.color='#94a3b8'">
+          <i class="fa-solid fa-plus text-xs"></i> Add Work Package to {{ g.name }}
+        </button>
       </div>
     </div>
     {% else %}
     <div class="empty-state" id="empty-groups">
       <i class="fa-solid fa-layer-group text-3xl mb-2 block"></i>
       <p class="font-semibold">No groups yet</p>
-      <p class="text-sm mt-1">Groups let you organise elements into zones — e.g. CS1, CS2, North Zone</p>
+      <p class="text-sm mt-1">Create a Group first, then add Work Packages inside it</p>
     </div>
     {% endfor %}
   </div>
@@ -419,9 +400,9 @@
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
     <div>
       <p class="font-bold text-slate-800">Work Packages</p>
-      <p class="text-xs text-slate-400 mt-0.5">Group elements by work type — e.g. Foundation, Access Track, Cable Route</p>
+      <p class="text-xs text-slate-400 mt-0.5">Each Work Package belongs to a Group and contains Elements</p>
     </div>
-    <button onclick="openAddWp()" class="btn-sm" style="background:#7c3aed;color:#fff;border:none;">
+    <button onclick="openAddWp(null,null,null)" class="btn-sm" style="background:#7c3aed;color:#fff;border:none;">
       <i class="fa-solid fa-plus mr-1"></i> Create Work Package
     </button>
   </div>
@@ -430,18 +411,38 @@
     {% for wp in work_packages %}
     <div class="wp-card" id="wpcard-{{ wp.id }}">
       <div class="wp-header" style="background:{{ wp.color }}11;border-bottom:1px solid {{ wp.color }}22;">
-        <div class="color-dot" style="background:{{ wp.color }};"></div>
-        <i class="fa-solid fa-{{ wp.icon }}" style="color:{{ wp.color }};font-size:13px;"></i>
-        <span id="wpname-{{ wp.id }}" style="flex:1;">{{ wp.name }}</span>
-        <span style="font-size:13px;font-weight:800;padding:3px 12px;border-radius:20px;background:{{ wp.color }}22;color:{{ wp.color }};margin-right:8px;" id="wpcount-{{ wp.id }}">{{ wp.elements|length }} element(s)</span>
-        <button onclick="switchTab('elements', document.getElementById('tab-btn-elements'));startAssignWp({{ wp.id }}, '{{ wp.name }}', '{{ wp.color }}')"
-                style="background:{{ wp.color }}22;color:{{ wp.color }};border:none;padding:5px 12px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;margin-right:6px;">
-          <i class="fa-solid fa-plus mr-1"></i> Add Elements
+        <div style="width:32px;height:32px;border-radius:8px;background:{{ wp.color }}22;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <i class="fa-solid fa-{{ wp.icon }}" style="color:{{ wp.color }};font-size:13px;"></i>
+        </div>
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span id="wpname-{{ wp.id }}" style="font-size:14px;font-weight:800;color:#1e293b;">{{ wp.name }}</span>
+            {% if wp.group %}
+            <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:{{ wp.group.color }}22;color:{{ wp.group.color }};">
+              <i class="fa-solid fa-layer-group" style="font-size:8px;margin-right:3px;"></i>{{ wp.group.name }}
+            </span>
+            {% else %}
+            <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:#f1f5f9;color:#94a3b8;cursor:pointer;"
+                  onclick="reassignWpGroup({{ wp.id }})">
+              <i class="fa-solid fa-exclamation-triangle" style="font-size:8px;margin-right:3px;"></i>No group — assign
+            </span>
+            {% endif %}
+          </div>
+        </div>
+        <span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;background:{{ wp.color }}22;color:{{ wp.color }};margin-right:6px;" id="wpcount-{{ wp.id }}">
+          {{ wp.elements|length }} elem.
+        </span>
+        <button onclick="switchTab('elements',document.getElementById('tab-btn-elements'));startAssignWp({{ wp.id }},'{{ wp.name }}','{{ wp.color }}')"
+                style="background:{{ wp.color }}22;color:{{ wp.color }};border:none;padding:5px 10px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;margin-right:4px;">
+          <i class="fa-solid fa-plus mr-1"></i> Elements
+        </button>
+        <button onclick="reassignWpGroup({{ wp.id }})" class="btn-sm btn-ghost" style="padding:4px 10px;" title="Change group">
+          <i class="fa-solid fa-layer-group text-xs"></i>
         </button>
         <button onclick="renameWp({{ wp.id }})" class="btn-sm btn-ghost" style="padding:4px 10px;">
           <i class="fa-solid fa-pen text-xs"></i>
         </button>
-        <button onclick="deleteWp({{ wp.id }}, '{{ wp.name }}')" class="btn-sm btn-danger" style="padding:4px 10px;">
+        <button onclick="deleteWp({{ wp.id }},'{{ wp.name }}')" class="btn-sm btn-danger" style="padding:4px 10px;">
           <i class="fa-solid fa-trash text-xs"></i>
         </button>
       </div>
@@ -451,12 +452,12 @@
               id="wptag-{{ el.id }}">
           <i class="fa-solid fa-tower-broadcast text-slate-300 text-xs"></i>
           {{ el.name }}
-          <span onclick="removeFromWp({{ el.id }}, {{ wp.id }})"
+          <span onclick="removeFromWp({{ el.id }},{{ wp.id }})"
                 style="color:#94a3b8;cursor:pointer;font-size:13px;font-weight:900;line-height:1;" title="Remove">×</span>
         </span>
         {% else %}
         <span style="color:#94a3b8;font-size:12px;font-style:italic;" id="wpempty-{{ wp.id }}">
-          No elements — click "Add Elements" above
+          No elements — click "+ Elements" above
         </span>
         {% endfor %}
       </div>
@@ -465,7 +466,7 @@
     <div class="empty-state" id="empty-wps">
       <i class="fa-solid fa-boxes-stacked text-3xl mb-2 block"></i>
       <p class="font-semibold">No work packages yet</p>
-      <p class="text-sm mt-1">Work packages let you group elements by work type — e.g. Foundation, Access Track</p>
+      <p class="text-sm mt-1">Create a Group first, then add Work Packages inside it from the Groups tab</p>
     </div>
     {% endfor %}
   </div>
@@ -568,11 +569,21 @@
 
 <!-- Add Work Package Modal -->
 <div id="modal-add-wp" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:300;align-items:center;justify-content:center;">
-  <div style="background:#fff;border-radius:16px;padding:24px;width:400px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.2);">
-    <p class="font-bold text-slate-800 text-base mb-4">Create Work Package</p>
+  <div style="background:#fff;border-radius:16px;padding:24px;width:420px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.2);">
+    <p class="font-bold text-slate-800 text-base mb-1">Create Work Package</p>
+    <p id="modal-wp-group-hint" class="text-xs text-slate-400 mb-4"></p>
     <div class="flex flex-col gap-3">
       <div>
-        <label class="text-xs font-semibold text-slate-500 block mb-1">Name</label>
+        <label class="text-xs font-semibold text-slate-500 block mb-1">Assign to Group <span style="color:#ef4444;">*</span></label>
+        <select id="new-wp-group" style="width:100%;">
+          <option value="">— Select a group —</option>
+          {% for g in groups %}
+          <option value="{{ g.id }}" data-color="{{ g.color }}">{{ g.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="text-xs font-semibold text-slate-500 block mb-1">Work Package Name <span style="color:#ef4444;">*</span></label>
         <input id="new-wp-name" type="text" placeholder="e.g. Foundation, Access Track, Cable Route" style="width:100%;">
       </div>
       <div>
@@ -600,7 +611,56 @@
     </div>
     <div class="flex gap-2 mt-5 justify-end">
       <button onclick="closeModal('modal-add-wp')" class="btn-sm btn-ghost">Cancel</button>
-      <button onclick="submitAddWp()" class="btn-sm" style="background:#7c3aed;color:#fff;border:none;">Create</button>
+      <button onclick="submitAddWp()" class="btn-sm" style="background:#7c3aed;color:#fff;border:none;padding:7px 18px;border-radius:8px;font-weight:700;cursor:pointer;">
+        <i class="fa-solid fa-plus mr-1"></i> Create
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Assign WP to Group Modal -->
+<div id="modal-reassign-wp-group" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:300;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:16px;padding:24px;width:340px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.2);">
+    <p class="font-bold text-slate-800 text-base mb-1">Assign Work Package to Group</p>
+    <p id="modal-reassign-wp-name" class="text-xs text-slate-400 mb-4"></p>
+    <select id="reassign-wp-group-select" style="width:100%;">
+      <option value="">— No group —</option>
+      {% for g in groups %}
+      <option value="{{ g.id }}">{{ g.name }}</option>
+      {% endfor %}
+    </select>
+    <input type="hidden" id="reassign-wp-id">
+    <div class="flex gap-2 mt-5 justify-end">
+      <button onclick="closeModal('modal-reassign-wp-group')" class="btn-sm btn-ghost">Cancel</button>
+      <button onclick="submitReassignWpGroup()" class="btn-sm" style="background:#7c3aed;color:#fff;border:none;padding:7px 18px;border-radius:8px;font-weight:700;cursor:pointer;">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Activity Modal -->
+<div id="modal-add-activity" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:300;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:16px;padding:24px;width:380px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.2);">
+    <p class="font-bold text-slate-800 text-base mb-1">Add Activity</p>
+    <p id="modal-activity-subtitle" class="text-xs text-slate-400 mb-4"></p>
+    <div class="flex flex-col gap-3">
+      <div>
+        <label class="text-xs font-semibold text-slate-500 block mb-1">Activity Name</label>
+        <input id="new-activity-name" type="text" placeholder="e.g. Proof Roll Subgrade, DCP Test" style="width:100%;">
+      </div>
+      <div>
+        <label class="text-xs font-semibold text-slate-500 block mb-1">Type</label>
+        <select id="new-activity-type" style="width:100%;">
+          {% for key, lbl in activity_types %}
+          <option value="{{ key }}">{{ lbl }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="flex gap-2 mt-5 justify-end">
+      <button onclick="closeModal('modal-add-activity')" class="btn-sm btn-ghost">Cancel</button>
+      <button onclick="submitAddActivity()" class="btn-sm" style="background:#f59e0b;color:#fff;border:none;padding:7px 18px;border-radius:8px;font-weight:700;cursor:pointer;">
+        <i class="fa-solid fa-plus mr-1"></i> Add Activity
+      </button>
     </div>
   </div>
 </div>
@@ -624,7 +684,7 @@ function switchTab(name, btn) {
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
-  btn.classList.add('active');
+  if (btn) btn.classList.add('active');
 }
 
 // ── Toast (bottom-right, minor feedback) ────────────────────────────────────
@@ -654,173 +714,27 @@ function showCentreFlash(title, sub, icon='✦') {
 // ── Modal helpers ────────────────────────────────────────────────────────────
 function openModal(id) { document.getElementById(id).style.display = 'flex'; }
 function closeModal(id) { document.getElementById(id).style.display = 'none'; }
-['modal-add-element','modal-add-area','modal-add-group','modal-add-wp'].forEach(id => {
-  document.getElementById(id).addEventListener('click', function(e) {
+['modal-add-element','modal-add-area','modal-add-group','modal-add-wp',
+ 'modal-reassign-wp-group','modal-add-activity'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('click', function(e) {
     if (e.target === this) closeModal(id);
   });
 });
 
-// ── Assign-to-group flow ─────────────────────────────────────────────────────
-let _assignGroupId   = null;
-let _assignGroupName = '';
-let _assignGroupColor= '';
-let _assignMode      = false;
-let _selectedEls     = new Set();
-
-function toggleGroupDropdown(btn) {
-  const popup = document.getElementById('group-dropdown-popup');
-  const showing = popup.style.display === 'block';
-  popup.style.display = showing ? 'none' : 'block';
-  // Position below button
-  const rect = btn.getBoundingClientRect();
-  popup.style.top  = (btn.offsetTop + btn.offsetHeight + 4) + 'px';
-  popup.style.right = '0px';
-}
-function closeGroupDropdown() {
-  document.getElementById('group-dropdown-popup').style.display = 'none';
-}
-document.addEventListener('click', function(e) {
-  if (!e.target.closest('#assign-btn') && !e.target.closest('#group-dropdown-popup')) {
-    closeGroupDropdown();
-  }
-});
-
-function startAssign(gid, gname, gcolor) {
-  closeGroupDropdown();
-  _assignGroupId   = gid;
-  _assignGroupName = gname;
-  _assignGroupColor= gcolor;
-  _assignMode      = true;
-  _selectedEls     = new Set();
-
-  // Show banner
-  document.getElementById('banner-title').textContent = `Assigning to "${gname}"`;
-  document.getElementById('banner-sub').textContent   = 'Tick the elements below, then click Save';
-  const banner = document.getElementById('assign-banner');
-  banner.style.background = `linear-gradient(135deg, #1d4ed8, ${gcolor})`;
-  banner.classList.add('visible');
-
-  // Enter assign mode on all rows
-  document.querySelectorAll('.el-row').forEach(row => {
-    row.classList.add('assign-mode');
-    row.querySelectorAll('.el-actions').forEach(a => a.style.opacity = '0.3');
-  });
-  document.querySelectorAll('.assign-cb').forEach(cb => { cb.style.display = 'flex'; cb.classList.remove('checked'); });
-
-  // Pre-check elements already in this group
-  document.querySelectorAll('.el-row').forEach(row => {
-    const gid = row.dataset.groupId;
-    const id  = parseInt(row.id.replace('elrow-',''));
-    if (gid == _assignGroupId) {
-      _selectedEls.add(id);
-      document.getElementById('cb-' + id).classList.add('checked');
-      row.classList.add('selected-for-assign');
-    }
-  });
-  showCentreFlash(`Assigning to "${gname}"`, 'Tick elements below, then click Save', '⊕');
-}
-
+// ── rowClick — WP assign mode only ──────────────────────────────────────────
 function rowClick(elId, row) {
+  if (!_assignWpMode) return;
   const cb = document.getElementById('cb-' + elId);
-  if (_assignWpMode) {
-    if (_selectedWpEls.has(elId)) {
-      _selectedWpEls.delete(elId);
-      cb.classList.remove('checked');
-      row.classList.remove('selected-for-assign');
-    } else {
-      _selectedWpEls.add(elId);
-      cb.classList.add('checked');
-      row.classList.add('selected-for-assign');
-    }
-    return;
-  }
-  if (!_assignMode) return;
-  if (_selectedEls.has(elId)) {
-    _selectedEls.delete(elId);
+  if (_selectedWpEls.has(elId)) {
+    _selectedWpEls.delete(elId);
     cb.classList.remove('checked');
     row.classList.remove('selected-for-assign');
   } else {
-    _selectedEls.add(elId);
+    _selectedWpEls.add(elId);
     cb.classList.add('checked');
     row.classList.add('selected-for-assign');
   }
-}
-
-async function saveAssignment() {
-  // Get all elements in this project
-  const allRows = document.querySelectorAll('.el-row[id^="elrow-"]');
-  const ops = [];
-  allRows.forEach(row => {
-    const id  = parseInt(row.id.replace('elrow-',''));
-    const cur = parseInt(row.dataset.groupId) || null;
-    if (_selectedEls.has(id) && cur !== _assignGroupId) {
-      ops.push({ id, group_id: _assignGroupId });
-    } else if (!_selectedEls.has(id) && cur === _assignGroupId) {
-      ops.push({ id, group_id: null });
-    }
-  });
-
-  for (const op of ops) {
-    await fetch(`/api/elements/${op.id}`, {
-      method: 'PATCH', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({group_id: op.group_id})
-    });
-  }
-
-  showToast(`Saved! "${_assignGroupName}" updated.`, 'success');
-  cancelAssign();
-  // Update UI without full reload
-  updateGroupBadgesAfterAssign();
-}
-
-function updateGroupBadgesAfterAssign() {
-  document.querySelectorAll('.el-row[id^="elrow-"]').forEach(row => {
-    const id  = parseInt(row.id.replace('elrow-',''));
-    const badge = document.getElementById('el-group-badge-' + id);
-    if (!badge) return;
-    if (_selectedEls.has(id)) {
-      row.dataset.groupId   = _assignGroupId;
-      row.dataset.groupName = _assignGroupName;
-      badge.style.display   = '';
-      badge.style.background= _assignGroupColor + '22';
-      badge.style.color     = _assignGroupColor;
-      badge.innerHTML       = `${_assignGroupName} <span onclick="event.stopPropagation();removeFromGroup(${id})" style="opacity:.6;cursor:pointer;margin-left:3px;" title="Remove from group">×</span>`;
-    } else if (parseInt(row.dataset.groupId) === _assignGroupId) {
-      row.dataset.groupId   = '';
-      row.dataset.groupName = '';
-      badge.style.display   = 'none';
-      badge.innerHTML       = '';
-    }
-  });
-}
-
-function cancelAssign() {
-  _assignMode = false;
-  _selectedEls = new Set();
-  document.getElementById('assign-banner').classList.remove('visible');
-  document.querySelectorAll('.el-row').forEach(row => {
-    row.classList.remove('assign-mode','selected-for-assign');
-    row.querySelectorAll('.el-actions').forEach(a => a.style.opacity = '1');
-  });
-  document.querySelectorAll('.assign-cb').forEach(cb => { cb.style.display = 'none'; cb.classList.remove('checked'); });
-}
-
-// ── Remove from group ────────────────────────────────────────────────────────
-async function removeFromGroup(elId, gidHint) {
-  if (!confirm('Remove this element from its group?')) return;
-  await fetch(`/api/elements/${elId}`, {
-    method: 'PATCH', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({group_id: null})
-  });
-  // Hide badge on element row
-  const badge = document.getElementById('el-group-badge-' + elId);
-  if (badge) { badge.style.display = 'none'; badge.innerHTML = ''; }
-  const row = document.getElementById('elrow-' + elId);
-  if (row) row.dataset.groupId = '';
-  // Remove tag from group card if visible
-  const gtag = document.getElementById('gtag-' + elId);
-  if (gtag) gtag.remove();
-  showToast('Removed from group', 'success');
 }
 
 // ── Add Element ──────────────────────────────────────────────────────────────
@@ -974,11 +888,6 @@ async function deleteGroup(id, name) {
   }
 }
 
-// ── Enter key shortcuts ───────────────────────────────────────────────────────
-document.getElementById('new-el-name')?.addEventListener('keydown',    e => { if(e.key==='Enter') submitAddElement(); });
-document.getElementById('new-group-name')?.addEventListener('keydown', e => { if(e.key==='Enter') submitAddGroup(); });
-document.getElementById('new-wp-name')?.addEventListener('keydown',    e => { if(e.key==='Enter') submitAddWp(); });
-
 // ── Work Package assign flow ─────────────────────────────────────────────────
 let _assignWpId    = null;
 let _assignWpName  = '';
@@ -1007,8 +916,6 @@ document.addEventListener('click', function(e) {
 
 function startAssignWp(wpid, wpname, wpcolor) {
   closeWpDropdown();
-  // Cancel any active group assign
-  if (_assignMode) cancelAssign();
 
   _assignWpId    = wpid;
   _assignWpName  = wpname;
@@ -1138,28 +1045,60 @@ document.addEventListener('DOMContentLoaded', () => {
   selectWpIcon('layer-group');
 });
 
-function openAddWp() {
+function openAddWp(preGroupId, preGroupName, preGroupColor) {
   document.getElementById('new-wp-name').value = '';
   selectWpColor('#7c3aed');
   selectWpIcon('layer-group');
+  // Pre-select group if opened from a group card
+  const sel = document.getElementById('new-wp-group');
+  sel.value = preGroupId || '';
+  const hint = document.getElementById('modal-wp-group-hint');
+  hint.textContent = preGroupName ? `Adding to group: ${preGroupName}` : 'Choose which group this Work Package belongs to';
   openModal('modal-add-wp');
   setTimeout(() => document.getElementById('new-wp-name').focus(), 50);
 }
 
 async function submitAddWp() {
-  const name  = document.getElementById('new-wp-name').value.trim();
-  const color = document.getElementById('new-wp-color').value;
-  const icon  = document.getElementById('new-wp-icon').value;
-  if (!name) { alert('Name is required'); return; }
+  const name     = document.getElementById('new-wp-name').value.trim();
+  const color    = document.getElementById('new-wp-color').value;
+  const icon     = document.getElementById('new-wp-icon').value;
+  const group_id = document.getElementById('new-wp-group').value || null;
+  if (!name) { alert('Work package name is required'); return; }
+  if (!group_id) { alert('Please assign this Work Package to a Group'); return; }
   const res  = await fetch(`/api/projects/${PID}/work-packages`, {
     method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({name, color, icon})
+    body: JSON.stringify({name, color, icon, group_id})
   });
   const data = await res.json();
   if (!res.ok) { showToast(data.error || 'Error','error'); return; }
   closeModal('modal-add-wp');
   showToast(`Work package "${data.name}" created`, 'success');
   setTimeout(() => location.reload(), 700);
+}
+
+// ── Reassign WP to a different group ────────────────────────────────────────
+function reassignWpGroup(wpid) {
+  const nameEl = document.getElementById('wpname-' + wpid);
+  const name   = nameEl ? nameEl.textContent.trim() : 'this work package';
+  document.getElementById('reassign-wp-id').value           = wpid;
+  document.getElementById('modal-reassign-wp-name').textContent = `Work Package: ${name}`;
+  openModal('modal-reassign-wp-group');
+}
+
+async function submitReassignWpGroup() {
+  const wpid     = document.getElementById('reassign-wp-id').value;
+  const group_id = document.getElementById('reassign-wp-group-select').value || null;
+  const res = await fetch(`/api/work-packages/${wpid}`, {
+    method:'PATCH', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({group_id})
+  });
+  if (res.ok) {
+    closeModal('modal-reassign-wp-group');
+    showToast('Work package group updated', 'success');
+    setTimeout(() => location.reload(), 700);
+  } else {
+    showToast('Error updating group','error');
+  }
 }
 
 async function renameWp(id) {
@@ -1180,11 +1119,122 @@ async function deleteWp(id, name) {
   if (!confirm(`Delete work package "${name}"? Elements will be unassigned (not deleted).`)) return;
   const res = await fetch(`/api/work-packages/${id}`, { method:'DELETE' });
   if (res.ok) {
-    document.getElementById('wpcard-' + id).remove();
+    document.getElementById('wpcard-' + id)?.remove();
+    document.getElementById('gwp-' + id)?.remove();
     showToast(`Work package "${name}" deleted`, 'success');
   } else {
     showToast('Error deleting work package','error');
   }
 }
+
+// ── Activity management ──────────────────────────────────────────────────────
+let _activityAreaId    = null;
+let _loadedActivities  = [];
+
+async function openActivityModal(areaId, areaLabel, elName) {
+  _activityAreaId = areaId;
+  document.getElementById('modal-activity-subtitle').textContent = `${elName}  ›  ${areaLabel}`;
+  document.getElementById('new-activity-name').value  = '';
+  document.getElementById('new-activity-type').value  = 'general';
+
+  let listDiv = document.getElementById('activity-list-in-modal');
+  if (!listDiv) {
+    listDiv = document.createElement('div');
+    listDiv.id = 'activity-list-in-modal';
+    listDiv.style.cssText = 'margin-bottom:12px;display:flex;flex-direction:column;gap:6px;max-height:200px;overflow-y:auto;';
+    const modalInner = document.querySelector('#modal-add-activity > div');
+    modalInner.insertBefore(listDiv, modalInner.querySelector('p.font-bold').nextSibling.nextSibling);
+  }
+
+  const res = await fetch(`/api/areas/${areaId}/activities`);
+  _loadedActivities = res.ok ? await res.json() : [];
+  renderActivityList(listDiv);
+  openModal('modal-add-activity');
+  setTimeout(() => document.getElementById('new-activity-name').focus(), 50);
+}
+
+const STATUS_DOT = {not_started:'#cbd5e1', in_progress:'#fde047', complete:'#86efac'};
+
+function renderActivityList(container) {
+  if (!_loadedActivities.length) {
+    container.innerHTML = '<p style="font-size:12px;color:#94a3b8;font-style:italic;padding:4px 0;">No activities yet — add one below</p>';
+    return;
+  }
+  container.innerHTML = _loadedActivities.map(a => `
+    <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">
+      <div style="width:10px;height:10px;border-radius:50%;background:${STATUS_DOT[a.status]||'#cbd5e1'};flex-shrink:0;"></div>
+      <span style="flex:1;font-size:12px;font-weight:600;color:#334155;">${a.name}</span>
+      <span style="font-size:10px;color:#94a3b8;">${a.type_label}</span>
+      <select onchange="updateActivityStatus(${a.id},this.value)"
+              style="font-size:11px;border:1px solid #e2e8f0;border-radius:6px;padding:2px 4px;color:#475569;cursor:pointer;">
+        <option value="not_started" ${a.status==='not_started'?'selected':''}>Not Started</option>
+        <option value="in_progress" ${a.status==='in_progress'?'selected':''}>In Progress</option>
+        <option value="complete"    ${a.status==='complete'   ?'selected':''}>Complete</option>
+      </select>
+      <span onclick="deleteActivity(${a.id})"
+            style="color:#94a3b8;cursor:pointer;font-size:15px;font-weight:900;" title="Remove">×</span>
+    </div>`).join('');
+}
+
+async function submitAddActivity() {
+  const name          = document.getElementById('new-activity-name').value.trim();
+  const activity_type = document.getElementById('new-activity-type').value;
+  if (!name) { alert('Activity name is required'); return; }
+  const res  = await fetch(`/api/areas/${_activityAreaId}/activities`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({name, activity_type})
+  });
+  const data = await res.json();
+  if (!res.ok) { showToast(data.error||'Error','error'); return; }
+  _loadedActivities.push(data);
+  document.getElementById('new-activity-name').value = '';
+  renderActivityList(document.getElementById('activity-list-in-modal'));
+  _updateAreaPillBadge(_activityAreaId, _loadedActivities.length);
+  showToast(`"${data.name}" added`, 'success');
+}
+
+async function updateActivityStatus(actId, status) {
+  await fetch(`/api/activities/${actId}`, {
+    method:'PATCH', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({status})
+  });
+  const a = _loadedActivities.find(x => x.id === actId);
+  if (a) { a.status = status; a.status_label = {not_started:'Not Started',in_progress:'In Progress',complete:'Complete'}[status]; }
+  renderActivityList(document.getElementById('activity-list-in-modal'));
+}
+
+async function deleteActivity(actId) {
+  if (!confirm('Remove this activity?')) return;
+  const res = await fetch(`/api/activities/${actId}`, {method:'DELETE'});
+  if (res.ok) {
+    _loadedActivities = _loadedActivities.filter(a => a.id !== actId);
+    renderActivityList(document.getElementById('activity-list-in-modal'));
+    _updateAreaPillBadge(_activityAreaId, _loadedActivities.length);
+    showToast('Activity removed','success');
+  }
+}
+
+function _updateAreaPillBadge(areaId, count) {
+  const pill = document.getElementById('areapill-' + areaId);
+  if (!pill) return;
+  let badge = pill.querySelector('.act-count-badge');
+  if (count > 0) {
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.className = 'act-count-badge';
+      badge.style.cssText = 'background:#f59e0b;color:#fff;border-radius:20px;padding:0 5px;font-size:9px;font-weight:800;margin-left:2px;';
+      pill.insertBefore(badge, pill.querySelector('.del'));
+    }
+    badge.textContent = count;
+  } else if (badge) {
+    badge.remove();
+  }
+}
+
+// ── Enter key shortcuts ──────────────────────────────────────────────────────
+document.getElementById('new-el-name')?.addEventListener('keydown',       e => { if(e.key==='Enter') submitAddElement(); });
+document.getElementById('new-group-name')?.addEventListener('keydown',    e => { if(e.key==='Enter') submitAddGroup(); });
+document.getElementById('new-wp-name')?.addEventListener('keydown',       e => { if(e.key==='Enter') submitAddWp(); });
+document.getElementById('new-activity-name')?.addEventListener('keydown', e => { if(e.key==='Enter') submitAddActivity(); });
 </script>
 {% endblock %}

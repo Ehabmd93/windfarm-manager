@@ -136,17 +136,19 @@ class WTGGroup(db.Model):
     color      = db.Column(db.String(20), default='#0f2942')
     sort_order = db.Column(db.Integer, default=0)
 
-    elements   = db.relationship('WTG', backref='group', lazy=True)
+    elements      = db.relationship('WTG', backref='group', lazy=True)
+    work_packages = db.relationship('WorkPackage', backref='group', lazy=True)
 
 # ─────────────────────────────────────────────
-# WORK PACKAGES  (scope buckets within a project)
+# WORK PACKAGES  (level 3: assigned to a Group)
 # ─────────────────────────────────────────────
 class WorkPackage(db.Model):
     __tablename__ = 'work_packages'
     id         = db.Column(db.Integer, primary_key=True)
     project_id = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=False)
+    group_id   = db.Column(db.Integer, db.ForeignKey('wtg_groups.id'), nullable=True)
     name       = db.Column(db.String(100), nullable=False)
-    color      = db.Column(db.String(20), default='#3b82f6')
+    color      = db.Column(db.String(20), default='#7c3aed')
     icon       = db.Column(db.String(40), default='layer-group')
     sort_order = db.Column(db.Integer, default=0)
 
@@ -189,7 +191,8 @@ class Area(db.Model):
     area_type    = db.Column(db.String(30), nullable=False)
     label        = db.Column(db.String(50), nullable=False)
 
-    required_tests = db.relationship('QATest', backref='area', lazy=True, cascade='all,delete')
+    required_tests = db.relationship('QATest',     backref='area', lazy=True, cascade='all,delete')
+    activities     = db.relationship('Activity',   backref='area', lazy=True, cascade='all,delete')
 
     @property
     def completion_pct(self):
@@ -203,6 +206,46 @@ class Area(db.Model):
         if pct == 0:   return 'red'
         if pct == 100: return 'green'
         return 'yellow'
+
+# ─────────────────────────────────────────────
+# ACTIVITIES  (level 6: assigned to an Area)
+# Core scheduling/tracking unit — all future tools are built on this
+# ─────────────────────────────────────────────
+ACTIVITY_TYPES = [
+    ('proof_roll',     'Proof Roll'),
+    ('dcp',            'DCP Test'),
+    ('compaction',     'Compaction Test'),
+    ('plate_load',     'Plate Load Test'),
+    ('geo_inspection', 'Geo Inspection'),
+    ('earthworks',     'Earthworks'),
+    ('concrete',       'Concrete Works'),
+    ('survey',         'Survey'),
+    ('cable',          'Cable Installation'),
+    ('general',        'General'),
+]
+
+class Activity(db.Model):
+    __tablename__ = 'activities'
+    id            = db.Column(db.Integer, primary_key=True)
+    area_id       = db.Column(db.Integer, db.ForeignKey('areas.id'), nullable=False)
+    name          = db.Column(db.String(100), nullable=False)
+    activity_type = db.Column(db.String(50), default='general')
+    status        = db.Column(db.String(20), default='not_started')  # not_started|in_progress|complete
+    sort_order    = db.Column(db.Integer, default=0)
+    created_at    = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    @property
+    def status_color(self):
+        return {'not_started':'#e2e8f0','in_progress':'#fde047','complete':'#86efac'}.get(self.status,'#e2e8f0')
+
+    @property
+    def status_label(self):
+        return {'not_started':'Not Started','in_progress':'In Progress','complete':'Complete'}.get(self.status, self.status.title())
+
+    @property
+    def type_label(self):
+        return next((lbl for k, lbl in ACTIVITY_TYPES if k == self.activity_type), self.activity_type.replace('_',' ').title())
+
 
 # ─────────────────────────────────────────────
 # QA TESTS

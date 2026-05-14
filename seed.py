@@ -90,6 +90,19 @@ def _migrate_projects(app):
                 except Exception as e:
                     print(f"{col_name} column note: {e}")
 
+    # ── 1b. Add group_id to work_packages if missing ─────────────────────────
+    insp_wp = sa_inspect(db.engine)
+    if 'work_packages' in insp_wp.get_table_names():
+        wp_cols = [c['name'] for c in insp_wp.get_columns('work_packages')]
+        if 'group_id' not in wp_cols:
+            try:
+                with db.engine.connect() as conn:
+                    conn.execute(text('ALTER TABLE work_packages ADD COLUMN group_id INTEGER'))
+                    conn.commit()
+                print("Added group_id column to work_packages")
+            except Exception as e:
+                print(f"group_id column note: {e}")
+
     # ── 2. Create King Rocks Wind Farm project if it doesn't exist ───────────
     try:
         kr = Project.query.filter_by(name='King Rocks Wind Farm').first()
