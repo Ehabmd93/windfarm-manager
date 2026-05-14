@@ -721,8 +721,20 @@ function startAssign(gid, gname, gcolor) {
 }
 
 function rowClick(elId, row) {
-  if (!_assignMode) return;
   const cb = document.getElementById('cb-' + elId);
+  if (_assignWpMode) {
+    if (_selectedWpEls.has(elId)) {
+      _selectedWpEls.delete(elId);
+      cb.classList.remove('checked');
+      row.classList.remove('selected-for-assign');
+    } else {
+      _selectedWpEls.add(elId);
+      cb.classList.add('checked');
+      row.classList.add('selected-for-assign');
+    }
+    return;
+  }
+  if (!_assignMode) return;
   if (_selectedEls.has(elId)) {
     _selectedEls.delete(elId);
     cb.classList.remove('checked');
@@ -1100,25 +1112,6 @@ async function removeFromWp(elId, wpIdHint) {
   const wptag = document.getElementById('wptag-' + elId);
   if (wptag) wptag.remove();
   showToast('Removed from work package', 'success');
-}
-
-// Patch rowClick to handle both assign modes
-const _origRowClick = rowClick;
-function rowClick(elId, row) {
-  if (_assignWpMode) {
-    const cb = document.getElementById('cb-' + elId);
-    if (_selectedWpEls.has(elId)) {
-      _selectedWpEls.delete(elId);
-      cb.classList.remove('checked');
-      row.classList.remove('selected-for-assign');
-    } else {
-      _selectedWpEls.add(elId);
-      cb.classList.add('checked');
-      row.classList.add('selected-for-assign');
-    }
-    return;
-  }
-  _origRowClick(elId, row);
 }
 
 // ── Work Package CRUD ────────────────────────────────────────────────────────
