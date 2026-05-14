@@ -144,13 +144,18 @@
 {% endblock %}
 
 {% block content %}
-<div class="flex items-center gap-3 mb-6">
+<div class="flex items-center gap-3 mb-6 flex-wrap">
   <a href="{{ url_for('project_settings', pid=proj.id) }}"
      class="text-slate-400 hover:text-slate-600 text-sm flex items-center gap-1">
     <i class="fa-solid fa-chevron-left text-xs"></i> Project Settings
   </a>
   <span class="text-slate-300">·</span>
   <span class="text-slate-600 font-semibold text-sm">{{ proj.name }}</span>
+  <div style="flex:1;"></div>
+  <button onclick="openModal('modal-deploy')"
+          style="background:linear-gradient(135deg,#16a34a,#22c55e);color:#fff;border:none;padding:8px 20px;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:7px;box-shadow:0 3px 12px rgba(22,163,74,0.3);">
+    <i class="fa-solid fa-rocket"></i> Deploy to QA
+  </button>
 </div>
 
 <!-- Hierarchy hint -->
@@ -176,6 +181,16 @@
   <button class="tab-btn" id="tab-btn-elements" onclick="switchTab('elements', this)">
     <i class="fa-solid fa-tower-broadcast mr-1.5"></i> Elements
     <span style="background:#e2e8f0;color:#64748b;border-radius:20px;padding:1px 8px;font-size:11px;margin-left:6px;" id="el-count-badge">{{ elements|length }}</span>
+  </button>
+  <button class="tab-btn" id="tab-btn-areas" onclick="switchTab('areas', this)">
+    <i class="fa-solid fa-map-pin mr-1.5"></i> Areas
+    {% set total_areas = namespace(n=0) %}{% for el in elements %}{% set total_areas.n = total_areas.n + el.areas|length %}{% endfor %}
+    <span style="background:#fef3c7;color:#d97706;border-radius:20px;padding:1px 8px;font-size:11px;margin-left:6px;">{{ total_areas.n }}</span>
+  </button>
+  <button class="tab-btn" id="tab-btn-activities" onclick="switchTab('activities', this)">
+    <i class="fa-solid fa-list-check mr-1.5"></i> Activities
+    {% set total_acts = namespace(n=0) %}{% for el in elements %}{% for area in el.areas %}{% set total_acts.n = total_acts.n + area.activities|length %}{% endfor %}{% endfor %}
+    <span style="background:#f0fdf4;color:#16a34a;border-radius:20px;padding:1px 8px;font-size:11px;margin-left:6px;">{{ total_acts.n }}</span>
   </button>
 </div>
 
@@ -289,7 +304,7 @@
         </div>
 
         <!-- Areas summary -->
-        <div class="hidden md:flex flex-wrap gap-1 max-w-xs" id="areas-{{ el.id }}"
+        <div class="flex flex-wrap gap-1 max-w-xs" id="areas-{{ el.id }}"
              onclick="event.stopPropagation()">
           {% for area in el.areas %}
           <span class="area-pill" id="areapill-{{ area.id }}" style="cursor:pointer;"
@@ -330,6 +345,131 @@
     </div>
   </div>
 </div>
+
+<!-- ═══════════════════════════════ AREAS TAB ═══════════════════════════════ -->
+<div id="tab-areas" class="tab-panel">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
+    <div>
+      <p class="font-bold text-slate-800">Areas</p>
+      <p class="text-xs text-slate-400 mt-0.5">Manage areas per element — click an area to manage its activities</p>
+    </div>
+    <button onclick="openBulkAddArea()" class="btn-sm" style="background:#f59e0b;color:#fff;border:none;">
+      <i class="fa-solid fa-plus mr-1"></i> Add Area to Elements
+    </button>
+  </div>
+  {% if elements %}
+  {% for el in elements %}
+  <div style="border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;margin-bottom:10px;">
+    <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:#f8fafc;border-bottom:1px solid #f1f5f9;">
+      <i class="fa-solid fa-tower-broadcast text-slate-400" style="font-size:12px;"></i>
+      <span style="font-weight:700;font-size:14px;color:#1e293b;flex:1;">{{ el.name }}</span>
+      {% if el.work_package %}
+      <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:{{ el.work_package.color }}22;color:{{ el.work_package.color }};">
+        <i class="fa-solid fa-boxes-stacked" style="font-size:8px;margin-right:2px;"></i>{{ el.work_package.name }}
+      </span>
+      {% if el.work_package.group %}
+      <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:{{ el.work_package.group.color }}22;color:{{ el.work_package.group.color }};">{{ el.work_package.group.name }}</span>
+      {% endif %}
+      {% endif %}
+      <button onclick="openAddArea({{ el.id }}, '{{ el.name }}')"
+              style="font-size:11px;font-weight:700;padding:4px 10px;border-radius:7px;background:#fef3c7;color:#d97706;border:none;cursor:pointer;">
+        <i class="fa-solid fa-plus mr-1"></i> Add Area
+      </button>
+    </div>
+    {% if el.areas %}
+    <div style="padding:10px 14px;display:flex;flex-wrap:wrap;gap:8px;">
+      {% for area in el.areas %}
+      <div style="display:inline-flex;align-items:center;gap:8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:9px;padding:7px 12px;cursor:pointer;transition:all .15s;"
+           onclick="openActivityModal({{ area.id }}, '{{ area.label }}', '{{ el.name }}')"
+           onmouseover="this.style.background='#fef3c7';this.style.borderColor='#f59e0b';"
+           onmouseout="this.style.background='#f8fafc';this.style.borderColor='#e2e8f0';">
+        <i class="fa-solid fa-map-pin" style="color:#f59e0b;font-size:11px;"></i>
+        <span style="font-size:12px;font-weight:700;color:#334155;">{{ area.label }}</span>
+        {% if area.activities %}
+        <span style="background:#f59e0b;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:800;">{{ area.activities|length }} act.</span>
+        {% endif %}
+        <span onclick="event.stopPropagation();deleteArea({{ area.id }}, {{ el.id }})"
+              style="color:#94a3b8;cursor:pointer;font-size:15px;font-weight:900;line-height:1;" title="Remove area">×</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div style="padding:12px 16px;font-size:12px;color:#94a3b8;font-style:italic;">No areas yet — click "Add Area" to get started</div>
+    {% endif %}
+  </div>
+  {% endfor %}
+  {% else %}
+  <div class="empty-state">
+    <i class="fa-solid fa-map-pin text-3xl mb-2 block"></i>
+    <p class="font-semibold">No elements yet</p>
+    <p class="text-sm mt-1">Add elements in the Elements tab first</p>
+  </div>
+  {% endif %}
+</div>
+
+
+<!-- ════════════════════════════ ACTIVITIES TAB ══════════════════════════════ -->
+<div id="tab-activities" class="tab-panel">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
+    <div>
+      <p class="font-bold text-slate-800">Activities</p>
+      <p class="text-xs text-slate-400 mt-0.5">Define the QA work per area — every future tool is built on these activities</p>
+    </div>
+    <button onclick="openBulkAddActivity()" class="btn-sm" style="background:#16a34a;color:#fff;border:none;">
+      <i class="fa-solid fa-plus mr-1"></i> Add Activity to Areas
+    </button>
+  </div>
+  {% set has_areas = namespace(found=false) %}
+  {% for el in elements %}{% if el.areas %}{% set has_areas.found = true %}{% endif %}{% endfor %}
+  {% if has_areas.found %}
+  {% for el in elements %}
+  {% if el.areas %}
+  <div style="border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;margin-bottom:10px;">
+    <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:#f8fafc;border-bottom:1px solid #f1f5f9;">
+      <i class="fa-solid fa-tower-broadcast text-slate-400" style="font-size:12px;"></i>
+      <span style="font-weight:700;font-size:14px;color:#1e293b;flex:1;">{{ el.name }}</span>
+      {% if el.work_package %}
+      <span style="font-size:10px;font-weight:600;color:#94a3b8;">{{ el.work_package.name }}</span>
+      {% endif %}
+    </div>
+    {% for area in el.areas %}
+    <div style="padding:10px 14px;border-bottom:1px solid #f8fafc;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+        <i class="fa-solid fa-map-pin" style="color:#f59e0b;font-size:11px;"></i>
+        <span style="font-weight:700;font-size:13px;color:#475569;">{{ area.label }}</span>
+        <button onclick="openActivityModal({{ area.id }}, '{{ area.label }}', '{{ el.name }}')"
+                style="font-size:11px;font-weight:700;padding:3px 9px;border-radius:6px;background:#f0fdf4;color:#16a34a;border:none;cursor:pointer;margin-left:4px;">
+          <i class="fa-solid fa-plus mr-1"></i> Add Activity
+        </button>
+      </div>
+      {% if area.activities %}
+      <div style="display:flex;flex-direction:column;gap:4px;padding-left:18px;">
+        {% for act in area.activities %}
+        <div style="display:flex;align-items:center;gap:8px;padding:5px 10px;background:#f8fafc;border-radius:7px;border:1px solid #e2e8f0;">
+          <div style="width:8px;height:8px;border-radius:50%;background:{{ act.status_color }};flex-shrink:0;box-shadow:0 0 5px {{ act.status_color }};"></div>
+          <span style="flex:1;font-size:12px;font-weight:600;color:#334155;">{{ act.name }}</span>
+          <span style="font-size:10px;color:#94a3b8;background:#f1f5f9;padding:2px 7px;border-radius:5px;">{{ act.type_label }}</span>
+          <span style="font-size:10px;font-weight:600;color:#64748b;">{{ act.status_label }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p style="color:#94a3b8;font-size:11px;font-style:italic;padding-left:18px;">No activities yet</p>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% endfor %}
+  {% else %}
+  <div class="empty-state">
+    <i class="fa-solid fa-list-check text-3xl mb-2 block"></i>
+    <p class="font-semibold">No areas yet</p>
+    <p class="text-sm mt-1">Add elements → areas in the Areas tab, then come back to add activities</p>
+  </div>
+  {% endif %}
+</div>
+
 
 <!-- ═══════════════════════════════ GROUPS TAB ══════════════════════════════ -->
 <div id="tab-groups" class="tab-panel active">
@@ -681,6 +821,161 @@
   </div>
 </div>
 
+<!-- Bulk Add Area Modal -->
+<div id="modal-bulk-area" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:300;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:16px;padding:24px;width:500px;max-width:95vw;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.2);">
+    <p class="font-bold text-slate-800 text-base mb-1">Add Area to Multiple Elements</p>
+    <p class="text-xs text-slate-400 mb-4">Define the area once — it will be added to every ticked element</p>
+    <div class="flex flex-col gap-3">
+      <div>
+        <label class="text-xs font-semibold text-slate-500 block mb-1">Select Elements <span style="color:#ef4444;">*</span>
+          <span onclick="document.querySelectorAll('.bulk-area-el-cb').forEach(c=>{c.checked=true;c.closest('label').style.background='#fef3c720';c.closest('label').style.borderColor='#f59e0b';})"
+                style="cursor:pointer;color:#f59e0b;font-weight:700;margin-left:8px;">Select all</span>
+          <span onclick="document.querySelectorAll('.bulk-area-el-cb').forEach(c=>{c.checked=false;c.closest('label').style.background='#fff';c.closest('label').style.borderColor='#e2e8f0';})"
+                style="cursor:pointer;color:#94a3b8;font-weight:600;margin-left:6px;">Clear</span>
+        </label>
+        <div style="max-height:160px;overflow-y:auto;display:flex;flex-wrap:wrap;gap:6px;padding:6px;border:1px solid #e2e8f0;border-radius:9px;background:#fafafa;">
+          {% for el in elements %}
+          <label style="display:flex;align-items:center;gap:6px;padding:5px 10px;border:1.5px solid #e2e8f0;border-radius:7px;cursor:pointer;font-size:12px;font-weight:600;color:#334155;background:#fff;transition:all .1s;"
+                 onmouseover="this.style.borderColor='#f59e0b'"
+                 onmouseout="if(!this.querySelector('input').checked)this.style.borderColor='#e2e8f0'">
+            <input type="checkbox" value="{{ el.id }}" class="bulk-area-el-cb" style="width:13px;height:13px;accent-color:#f59e0b;"
+                   onchange="this.closest('label').style.background=this.checked?'#fef3c720':'#fff';this.closest('label').style.borderColor=this.checked?'#f59e0b':'#e2e8f0';">
+            <i class="fa-solid fa-tower-broadcast" style="font-size:10px;color:#94a3b8;"></i>
+            {{ el.name }}
+            {% if el.work_package %}<span style="font-size:10px;color:#94a3b8;">({{ el.work_package.name }})</span>{% endif %}
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+      <div>
+        <label class="text-xs font-semibold text-slate-500 block mb-1">Area Type Key <span style="color:#ef4444;">*</span></label>
+        <input id="bulk-area-type" type="text" placeholder="e.g. hardstand, crane_pad" style="width:100%;">
+        <p class="text-xs text-slate-400 mt-1">Lowercase with underscores.</p>
+      </div>
+      <div>
+        <label class="text-xs font-semibold text-slate-500 block mb-1">Display Label</label>
+        <input id="bulk-area-label" type="text" placeholder="e.g. Hardstand, Crane Pad" style="width:100%;">
+      </div>
+      <div>
+        <label class="text-xs font-semibold text-slate-500 block mb-1">Include QA tests</label>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;" id="bulk-test-checkboxes">
+          {% for tt, lbl in [
+            ('proof_roll_foundation','Foundation'), ('proof_roll_subgrade','Subgrade'),
+            ('proof_roll_subbase','Subbase'), ('proof_roll_basecourse','Basecourse'),
+            ('dcp','DCP Test'), ('subgrade_compaction','Subgrade Compaction'),
+            ('subbase_compaction','Subbase Compaction'), ('basecourse_compaction','Basecourse Compaction'),
+            ('plate_load_test','Plate Load Test')
+          ] %}
+          <label style="display:flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:#475569;background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;padding:4px 9px;cursor:pointer;">
+            <input type="checkbox" value="{{ tt }}" class="bulk-test-cb" style="width:13px;height:13px;"> {{ lbl }}
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    <div class="flex gap-2 mt-5 justify-end">
+      <button onclick="closeModal('modal-bulk-area')" class="btn-sm btn-ghost">Cancel</button>
+      <button onclick="submitBulkAddArea()" class="btn-sm" style="background:#f59e0b;color:#fff;border:none;padding:7px 18px;border-radius:8px;font-weight:700;cursor:pointer;">
+        <i class="fa-solid fa-plus mr-1"></i> Add to Selected Elements
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Bulk Add Activity Modal -->
+<div id="modal-bulk-activity" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:300;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:16px;padding:24px;width:500px;max-width:95vw;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.2);">
+    <p class="font-bold text-slate-800 text-base mb-1">Add Activity to Multiple Areas</p>
+    <p class="text-xs text-slate-400 mb-4">Define the activity once — it will be added to every ticked area</p>
+    <div class="flex flex-col gap-3">
+      <div>
+        <label class="text-xs font-semibold text-slate-500 block mb-1">Select Areas <span style="color:#ef4444;">*</span>
+          <span onclick="document.querySelectorAll('.bulk-act-area-cb').forEach(c=>{c.checked=true;c.closest('label').style.background='#f0fdf420';c.closest('label').style.borderColor='#16a34a';})"
+                style="cursor:pointer;color:#16a34a;font-weight:700;margin-left:8px;">Select all</span>
+          <span onclick="document.querySelectorAll('.bulk-act-area-cb').forEach(c=>{c.checked=false;c.closest('label').style.background='#fff';c.closest('label').style.borderColor='#e2e8f0';})"
+                style="cursor:pointer;color:#94a3b8;font-weight:600;margin-left:6px;">Clear</span>
+        </label>
+        <div style="max-height:200px;overflow-y:auto;display:flex;flex-direction:column;gap:5px;padding:6px;border:1px solid #e2e8f0;border-radius:9px;background:#fafafa;">
+          {% for el in elements %}
+          {% if el.areas %}
+          {% for area in el.areas %}
+          <label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:7px;cursor:pointer;font-size:12px;font-weight:600;color:#334155;background:#fff;transition:all .1s;">
+            <input type="checkbox" value="{{ area.id }}" class="bulk-act-area-cb" style="width:13px;height:13px;accent-color:#16a34a;"
+                   onchange="this.closest('label').style.background=this.checked?'#f0fdf420':'#fff';this.closest('label').style.borderColor=this.checked?'#16a34a':'#e2e8f0';">
+            <i class="fa-solid fa-map-pin" style="font-size:10px;color:#f59e0b;"></i>
+            <span>{{ area.label }}</span>
+            <span style="color:#94a3b8;font-weight:400;">— {{ el.name }}</span>
+            {% if el.work_package %}<span style="font-size:10px;color:#94a3b8;">({{ el.work_package.name }})</span>{% endif %}
+          </label>
+          {% endfor %}
+          {% endif %}
+          {% endfor %}
+        </div>
+      </div>
+      <div>
+        <label class="text-xs font-semibold text-slate-500 block mb-1">Activity Name <span style="color:#ef4444;">*</span></label>
+        <input id="bulk-activity-name" type="text" placeholder="e.g. Proof Roll Subgrade, DCP Test" style="width:100%;">
+      </div>
+      <div>
+        <label class="text-xs font-semibold text-slate-500 block mb-1">Type</label>
+        <select id="bulk-activity-type" style="width:100%;">
+          {% for key, lbl in activity_types %}
+          <option value="{{ key }}">{{ lbl }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="flex gap-2 mt-5 justify-end">
+      <button onclick="closeModal('modal-bulk-activity')" class="btn-sm btn-ghost">Cancel</button>
+      <button onclick="submitBulkAddActivity()" class="btn-sm" style="background:#16a34a;color:#fff;border:none;padding:7px 18px;border-radius:8px;font-weight:700;cursor:pointer;">
+        <i class="fa-solid fa-plus mr-1"></i> Add to Selected Areas
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Deploy to QA Modal -->
+<div id="modal-deploy" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:300;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:16px;padding:24px;width:460px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.2);">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+      <div style="width:38px;height:38px;border-radius:10px;background:#f0fdf4;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <i class="fa-solid fa-rocket" style="color:#16a34a;font-size:16px;"></i>
+      </div>
+      <div>
+        <p class="font-bold text-slate-800 text-base">Deploy to QA Modules</p>
+        <p class="text-xs text-slate-400">Creates QA test records from your Activity setup</p>
+      </div>
+    </div>
+    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:10px 14px;margin:14px 0;font-size:12px;color:#166534;">
+      <i class="fa-solid fa-circle-info mr-1.5"></i>
+      For each matching Activity in your hierarchy, a QA test record will be created (skipping any that already exist).
+    </div>
+    <div>
+      <label class="text-xs font-semibold text-slate-500 block mb-2">Select QA Modules to Deploy <span style="color:#ef4444;">*</span>
+        <span onclick="document.querySelectorAll('.deploy-module-cb').forEach(c=>{c.checked=true;c.closest('label').style.background='#f0fdf420';c.closest('label').style.borderColor='#16a34a';})"
+              style="cursor:pointer;color:#16a34a;font-weight:700;margin-left:8px;">Select all</span>
+      </label>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">
+        {% for key, lbl in activity_types %}
+        <label style="display:flex;align-items:center;gap:6px;padding:6px 11px;border:1.5px solid #e2e8f0;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;color:#334155;background:#fff;transition:all .1s;">
+          <input type="checkbox" value="{{ key }}" class="deploy-module-cb" style="width:13px;height:13px;accent-color:#16a34a;"
+                 onchange="this.closest('label').style.background=this.checked?'#f0fdf420':'#fff';this.closest('label').style.borderColor=this.checked?'#16a34a':'#e2e8f0';">
+          {{ lbl }}
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="flex gap-2 mt-5 justify-end">
+      <button onclick="closeModal('modal-deploy')" class="btn-sm btn-ghost">Cancel</button>
+      <button onclick="submitDeploy()" id="deploy-btn"
+              style="background:linear-gradient(135deg,#16a34a,#22c55e);color:#fff;border:none;padding:8px 22px;border-radius:9px;font-weight:700;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:7px;">
+        <i class="fa-solid fa-rocket"></i> Deploy
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- Toast (bottom-right) -->
 <div id="toast"><i class="fa-solid fa-circle-check"></i><span id="toast-msg"></span></div>
 
@@ -731,7 +1026,8 @@ function showCentreFlash(title, sub, icon='✦') {
 function openModal(id) { document.getElementById(id).style.display = 'flex'; }
 function closeModal(id) { document.getElementById(id).style.display = 'none'; }
 ['modal-add-element','modal-add-area','modal-add-group','modal-add-wp',
- 'modal-reassign-wp-group','modal-add-activity'].forEach(id => {
+ 'modal-reassign-wp-group','modal-add-activity',
+ 'modal-bulk-area','modal-bulk-activity','modal-deploy'].forEach(id => {
   const el = document.getElementById(id);
   if (el) el.addEventListener('click', function(e) {
     if (e.target === this) closeModal(id);
@@ -1270,5 +1566,101 @@ document.getElementById('new-el-name')?.addEventListener('keydown',       e => {
 document.getElementById('new-group-name')?.addEventListener('keydown',    e => { if(e.key==='Enter') submitAddGroup(); });
 document.getElementById('new-wp-name')?.addEventListener('keydown',       e => { if(e.key==='Enter') submitAddWp(); });
 document.getElementById('new-activity-name')?.addEventListener('keydown', e => { if(e.key==='Enter') submitAddActivity(); });
+document.getElementById('bulk-area-type')?.addEventListener('keydown',    e => { if(e.key==='Enter') document.getElementById('bulk-area-label').focus(); });
+document.getElementById('bulk-area-type')?.addEventListener('input', function() {
+  const lbl = document.getElementById('bulk-area-label');
+  if (!lbl.value) lbl.value = this.value.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+});
+document.getElementById('bulk-activity-name')?.addEventListener('keydown', e => { if(e.key==='Enter') submitBulkAddActivity(); });
+
+// ── Bulk Add Area ────────────────────────────────────────────────────────────
+function openBulkAddArea() {
+  document.getElementById('bulk-area-type').value  = '';
+  document.getElementById('bulk-area-label').value = '';
+  document.querySelectorAll('.bulk-test-cb').forEach(cb => cb.checked = false);
+  document.querySelectorAll('.bulk-area-el-cb').forEach(cb => {
+    cb.checked = false;
+    cb.closest('label').style.background    = '#fff';
+    cb.closest('label').style.borderColor   = '#e2e8f0';
+  });
+  openModal('modal-bulk-area');
+  setTimeout(() => document.getElementById('bulk-area-type').focus(), 50);
+}
+
+async function submitBulkAddArea() {
+  const area_type = document.getElementById('bulk-area-type').value.trim().replace(/\s+/g,'_').toLowerCase();
+  const label     = document.getElementById('bulk-area-label').value.trim() || area_type.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+  const tests     = [...document.querySelectorAll('.bulk-test-cb:checked')].map(c => c.value);
+  const elIds     = [...document.querySelectorAll('.bulk-area-el-cb:checked')].map(c => parseInt(c.value));
+  if (!area_type) { showToast('Area type is required','error'); return; }
+  if (!elIds.length) { showToast('Tick at least one element','error'); return; }
+  let created = 0, errors = 0;
+  for (const eid of elIds) {
+    const res = await fetch(`/api/elements/${eid}/areas`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({area_type, label, tests})
+    });
+    if (res.ok) created++; else errors++;
+  }
+  closeModal('modal-bulk-area');
+  if (created) {
+    showToast(`Area "${label}" added to ${created} element(s)`, 'success');
+    setTimeout(() => location.reload(), 700);
+  } else {
+    showToast('No areas created — they may already exist', 'error');
+  }
+}
+
+// ── Bulk Add Activity ────────────────────────────────────────────────────────
+function openBulkAddActivity() {
+  document.getElementById('bulk-activity-name').value = '';
+  document.getElementById('bulk-activity-type').value = 'general';
+  document.querySelectorAll('.bulk-act-area-cb').forEach(cb => {
+    cb.checked = false;
+    cb.closest('label').style.background  = '#fff';
+    cb.closest('label').style.borderColor = '#e2e8f0';
+  });
+  openModal('modal-bulk-activity');
+  setTimeout(() => document.getElementById('bulk-activity-name').focus(), 50);
+}
+
+async function submitBulkAddActivity() {
+  const name          = document.getElementById('bulk-activity-name').value.trim();
+  const activity_type = document.getElementById('bulk-activity-type').value;
+  const areaIds       = [...document.querySelectorAll('.bulk-act-area-cb:checked')].map(c => parseInt(c.value));
+  if (!name) { showToast('Activity name is required','error'); return; }
+  if (!areaIds.length) { showToast('Tick at least one area','error'); return; }
+  let created = 0;
+  for (const aid of areaIds) {
+    const res = await fetch(`/api/areas/${aid}/activities`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({name, activity_type})
+    });
+    if (res.ok) created++;
+  }
+  closeModal('modal-bulk-activity');
+  showToast(`"${name}" added to ${created} area(s)`, 'success');
+  setTimeout(() => location.reload(), 700);
+}
+
+// ── Deploy to QA ─────────────────────────────────────────────────────────────
+async function submitDeploy() {
+  const modules = [...document.querySelectorAll('.deploy-module-cb:checked')].map(c => c.value);
+  if (!modules.length) { showToast('Select at least one module','error'); return; }
+  const btn = document.getElementById('deploy-btn');
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Deploying…';
+  btn.disabled  = true;
+  const res  = await fetch(`/api/projects/${PID}/deploy`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({modules})
+  });
+  const data = await res.json();
+  btn.innerHTML = '<i class="fa-solid fa-rocket"></i> Deploy';
+  btn.disabled  = false;
+  if (!res.ok) { showToast(data.error || 'Deploy failed','error'); return; }
+  closeModal('modal-deploy');
+  showToast(`Deployed! ${data.created} QA test record(s) created`, 'success');
+  if (data.created > 0) setTimeout(() => location.reload(), 1500);
+}
 </script>
 {% endblock %}

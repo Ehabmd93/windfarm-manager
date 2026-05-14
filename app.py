@@ -1013,6 +1013,30 @@ def api_activity(actid):
                     'status_label': act.status_label, 'status_color': act.status_color})
 
 
+@app.route('/api/projects/<int:pid>/deploy', methods=['POST'])
+@login_required
+def api_deploy_project(pid):
+    if current_user.role not in ('engineer', 'manager', 'admin'):
+        return jsonify({'error': 'Forbidden'}), 403
+    data    = request.get_json() or {}
+    modules = set(data.get('modules', []))
+    if not modules:
+        return jsonify({'error': 'Select at least one module'}), 400
+    elements = WTG.query.filter_by(project_id=pid).all()
+    created  = 0
+    for el in elements:
+        for area in el.areas:
+            for act in area.activities:
+                if act.activity_type in modules:
+                    existing = QATest.query.filter_by(
+                        area_id=area.id, test_type=act.activity_type).first()
+                    if not existing:
+                        db.session.add(QATest(area_id=area.id, test_type=act.activity_type))
+                        created += 1
+    db.session.commit()
+    return jsonify({'ok': True, 'created': created})
+
+
 @app.route('/api/elements/<int:eid>/areas', methods=['POST'])
 @login_required
 def api_add_area(eid):
@@ -1192,11 +1216,12 @@ def proof_roll_index():
             wtg_entry['areas'].append({'area': area, 'tests': area_rows})
         summary.append(wtg_entry)
 
-    # Build grouped structure: {group_obj_or_None: [wtg_entry, ...]}
+    # Build grouped structure — use WP→group chain; fall back to direct group FK
     groups_map = {}   # group_id → {'group': obj, 'entries': []}
     ungrouped  = []
     for entry in summary:
-        g_obj = entry['wtg'].group
+        wtg   = entry['wtg']
+        g_obj = (wtg.work_package.group if wtg.work_package else None) or wtg.group
         if g_obj:
             if g_obj.id not in groups_map:
                 groups_map[g_obj.id] = {'group': g_obj, 'entries': []}
