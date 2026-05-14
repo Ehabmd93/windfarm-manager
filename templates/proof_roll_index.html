@@ -41,43 +41,27 @@
     justify-content:center;font-size:15px;flex-shrink:0;
   }
 
-  /* ── Tree view ───────────────────────────────────────────────────── */
-  .tree-group {
-    border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;margin-bottom:14px;
+  /* ── Obsidian Tree View ──────────────────────────────────────────── */
+  #obs-wrap {
+    border-radius:18px;
+    overflow:auto;
+    border:1px solid #1a2744;
+    background:#080e1c;
+    background-image:radial-gradient(circle, #1e2d4a 1.2px, transparent 1.2px);
+    background-size:28px 28px;
+    min-height:480px;
   }
-  .tree-group-header {
-    display:flex;align-items:center;gap:10px;padding:12px 18px;cursor:pointer;
-    font-weight:800;font-size:14px;color:#1e293b;transition:background .1s;
+  #obs-canvas { position:relative; }
+  .obs-node {
+    position:absolute;
+    border-radius:11px;
+    display:flex;align-items:center;
+    transition:box-shadow .2s, transform .15s, border-color .2s, background .15s;
     user-select:none;
+    overflow:hidden;
   }
-  .tree-group-header:hover { background:#f8fafc; }
-  .tree-body { border-top:1px solid #f1f5f9; }
-  .tree-el {
-    display:flex;align-items:flex-start;gap:0;
-    border-bottom:1px solid #f8fafc;
-  }
-  .tree-el:last-child { border-bottom:none; }
-  .tree-indent {
-    width:48px;flex-shrink:0;display:flex;align-items:flex-start;
-    justify-content:center;padding-top:14px;
-  }
-  .tree-connector {
-    width:2px;background:#e2e8f0;position:relative;
-  }
-  .tree-connector::after {
-    content:'';position:absolute;top:14px;left:0;width:14px;height:2px;background:#e2e8f0;
-  }
-  .tree-el-body { flex:1;padding:10px 16px 10px 0; }
-  .tree-el-name {
-    font-weight:700;font-size:13px;color:#1e293b;margin-bottom:4px;
-    display:flex;align-items:center;gap:8px;
-  }
-  .tree-area-row {
-    display:flex;align-items:center;justify-content:space-between;
-    padding:5px 10px;border-radius:7px;margin-bottom:3px;
-    font-size:12px;
-  }
-  .tree-area-row:hover { background:#f8fafc; }
+  .obs-group-node { cursor:pointer; padding:0 12px; gap:7px; }
+  .obs-elem-node  { cursor:pointer; padding:0 10px; gap:6px; }
 
   /* ── Table view ──────────────────────────────────────────────────── */
   .tbl { width:100%;border-collapse:collapse;font-size:13px; }
@@ -93,8 +77,6 @@
     background:#f1f5f9;font-size:11px;font-weight:800;color:#475569;
     text-transform:uppercase;letter-spacing:.07em;padding:6px 14px;
   }
-  .mini-bar { width:60px;height:5px;border-radius:99px;background:#e2e8f0;display:inline-block;vertical-align:middle;margin-left:6px; }
-  .mini-fill { height:5px;border-radius:99px; }
 
   .pill-pass { background:#dcfce7;color:#16a34a;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700; }
   .pill-fail { background:#fee2e2;color:#dc2626;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700; }
@@ -155,7 +137,7 @@
 
   <!-- View Options -->
   <div style="position:relative;margin-left:auto;">
-    <button id="view-options-btn" onclick="toggleViewPanel(this)"
+    <button id="view-options-btn" onclick="toggleViewPanel()"
             style="display:inline-flex;align-items:center;gap:7px;padding:7px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:9px;font-size:12px;font-weight:700;color:#475569;cursor:pointer;"
             onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='#f8fafc'">
       <i class="fa-solid fa-table-cells-large"></i> View Options
@@ -177,12 +159,12 @@
       </div>
 
       <div class="vopt" id="vopt-tree" onclick="setView('tree')">
-        <div class="vopt-icon" style="background:#f0fdf4;">
-          <i class="fa-solid fa-sitemap" style="color:#22c55e;"></i>
+        <div class="vopt-icon" style="background:#0b1220;">
+          <i class="fa-solid fa-sitemap" style="color:#38bdf8;"></i>
         </div>
         <div>
           <p style="font-weight:700;font-size:13px;color:#1e293b;">Tree View</p>
-          <p style="font-size:11px;color:#94a3b8;">Hierarchy — Groups → Elements</p>
+          <p style="font-size:11px;color:#94a3b8;">Interactive node graph · Obsidian style</p>
         </div>
         <i class="fa-solid fa-check ml-auto text-blue-500 text-xs" id="check-tree" style="display:none;"></i>
       </div>
@@ -211,7 +193,6 @@
 
 
 {# ═══════════════════ CARD VIEW ═══════════════════ #}
-{# Macro: single element card #}
 {% macro element_card(entry) %}
 {% set wtg = entry.wtg %}
 {% set ns = namespace(wpass=0,wfail=0,wpend=0,wtotal=0) %}
@@ -330,89 +311,39 @@
 </div>
 
 
-{# ═══════════════════ TREE VIEW ═══════════════════ #}
+{# ═══════════════════ TREE VIEW — Obsidian Style ═══════════════════ #}
 <div id="view-tree" style="display:none;">
-  {% macro tree_entry(entry) %}
-  {% set wtg = entry.wtg %}
-  {% set ns = namespace(pass=0,fail=0,pend=0) %}
-  {% for a in entry.areas %}{% for t in a.tests %}
-    {% if t.status=='yes' %}{% set ns.pass=ns.pass+1 %}
-    {% elif t.status=='no' %}{% set ns.fail=ns.fail+1 %}
-    {% else %}{% set ns.pend=ns.pend+1 %}{% endif %}
-  {% endfor %}{% endfor %}
-  <div class="tree-el">
-    <div class="tree-indent">
-      <div style="display:flex;flex-direction:column;align-items:center;height:100%;">
-        <div style="width:1px;flex:1;background:#e2e8f0;min-height:16px;"></div>
-        <div style="width:12px;height:1px;background:#e2e8f0;"></div>
-      </div>
-    </div>
-    <div class="tree-el-body">
-      <div class="tree-el-name">
-        <i class="fa-solid fa-tower-broadcast text-slate-400 text-xs"></i>
-        <a href="{{ url_for('wtg_detail', wtg_id=wtg.id) }}" style="color:#1d4ed8;text-decoration:none;">{{ wtg.name }}</a>
-        <span class="text-xs text-slate-400 font-normal">{{ entry.areas|length }} area(s)</span>
-        {% if ns.fail>0 %}<span class="pill-fail">{{ ns.fail }} failed</span>
-        {% elif ns.pend==0 and ns.pass>0 %}<span class="pill-pass">All pass</span>
-        {% elif ns.pend>0 %}<span class="pill-pend">{{ ns.pend }} pending</span>{% endif %}
-      </div>
-      {% for a in entry.areas %}
-        <div class="tree-area-row">
-          <span style="color:#64748b;font-size:12px;">
-            <i class="fa-solid fa-layer-group text-amber-400 text-xs mr-1"></i>{{ a.area.label }}
-          </span>
-          <div class="flex items-center gap-6">
-            {% for t in a.tests %}
-            <span style="font-size:11px;display:flex;align-items:center;gap:4px;">
-              {% if t.status=='yes' %}<i class="fa-solid fa-circle-check text-green-500"></i>
-              {% elif t.status=='no' %}<i class="fa-solid fa-circle-xmark text-red-500"></i>
-              {% else %}<i class="fa-regular fa-circle text-slate-300"></i>{% endif %}
-              <span class="text-slate-500">{{ t.test.display_name.replace('Proof Roll – ','') }}</span>
-              <a href="{{ url_for('proof_roll_form', test_id=t.test.id) }}"
-                 style="color:#0ea5e9;font-weight:700;font-size:10px;">{% if t.latest %}+{% else %}Start{% endif %}</a>
-            </span>
-            {% endfor %}
-          </div>
-        </div>
-      {% endfor %}
-    </div>
-  </div>
-  {% endmacro %}
 
-  {% for g in grouped %}
-  <div class="tree-group">
-    <div class="tree-group-header" onclick="toggleTree(this)">
-      <div style="width:11px;height:11px;border-radius:50%;background:{{ g.group.color }};box-shadow:0 0 6px {{ g.group.color }}55;flex-shrink:0;"></div>
-      <span style="flex:1;">{{ g.group.name }}</span>
-      <span style="font-size:12px;font-weight:800;padding:3px 12px;border-radius:20px;background:{{ g.group.color }}18;color:{{ g.group.color }};">{{ g.entries|length }} element(s)</span>
-      <i class="fa-solid fa-chevron-down text-slate-400 text-xs ml-3 tree-arrow" style="transition:transform .2s;"></i>
-    </div>
-    <div class="tree-body">
-      {% for entry in g.entries %}{{ tree_entry(entry) }}{% endfor %}
-    </div>
+  <!-- Legend + hint -->
+  <div style="display:flex;align-items:center;flex-wrap:wrap;gap:14px;margin-bottom:10px;">
+    <span style="font-size:11px;color:#64748b;font-weight:600;display:flex;align-items:center;gap:10px;">
+      <span style="display:flex;align-items:center;gap:4px;"><span style="width:8px;height:8px;border-radius:50%;background:#22c55e;box-shadow:0 0 6px #22c55e;display:inline-block;"></span>Pass</span>
+      <span style="display:flex;align-items:center;gap:4px;"><span style="width:8px;height:8px;border-radius:50%;background:#ef4444;box-shadow:0 0 6px #ef4444;display:inline-block;"></span>Fail</span>
+      <span style="display:flex;align-items:center;gap:4px;"><span style="width:8px;height:8px;border-radius:50%;background:#f59e0b;box-shadow:0 0 6px #f59e0b;display:inline-block;"></span>Pending</span>
+      <span style="display:flex;align-items:center;gap:4px;"><span style="width:8px;height:8px;border-radius:50%;background:#475569;display:inline-block;"></span>No data</span>
+    </span>
+    <span style="margin-left:auto;font-size:11px;color:#64748b;font-style:italic;">
+      <i class="fa-solid fa-computer-mouse text-xs mr-1"></i>Click group to collapse · Click element to open detail
+    </span>
   </div>
-  {% endfor %}
 
-  {% if ungrouped %}
-  <div class="tree-group">
-    <div class="tree-group-header" onclick="toggleTree(this)">
-      <div style="width:11px;height:11px;border-radius:50%;background:#94a3b8;flex-shrink:0;"></div>
-      <span style="flex:1;color:#64748b;">Ungrouped</span>
-      <span style="font-size:12px;font-weight:800;padding:3px 12px;border-radius:20px;background:#f1f5f9;color:#94a3b8;">{{ ungrouped|length }} element(s)</span>
-      <i class="fa-solid fa-chevron-down text-slate-400 text-xs ml-3 tree-arrow" style="transition:transform .2s;"></i>
+  <div id="obs-wrap">
+    <div id="obs-canvas" style="position:relative;">
+      <svg id="obs-svg" style="position:absolute;top:0;left:0;pointer-events:none;overflow:visible;"></svg>
+      <div id="obs-nodes" style="position:absolute;top:0;left:0;"></div>
     </div>
-    <div class="tree-body">
-      {% for entry in ungrouped %}{{ tree_entry(entry) }}{% endfor %}
+    {% if not grouped and not ungrouped %}
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:300px;color:#475569;">
+      <i class="fa-solid fa-sitemap" style="font-size:2.5rem;margin-bottom:12px;opacity:.35;color:#38bdf8;"></i>
+      <p style="font-weight:600;font-size:14px;color:#64748b;">No elements found</p>
     </div>
+    {% endif %}
   </div>
-  {% endif %}
 
-  {% if not grouped and not ungrouped %}
-  <div class="text-center py-20 text-slate-400">
-    <i class="fa-solid fa-sitemap text-4xl mb-3 block"></i>
-    <p class="font-semibold">No elements found</p>
-  </div>
-  {% endif %}
+  <!-- Tree data for JS renderer -->
+  <script id="tree-json" type="application/json">
+  {"groups":[{% for g in grouped %}{"id":"g{{ g.group.id }}","name":{{ g.group.name|tojson }},"color":{{ g.group.color|tojson }},"elements":[{% for entry in g.entries %}{% set ns2=namespace(p=0,f=0,n=0) %}{% for a in entry.areas %}{% for t in a.tests %}{% if t.status=='yes' %}{% set ns2.p=ns2.p+1 %}{% elif t.status=='no' %}{% set ns2.f=ns2.f+1 %}{% else %}{% set ns2.n=ns2.n+1 %}{% endif %}{% endfor %}{% endfor %}{"id":{{ entry.wtg.id }},"name":{{ entry.wtg.name|tojson }},"url":"{{ url_for('wtg_detail', wtg_id=entry.wtg.id) }}","pass":{{ ns2.p }},"fail":{{ ns2.f }},"pend":{{ ns2.n }},"areas":{{ entry.areas|length }}}{% if not loop.last %},{% endif %}{% endfor %}]}{% if not loop.last %},{% endif %}{% endfor %}],"ungrouped":[{% for entry in ungrouped %}{% set ns3=namespace(p=0,f=0,n=0) %}{% for a in entry.areas %}{% for t in a.tests %}{% if t.status=='yes' %}{% set ns3.p=ns3.p+1 %}{% elif t.status=='no' %}{% set ns3.f=ns3.f+1 %}{% else %}{% set ns3.n=ns3.n+1 %}{% endif %}{% endfor %}{% endfor %}{"id":{{ entry.wtg.id }},"name":{{ entry.wtg.name|tojson }},"url":"{{ url_for('wtg_detail', wtg_id=entry.wtg.id) }}","pass":{{ ns3.p }},"fail":{{ ns3.f }},"pend":{{ ns3.n }},"areas":{{ entry.areas|length }}}{% if not loop.last %},{% endif %}{% endfor %}]}
+  </script>
 </div>
 
 
@@ -503,34 +434,32 @@
 
 <script>
 const PREF_KEY = 'pr_view_{{ proj.id if proj else "default" }}';
-let _currentView  = localStorage.getItem(PREF_KEY) || 'card';
+let _currentView = localStorage.getItem(PREF_KEY) || 'card';
 let _pendingView  = null;
+let _treeRendered = false;
 
-// ── Boot ─────────────────────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
-  applyView(_currentView, false);
-});
+document.addEventListener('DOMContentLoaded', () => { applyView(_currentView, false); });
 
-// ── View panel toggle ────────────────────────────────────────────────────────
-function toggleViewPanel(btn) {
+// ── View panel ────────────────────────────────────────────────────────────────
+function toggleViewPanel() {
   document.getElementById('view-panel').classList.toggle('open');
 }
 document.addEventListener('click', e => {
-  if (!e.target.closest('#view-options-btn') && !e.target.closest('#view-panel')) {
+  if (!e.target.closest('#view-options-btn') && !e.target.closest('#view-panel'))
     document.getElementById('view-panel').classList.remove('open');
-  }
 });
 
-// ── Set view ─────────────────────────────────────────────────────────────────
+// ── Set / apply view ──────────────────────────────────────────────────────────
 function setView(name) {
   document.getElementById('view-panel').classList.remove('open');
   if (name === _currentView) return;
   applyView(name, true);
   _pendingView = name;
-  // Show save bar
+  const labels = { card:'Card View', tree:'Tree View', table:'Table View' };
+  document.getElementById('pref-msg').textContent = `Save "${labels[name]}" as your default view?`;
   const bar = document.getElementById('pref-bar');
-  document.getElementById('pref-msg').textContent =
-    `Save "${name === 'card' ? 'Card View' : name === 'tree' ? 'Tree View' : 'Table View'}" as your default view?`;
+  bar.style.cssText = '';
+  bar.innerHTML = `<i class="fa-solid fa-star text-amber-400"></i><span id="pref-msg">Save "${labels[name]}" as your default view?</span><button onclick="savePref()" style="background:#0f2942;color:#fff;border:none;padding:4px 12px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;margin-left:4px;">Save default</button><button onclick="dismissPref()" style="background:transparent;border:none;color:#92400e;font-size:12px;font-weight:600;cursor:pointer;">Not now</button>`;
   bar.classList.add('visible');
 }
 
@@ -541,36 +470,198 @@ function applyView(name, updateCurrent) {
     document.getElementById('vopt-' + v).classList.toggle('active-opt', v === name);
   });
   if (updateCurrent) _currentView = name;
+  if (name === 'tree') renderObsTree();
 }
 
 // ── Save preference ───────────────────────────────────────────────────────────
 function savePref() {
-  if (_pendingView) {
-    localStorage.setItem(PREF_KEY, _pendingView);
-    _currentView = _pendingView;
-  }
-  dismissPref();
-  // Brief confirmation
+  if (_pendingView) { localStorage.setItem(PREF_KEY, _pendingView); _currentView = _pendingView; }
   const bar = document.getElementById('pref-bar');
-  bar.style.background = '#dcfce7';
-  bar.style.borderColor = '#86efac';
-  bar.style.color = '#166534';
-  bar.innerHTML = '<i class="fa-solid fa-circle-check text-green-500"></i> Default view saved!';
+  bar.style.background = '#dcfce7'; bar.style.borderColor = '#86efac'; bar.style.color = '#166534';
+  bar.innerHTML = '<i class="fa-solid fa-circle-check" style="color:#22c55e;"></i> Default view saved!';
   bar.classList.add('visible');
   setTimeout(dismissPref, 2000);
+  _pendingView = null;
 }
 function dismissPref() {
   document.getElementById('pref-bar').classList.remove('visible');
   _pendingView = null;
 }
 
-// ── Tree collapse ─────────────────────────────────────────────────────────────
-function toggleTree(header) {
-  const body  = header.nextElementSibling;
-  const arrow = header.querySelector('.tree-arrow');
-  const open  = body.style.display !== 'none';
-  body.style.display  = open ? 'none' : 'block';
-  arrow.style.transform = open ? 'rotate(-90deg)' : 'rotate(0deg)';
+// ── Obsidian Tree Renderer ────────────────────────────────────────────────────
+function renderObsTree() {
+  if (_treeRendered) return;
+  _treeRendered = true;
+
+  const raw = document.getElementById('tree-json');
+  if (!raw) return;
+  let data;
+  try { data = JSON.parse(raw.textContent); } catch(e) { console.error('tree-json parse error', e); return; }
+
+  const wrap    = document.getElementById('obs-wrap');
+  const canvas  = document.getElementById('obs-canvas');
+  const svgEl   = document.getElementById('obs-svg');
+  const nodesEl = document.getElementById('obs-nodes');
+  if (!wrap || !canvas || !svgEl || !nodesEl) return;
+
+  nodesEl.innerHTML = '';
+  svgEl.innerHTML   = '';
+
+  // ── Dimensions ──
+  const GW=164, GH=50, EW=134, EH=44;
+  const hGap=18, gGap=52, vGap=96, padX=72, padY=60;
+
+  // ── Build group list ──
+  const groups = [...(data.groups || [])];
+  if ((data.ungrouped || []).length > 0) {
+    groups.push({ id:'_ug', name:'Ungrouped', color:'#475569', elements: data.ungrouped, isUngrouped:true });
+  }
+  if (groups.length === 0) return;
+
+  const showGroupRow = (data.groups || []).length > 0;
+
+  // ── Position calculation ──
+  let curX = padX;
+  groups.forEach(g => {
+    const n = g.elements.length;
+    const rowW = n * EW + Math.max(0, n - 1) * hGap;
+    g.subtreeW = Math.max(rowW, showGroupRow ? GW : EW);
+    if (showGroupRow) {
+      g.gx = curX + (g.subtreeW - GW) / 2;
+      g.gy = padY;
+    }
+    const eStartX = curX + (g.subtreeW - rowW) / 2;
+    g.elements.forEach((el, i) => {
+      el.ex = eStartX + i * (EW + hGap);
+      el.ey = showGroupRow ? padY + GH + vGap : padY;
+      el.color = g.color;
+      el.gid   = g.id;
+    });
+    curX += g.subtreeW + gGap;
+  });
+
+  const totalW = Math.max(curX - gGap + padX, wrap.clientWidth || 700);
+  const totalH = (showGroupRow ? padY + GH + vGap + EH : padY + EH) + padY + 10;
+
+  canvas.style.width  = totalW + 'px';
+  canvas.style.height = totalH + 'px';
+  svgEl.setAttribute('width',  totalW);
+  svgEl.setAttribute('height', totalH);
+  svgEl.style.width  = totalW + 'px';
+  svgEl.style.height = totalH + 'px';
+
+  // ── Utilities ──
+  function ha(hex, a) {
+    if (!hex || hex.length < 7) return `rgba(71,85,105,${a})`;
+    try {
+      const r=parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16);
+      return `rgba(${r},${g},${b},${a})`;
+    } catch(e) { return `rgba(71,85,105,${a})`; }
+  }
+  function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── Render ──
+  groups.forEach(g => {
+
+    // SVG bezier connections: group → elements
+    if (showGroupRow) {
+      const x1 = g.gx + GW/2, y1 = g.gy + GH;
+      g.elements.forEach(el => {
+        const x2 = el.ex + EW/2, y2 = el.ey;
+        const my = (y1 + y2) / 2;
+        const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+        path.setAttribute('d', `M${x1},${y1} C${x1},${my} ${x2},${my} ${x2},${y2}`);
+        path.setAttribute('stroke', ha(g.color, 0.38));
+        path.setAttribute('stroke-width','1.8');
+        path.setAttribute('fill','none');
+        path.setAttribute('stroke-linecap','round');
+        path.dataset.gid = g.id;
+        svgEl.appendChild(path);
+      });
+    }
+
+    // Group node
+    if (showGroupRow) {
+      const nd = document.createElement('div');
+      nd.className = 'obs-node obs-group-node';
+      nd.dataset.gid = g.id;
+      nd.style.cssText = `left:${g.gx}px;top:${g.gy}px;width:${GW}px;height:${GH}px;`
+        + `background:${ha(g.color,.13)};`
+        + `border:1.5px solid ${ha(g.color,.52)};`
+        + `box-shadow:0 0 22px ${ha(g.color,.18)},inset 0 1px 0 ${ha(g.color,.18)};`;
+      nd.innerHTML =
+        `<div style="width:9px;height:9px;border-radius:50%;background:${g.color};box-shadow:0 0 10px ${g.color};flex-shrink:0;"></div>`
+        + `<span style="font-size:12px;font-weight:800;color:${g.color};letter-spacing:.04em;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(g.name)}</span>`
+        + `<span style="font-size:11px;font-weight:800;padding:1px 8px;border-radius:8px;background:${ha(g.color,.24)};color:${g.color};">${g.elements.length}</span>`
+        + `<i class="fa-solid fa-chevron-down" id="garrow-${esc(g.id)}" style="font-size:9px;color:${g.color};opacity:.7;transition:transform .25s;flex-shrink:0;margin-left:2px;"></i>`;
+      nd.addEventListener('click', () => collapseGroup(g));
+      nd.addEventListener('mouseenter', () => {
+        nd.style.boxShadow = `0 0 34px ${ha(g.color,.4)},inset 0 1px 0 ${ha(g.color,.3)}`;
+        nd.style.transform = 'translateY(-2px)';
+      });
+      nd.addEventListener('mouseleave', () => {
+        if (!g._collapsed) nd.style.boxShadow = `0 0 22px ${ha(g.color,.18)},inset 0 1px 0 ${ha(g.color,.18)}`;
+        nd.style.transform = '';
+      });
+      nodesEl.appendChild(nd);
+    }
+
+    // Element nodes
+    g.elements.forEach(el => {
+      const hasData = (el.pass + el.fail + el.pend) > 0;
+      const sc = !hasData ? '#475569' : el.fail > 0 ? '#ef4444' : el.pend > 0 ? '#f59e0b' : '#22c55e';
+      const nd = document.createElement('div');
+      nd.className = 'obs-node obs-elem-node';
+      nd.dataset.gid = g.id;
+      nd.title = `${el.name}  ·  ${el.areas} area(s)  ·  ${el.pass}✓ ${el.fail}✗ ${el.pend}⏳`;
+      nd.style.cssText = `left:${el.ex}px;top:${el.ey}px;width:${EW}px;height:${EH}px;`
+        + `background:rgba(8,16,36,0.88);`
+        + `border:1px solid ${ha(g.color,.3)};`
+        + `box-shadow:0 2px 14px rgba(0,0,0,.55);`;
+      nd.innerHTML =
+        `<i class="fa-solid fa-tower-broadcast" style="font-size:10px;color:${g.color};opacity:.75;flex-shrink:0;"></i>`
+        + `<span style="font-size:12px;font-weight:700;color:#dde6f0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(el.name)}</span>`
+        + `<div style="width:8px;height:8px;border-radius:50%;background:${sc};box-shadow:0 0 7px ${sc};flex-shrink:0;"></div>`;
+      nd.addEventListener('click', () => { window.location.href = el.url; });
+      nd.addEventListener('mouseenter', () => {
+        nd.style.borderColor = ha(g.color,.7);
+        nd.style.boxShadow   = `0 0 20px ${ha(g.color,.3)},0 4px 16px rgba(0,0,0,.65)`;
+        nd.style.transform   = 'translateY(-2px)';
+        nd.style.background  = 'rgba(14,26,56,0.96)';
+      });
+      nd.addEventListener('mouseleave', () => {
+        nd.style.borderColor = ha(g.color,.3);
+        nd.style.boxShadow   = '0 2px 14px rgba(0,0,0,.55)';
+        nd.style.transform   = '';
+        nd.style.background  = 'rgba(8,16,36,0.88)';
+      });
+      nodesEl.appendChild(nd);
+    });
+  });
+
+  // ── Collapse / expand ──
+  function collapseGroup(g) {
+    g._collapsed = !g._collapsed;
+    const arrow = document.getElementById('garrow-' + g.id);
+    if (arrow) arrow.style.transform = g._collapsed ? 'rotate(-90deg)' : '';
+    const gnd = nodesEl.querySelector(`.obs-group-node[data-gid="${g.id}"]`);
+    if (gnd) {
+      gnd.style.opacity = g._collapsed ? '.6' : '1';
+      gnd.style.boxShadow = g._collapsed
+        ? `0 0 10px ${ha(g.color,.1)}`
+        : `0 0 22px ${ha(g.color,.18)},inset 0 1px 0 ${ha(g.color,.18)}`;
+    }
+    nodesEl.querySelectorAll(`.obs-elem-node[data-gid="${g.id}"]`).forEach(n => {
+      n.style.opacity = g._collapsed ? '0' : '1';
+      n.style.pointerEvents = g._collapsed ? 'none' : '';
+      n.style.transform = g._collapsed ? 'scale(.88)' : '';
+    });
+    svgEl.querySelectorAll(`path[data-gid="${g.id}"]`).forEach(p => {
+      p.style.opacity = g._collapsed ? '0' : '1';
+    });
+  }
 }
 </script>
 {% endblock %}
