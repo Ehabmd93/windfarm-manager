@@ -922,8 +922,12 @@ def api_add_work_package(pid):
     group_id = data.get('group_id') or None
     if not name:
         return jsonify({'error': 'Name is required'}), 400
-    if WorkPackage.query.filter_by(project_id=pid, name=name).first():
-        return jsonify({'error': f'Work package "{name}" already exists'}), 400
+    # Uniqueness is per-group: same name allowed in different groups
+    dup_q = WorkPackage.query.filter_by(project_id=pid, name=name)
+    if group_id:
+        dup_q = dup_q.filter_by(group_id=int(group_id))
+    if dup_q.first():
+        return jsonify({'error': f'"{name}" already exists in this group'}), 400
     wp = WorkPackage(project_id=pid, name=name, color=color, icon=icon,
                      group_id=int(group_id) if group_id else None,
                      sort_order=WorkPackage.query.filter_by(project_id=pid).count())
