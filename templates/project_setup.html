@@ -69,7 +69,7 @@
   .gdrop-item:last-child { border-bottom:none; }
   .gdrop-item:hover { background:#eff6ff; }
 
-  /* Toast */
+  /* Toast (bottom-right for minor actions) */
   #toast {
     display:none;position:fixed;bottom:28px;right:28px;z-index:999;
     background:#0f2942;color:#fff;padding:12px 20px;border-radius:12px;
@@ -79,6 +79,22 @@
   #toast.show { display:flex;align-items:center;gap:8px; }
   #toast.success { background:#16a34a; }
   #toast.error   { background:#dc2626; }
+
+  /* Centre flash (assign-mode instruction) */
+  #centre-flash {
+    display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+    z-index:9000;pointer-events:none;
+    background:rgba(15,41,66,0.95);color:#fff;
+    padding:22px 36px;border-radius:18px;text-align:center;
+    box-shadow:0 24px 60px rgba(0,0,0,0.35);
+    animation:cfadeout 3s forwards;
+  }
+  @keyframes cfadeout {
+    0%   { opacity:0;transform:translate(-50%,-50%) scale(.92); }
+    12%  { opacity:1;transform:translate(-50%,-50%) scale(1); }
+    72%  { opacity:1; }
+    100% { opacity:0; }
+  }
 
   /* Assign checkbox */
   .assign-cb { display:none;width:18px;height:18px;border-radius:5px;border:2px solid #cbd5e1;
@@ -264,7 +280,7 @@
       <div class="group-header" style="background:{{ g.color }}11;border-bottom:1px solid {{ g.color }}22;">
         <div class="color-dot" style="background:{{ g.color }};"></div>
         <span id="gname-{{ g.id }}" style="flex:1;">{{ g.name }}</span>
-        <span style="font-size:11px;color:#94a3b8;font-weight:500;margin-right:8px;" id="gcount-{{ g.id }}">{{ g.elements|length }} element(s)</span>
+        <span style="font-size:13px;font-weight:800;padding:3px 12px;border-radius:20px;background:{{ g.color }}22;color:{{ g.color }};margin-right:8px;" id="gcount-{{ g.id }}">{{ g.elements|length }} element(s)</span>
         <button onclick="switchTab('elements', document.getElementById('tab-btn-elements'));startAssign({{ g.id }}, '{{ g.name }}', '{{ g.color }}')"
                 style="background:{{ g.color }}22;color:{{ g.color }};border:none;padding:5px 12px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;margin-right:6px;">
           <i class="fa-solid fa-plus mr-1"></i> Add Elements
@@ -397,8 +413,15 @@
   </div>
 </div>
 
-<!-- Toast -->
+<!-- Toast (bottom-right) -->
 <div id="toast"><i class="fa-solid fa-circle-check"></i><span id="toast-msg"></span></div>
+
+<!-- Centre Flash (assign mode instruction) -->
+<div id="centre-flash">
+  <div style="font-size:28px;margin-bottom:10px;" id="cf-icon">✦</div>
+  <p style="font-size:16px;font-weight:800;margin-bottom:4px;" id="cf-title"></p>
+  <p style="font-size:13px;opacity:.75;" id="cf-sub"></p>
+</div>
 
 
 <script>
@@ -412,7 +435,7 @@ function switchTab(name, btn) {
   btn.classList.add('active');
 }
 
-// ── Toast ────────────────────────────────────────────────────────────────────
+// ── Toast (bottom-right, minor feedback) ────────────────────────────────────
 let _toastTimer;
 function showToast(msg, type='success') {
   const t = document.getElementById('toast');
@@ -420,6 +443,20 @@ function showToast(msg, type='success') {
   document.getElementById('toast-msg').textContent = msg;
   clearTimeout(_toastTimer);
   _toastTimer = setTimeout(() => { t.className = ''; }, 3200);
+}
+
+// ── Centre Flash (big instructions, mid-screen) ──────────────────────────────
+function showCentreFlash(title, sub, icon='✦') {
+  const el = document.getElementById('centre-flash');
+  document.getElementById('cf-title').textContent = title;
+  document.getElementById('cf-sub').textContent   = sub;
+  document.getElementById('cf-icon').textContent  = icon;
+  el.style.display = 'block';
+  // Restart animation
+  el.style.animation = 'none';
+  el.offsetHeight;  // reflow
+  el.style.animation = 'cfadeout 3s forwards';
+  setTimeout(() => { el.style.display = 'none'; }, 3000);
 }
 
 // ── Modal helpers ────────────────────────────────────────────────────────────
@@ -488,7 +525,7 @@ function startAssign(gid, gname, gcolor) {
       row.classList.add('selected-for-assign');
     }
   });
-  showToast(`Select elements to assign to "${gname}"`, 'info');
+  showCentreFlash(`Assigning to "${gname}"`, 'Tick elements below, then click Save', '⊕');
 }
 
 function rowClick(elId, row) {
