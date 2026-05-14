@@ -50,18 +50,63 @@
     background-image:radial-gradient(circle, #1e2d4a 1.2px, transparent 1.2px);
     background-size:28px 28px;
     min-height:480px;
+    position:relative;
+    padding:52px 56px 60px;
   }
-  #obs-canvas { position:relative; }
-  .obs-node {
-    position:absolute;
-    border-radius:11px;
-    display:flex;align-items:center;
-    transition:box-shadow .2s, transform .15s, border-color .2s, background .15s;
-    user-select:none;
-    overflow:hidden;
+  #obs-svg-layer {
+    position:absolute;top:0;left:0;pointer-events:none;overflow:visible;z-index:1;
   }
-  .obs-group-node { cursor:pointer; padding:0 12px; gap:7px; }
-  .obs-elem-node  { cursor:pointer; padding:0 10px; gap:6px; }
+  .obs-tree-content { position:relative;z-index:2; }
+  /* shared node style */
+  .obs-n {
+    display:inline-flex;align-items:center;gap:7px;border-radius:11px;
+    user-select:none;white-space:nowrap;
+    transition:box-shadow .2s,transform .15s,border-color .15s;
+  }
+  /* project root */
+  .obs-n-proj {
+    background:rgba(10,20,45,.92);border:1.5px solid rgba(56,189,248,.55);
+    box-shadow:0 0 28px rgba(56,189,248,.14);
+    padding:11px 28px;font-size:14px;font-weight:800;color:#38bdf8;letter-spacing:.05em;
+  }
+  .obs-n-proj:hover { box-shadow:0 0 40px rgba(56,189,248,.28);transform:translateY(-2px); }
+  /* group */
+  .obs-n-group {
+    padding:9px 18px;font-size:12px;font-weight:800;cursor:pointer;
+  }
+  .obs-n-group:hover { transform:translateY(-2px); }
+  /* element */
+  .obs-n-elem {
+    background:rgba(8,16,36,.88);
+    padding:7px 13px;font-size:12px;font-weight:700;color:#dde6f0;cursor:pointer;
+    box-shadow:0 2px 12px rgba(0,0,0,.5);
+  }
+  .obs-n-elem:hover { transform:translateY(-2px); }
+  /* area chip */
+  .obs-n-area {
+    background:rgba(8,16,36,.7);
+    padding:5px 11px;font-size:11px;font-weight:600;color:#9ab4cc;
+    text-decoration:none;border-radius:8px;
+    transition:box-shadow .15s,transform .12s,border-color .15s;
+    display:inline-flex;align-items:center;gap:6px;
+  }
+  .obs-n-area:hover { transform:translateY(-1px);color:#c8d8e8; }
+  /* dot */
+  .obs-dot {
+    width:8px;height:8px;border-radius:50%;flex-shrink:0;
+  }
+  /* vertical connector line */
+  .obs-vline {
+    width:1px;margin:0 auto;flex-shrink:0;
+  }
+  /* row helpers */
+  .obs-row { display:flex;justify-content:center;flex-wrap:wrap; }
+  .obs-col { display:flex;flex-direction:column;align-items:center; }
+  /* areas expand animation */
+  .obs-areas-panel {
+    display:none;flex-direction:column;align-items:center;gap:0;
+  }
+  .obs-areas-panel.open { display:flex; }
 
   /* ── Table view ──────────────────────────────────────────────────── */
   .tbl { width:100%;border-collapse:collapse;font-size:13px; }
@@ -312,6 +357,11 @@
 
 
 {# ═══════════════════ TREE VIEW — Obsidian Style ═══════════════════ #}
+{# Build a unified group list including ungrouped #}
+{% set tg_list = [] %}
+{% for g in grouped %}{% if tg_list.append({'id': g.group.id|string, 'name': g.group.name, 'color': g.group.color, 'entries': g.entries}) %}{% endif %}{% endfor %}
+{% if ungrouped %}{% if tg_list.append({'id': 'ug', 'name': 'Ungrouped', 'color': '#64748b', 'entries': ungrouped}) %}{% endif %}{% endif %}
+
 <div id="view-tree" style="display:none;">
 
   <!-- Legend + hint -->
@@ -323,28 +373,122 @@
       <span style="display:flex;align-items:center;gap:4px;"><span style="width:8px;height:8px;border-radius:50%;background:#475569;display:inline-block;"></span>No data</span>
     </span>
     <span style="margin-left:auto;font-size:11px;color:#64748b;font-style:italic;">
-      <i class="fa-solid fa-computer-mouse text-xs mr-1"></i>Click group to collapse · Click element to open detail
+      Click group to collapse · Click element to expand areas
     </span>
   </div>
 
   <div id="obs-wrap">
-    <div id="obs-canvas" style="position:relative;">
-      <svg id="obs-svg" style="position:absolute;top:0;left:0;pointer-events:none;overflow:visible;"></svg>
-      <div id="obs-nodes" style="position:absolute;top:0;left:0;"></div>
-    </div>
-    {% if not grouped and not ungrouped %}
-    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:300px;color:#475569;">
-      <i class="fa-solid fa-sitemap" style="font-size:2.5rem;margin-bottom:12px;opacity:.35;color:#38bdf8;"></i>
-      <p style="font-weight:600;font-size:14px;color:#64748b;">No elements found</p>
-    </div>
-    {% endif %}
-  </div>
+    <!-- SVG drawn by JS after layout -->
+    <svg id="obs-svg-layer" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:visible;z-index:1;"></svg>
 
-  <!-- Tree data for JS renderer -->
-  <script id="tree-json" type="application/json">
-  {"groups":[{% for g in grouped %}{"id":"g{{ g.group.id }}","name":{{ g.group.name|tojson }},"color":{{ g.group.color|tojson }},"elements":[{% for entry in g.entries %}{% set ns2=namespace(p=0,f=0,n=0) %}{% for a in entry.areas %}{% for t in a.tests %}{% if t.status=='yes' %}{% set ns2.p=ns2.p+1 %}{% elif t.status=='no' %}{% set ns2.f=ns2.f+1 %}{% else %}{% set ns2.n=ns2.n+1 %}{% endif %}{% endfor %}{% endfor %}{"id":{{ entry.wtg.id }},"name":{{ entry.wtg.name|tojson }},"url":"{{ url_for('wtg_detail', wtg_id=entry.wtg.id) }}","pass":{{ ns2.p }},"fail":{{ ns2.f }},"pend":{{ ns2.n }},"areas":{{ entry.areas|length }}}{% if not loop.last %},{% endif %}{% endfor %}]}{% if not loop.last %},{% endif %}{% endfor %}],"ungrouped":[{% for entry in ungrouped %}{% set ns3=namespace(p=0,f=0,n=0) %}{% for a in entry.areas %}{% for t in a.tests %}{% if t.status=='yes' %}{% set ns3.p=ns3.p+1 %}{% elif t.status=='no' %}{% set ns3.f=ns3.f+1 %}{% else %}{% set ns3.n=ns3.n+1 %}{% endif %}{% endfor %}{% endfor %}{"id":{{ entry.wtg.id }},"name":{{ entry.wtg.name|tojson }},"url":"{{ url_for('wtg_detail', wtg_id=entry.wtg.id) }}","pass":{{ ns3.p }},"fail":{{ ns3.f }},"pend":{{ ns3.n }},"areas":{{ entry.areas|length }}}{% if not loop.last %},{% endif %}{% endfor %}]}
-  </script>
-</div>
+    <div class="obs-tree-content">
+
+      {% if tg_list %}
+
+      {# ── Level 0: Project root ── #}
+      <div class="obs-row" style="margin-bottom:72px;">
+        <div class="obs-n obs-n-proj" id="ob-root">
+          <i class="fa-solid fa-wind" style="font-size:13px;"></i>
+          {{ active_project.name if active_project else 'Project' }}
+        </div>
+      </div>
+
+      {# ── Level 1: Groups ── #}
+      <div class="obs-row" id="ob-groups-row" style="gap:40px;margin-bottom:72px;">
+        {% for g in tg_list %}
+        <div class="obs-col" data-gid="{{ g.id }}">
+          <div class="obs-n obs-n-group"
+               id="ob-g-{{ g.id }}"
+               data-gid="{{ g.id }}"
+               data-color="{{ g.color }}"
+               style="background:{{ g.color }}1e;border:1.5px solid {{ g.color }}88;box-shadow:0 0 22px {{ g.color }}22;color:{{ g.color }};"
+               onclick="obsToggleGroup('{{ g.id }}')">
+            <div class="obs-dot" style="background:{{ g.color }};box-shadow:0 0 9px {{ g.color }};"></div>
+            <span>{{ g.name }}</span>
+            <span style="font-size:10px;font-weight:800;padding:1px 8px;border-radius:8px;background:{{ g.color }}28;min-width:20px;text-align:center;">{{ g.entries|length }}</span>
+            <i class="fa-solid fa-chevron-down" id="ob-arr-{{ g.id }}" style="font-size:9px;opacity:.65;transition:transform .25s;"></i>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+
+      {# ── Level 2: Elements (one row-block per group) ── #}
+      {% for g in tg_list %}
+      <div class="obs-elems-block" id="ob-elems-{{ g.id }}" style="margin-bottom:56px;">
+        <!-- group label above -->
+        <div style="text-align:center;margin-bottom:16px;">
+          <span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:{{ g.color }};opacity:.65;">{{ g.name }}</span>
+        </div>
+        <div class="obs-row" style="gap:16px;align-items:flex-start;">
+          {% for entry in g.entries %}
+          {% set wtg = entry.wtg %}
+          {% set ns_e = namespace(p=0,f=0,n=0) %}
+          {% for a in entry.areas %}{% for t in a.tests %}
+            {% if t.status=='yes' %}{% set ns_e.p=ns_e.p+1 %}
+            {% elif t.status=='no' %}{% set ns_e.f=ns_e.f+1 %}
+            {% else %}{% set ns_e.n=ns_e.n+1 %}{% endif %}
+          {% endfor %}{% endfor %}
+          {% set e_sc = '#475569' if (ns_e.p+ns_e.f+ns_e.n)==0 else '#ef4444' if ns_e.f>0 else '#f59e0b' if ns_e.n>0 else '#22c55e' %}
+
+          <div class="obs-col" id="ob-ecol-{{ wtg.id }}">
+            {# Element node #}
+            <div class="obs-n obs-n-elem"
+                 id="ob-e-{{ wtg.id }}"
+                 data-gid="{{ g.id }}"
+                 data-eid="{{ wtg.id }}"
+                 data-color="{{ g.color }}"
+                 style="border-color:{{ g.color }}44;"
+                 onclick="obsToggleAreas('{{ wtg.id }}', '{{ g.color }}')">
+              <i class="fa-solid fa-tower-broadcast" style="font-size:10px;color:{{ g.color }};opacity:.7;"></i>
+              <span>{{ wtg.name }}</span>
+              <div class="obs-dot" style="background:{{ e_sc }};box-shadow:0 0 7px {{ e_sc }};"></div>
+            </div>
+
+            {# Areas panel (hidden until element clicked) #}
+            <div class="obs-areas-panel" id="ob-areas-{{ wtg.id }}" data-color="{{ g.color }}">
+              {# vertical stem #}
+              <div class="obs-vline" style="height:20px;background:{{ g.color }}44;"></div>
+              {# area chips row #}
+              <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;max-width:300px;">
+                {% for a in entry.areas %}
+                {% set ns_a = namespace(p=0,f=0,n=0) %}
+                {% for t in a.tests %}
+                  {% if t.status=='yes' %}{% set ns_a.p=ns_a.p+1 %}
+                  {% elif t.status=='no' %}{% set ns_a.f=ns_a.f+1 %}
+                  {% else %}{% set ns_a.n=ns_a.n+1 %}{% endif %}
+                {% endfor %}
+                {% set a_sc = '#475569' if (ns_a.p+ns_a.f+ns_a.n)==0 else '#ef4444' if ns_a.f>0 else '#f59e0b' if ns_a.n>0 else '#22c55e' %}
+                <a href="{{ url_for('wtg_detail', wtg_id=wtg.id) }}"
+                   class="obs-n-area ob-area-chip"
+                   data-eid="{{ wtg.id }}"
+                   style="border:1px solid {{ g.color }}33;">
+                  <i class="fa-solid fa-layer-group" style="font-size:9px;color:{{ g.color }};opacity:.6;"></i>
+                  <span>{{ a.area.label }}</span>
+                  <div class="obs-dot" style="background:{{ a_sc }};box-shadow:0 0 5px {{ a_sc }};"></div>
+                </a>
+                {% else %}
+                <div class="obs-n-area" style="border:1px solid #47556933;opacity:.5;">
+                  <span style="font-style:italic;color:#64748b;">No areas</span>
+                </div>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endfor %}
+
+      {% else %}
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:300px;">
+        <i class="fa-solid fa-sitemap" style="font-size:2.5rem;margin-bottom:14px;color:#38bdf8;opacity:.3;"></i>
+        <p style="font-weight:600;font-size:14px;color:#475569;">No elements found</p>
+      </div>
+      {% endif %}
+
+    </div>{# /obs-tree-content #}
+  </div>{# /obs-wrap #}
+</div>{# /view-tree #}
 
 
 {# ═══════════════════ TABLE VIEW ═══════════════════ #}
@@ -436,11 +580,13 @@
 const PREF_KEY = 'pr_view_{{ proj.id if proj else "default" }}';
 let _currentView = localStorage.getItem(PREF_KEY) || 'card';
 let _pendingView  = null;
-let _treeRendered = false;
 
-document.addEventListener('DOMContentLoaded', () => { applyView(_currentView, false); });
+document.addEventListener('DOMContentLoaded', () => {
+  applyView(_currentView, false);
+  initTreeHover();
+});
 
-// ── View panel ────────────────────────────────────────────────────────────────
+// ── View panel ─────────────────────────────────────────────────────────────────
 function toggleViewPanel() {
   document.getElementById('view-panel').classList.toggle('open');
 }
@@ -449,17 +595,16 @@ document.addEventListener('click', e => {
     document.getElementById('view-panel').classList.remove('open');
 });
 
-// ── Set / apply view ──────────────────────────────────────────────────────────
+// ── Set / apply view ───────────────────────────────────────────────────────────
 function setView(name) {
   document.getElementById('view-panel').classList.remove('open');
   if (name === _currentView) return;
   applyView(name, true);
   _pendingView = name;
   const labels = { card:'Card View', tree:'Tree View', table:'Table View' };
-  document.getElementById('pref-msg').textContent = `Save "${labels[name]}" as your default view?`;
   const bar = document.getElementById('pref-bar');
   bar.style.cssText = '';
-  bar.innerHTML = `<i class="fa-solid fa-star text-amber-400"></i><span id="pref-msg">Save "${labels[name]}" as your default view?</span><button onclick="savePref()" style="background:#0f2942;color:#fff;border:none;padding:4px 12px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;margin-left:4px;">Save default</button><button onclick="dismissPref()" style="background:transparent;border:none;color:#92400e;font-size:12px;font-weight:600;cursor:pointer;">Not now</button>`;
+  bar.innerHTML = `<i class="fa-solid fa-star" style="color:#f59e0b;"></i><span>Save "${labels[name]}" as your default view?</span><button onclick="savePref()" style="background:#0f2942;color:#fff;border:none;padding:4px 12px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;margin-left:4px;">Save default</button><button onclick="dismissPref()" style="background:transparent;border:none;color:#92400e;font-size:12px;font-weight:600;cursor:pointer;">Not now</button>`;
   bar.classList.add('visible');
 }
 
@@ -470,10 +615,10 @@ function applyView(name, updateCurrent) {
     document.getElementById('vopt-' + v).classList.toggle('active-opt', v === name);
   });
   if (updateCurrent) _currentView = name;
-  if (name === 'tree') renderObsTree();
+  if (name === 'tree') requestAnimationFrame(drawTreeLines);
 }
 
-// ── Save preference ───────────────────────────────────────────────────────────
+// ── Save preference ────────────────────────────────────────────────────────────
 function savePref() {
   if (_pendingView) { localStorage.setItem(PREF_KEY, _pendingView); _currentView = _pendingView; }
   const bar = document.getElementById('pref-bar');
@@ -488,180 +633,140 @@ function dismissPref() {
   _pendingView = null;
 }
 
-// ── Obsidian Tree Renderer ────────────────────────────────────────────────────
-function renderObsTree() {
-  if (_treeRendered) return;
-  _treeRendered = true;
-
-  const raw = document.getElementById('tree-json');
-  if (!raw) return;
-  let data;
-  try { data = JSON.parse(raw.textContent); } catch(e) { console.error('tree-json parse error', e); return; }
-
-  const wrap    = document.getElementById('obs-wrap');
-  const canvas  = document.getElementById('obs-canvas');
-  const svgEl   = document.getElementById('obs-svg');
-  const nodesEl = document.getElementById('obs-nodes');
-  if (!wrap || !canvas || !svgEl || !nodesEl) return;
-
-  nodesEl.innerHTML = '';
-  svgEl.innerHTML   = '';
-
-  // ── Dimensions ──
-  const GW=164, GH=50, EW=134, EH=44;
-  const hGap=18, gGap=52, vGap=96, padX=72, padY=60;
-
-  // ── Build group list ──
-  const groups = [...(data.groups || [])];
-  if ((data.ungrouped || []).length > 0) {
-    groups.push({ id:'_ug', name:'Ungrouped', color:'#475569', elements: data.ungrouped, isUngrouped:true });
-  }
-  if (groups.length === 0) return;
-
-  const showGroupRow = (data.groups || []).length > 0;
-
-  // ── Position calculation ──
-  let curX = padX;
-  groups.forEach(g => {
-    const n = g.elements.length;
-    const rowW = n * EW + Math.max(0, n - 1) * hGap;
-    g.subtreeW = Math.max(rowW, showGroupRow ? GW : EW);
-    if (showGroupRow) {
-      g.gx = curX + (g.subtreeW - GW) / 2;
-      g.gy = padY;
-    }
-    const eStartX = curX + (g.subtreeW - rowW) / 2;
-    g.elements.forEach((el, i) => {
-      el.ex = eStartX + i * (EW + hGap);
-      el.ey = showGroupRow ? padY + GH + vGap : padY;
-      el.color = g.color;
-      el.gid   = g.id;
+// ── Node hover effects ─────────────────────────────────────────────────────────
+function initTreeHover() {
+  document.querySelectorAll('.obs-n-group').forEach(nd => {
+    const c = nd.dataset.color || '#64748b';
+    nd.addEventListener('mouseenter', () => {
+      nd.style.boxShadow = `0 0 36px ${c}55`;
+      nd.style.transform = 'translateY(-2px)';
     });
-    curX += g.subtreeW + gGap;
+    nd.addEventListener('mouseleave', () => {
+      nd.style.boxShadow = `0 0 22px ${c}22`;
+      nd.style.transform = '';
+    });
+  });
+  document.querySelectorAll('.obs-n-elem').forEach(nd => {
+    const c = nd.dataset.color || '#64748b';
+    nd.addEventListener('mouseenter', () => {
+      nd.style.borderColor = c + 'aa';
+      nd.style.boxShadow   = `0 0 18px ${c}33, 0 4px 14px rgba(0,0,0,.6)`;
+      nd.style.transform   = 'translateY(-2px)';
+      nd.style.background  = 'rgba(14,26,56,0.96)';
+    });
+    nd.addEventListener('mouseleave', () => {
+      nd.style.borderColor = c + '44';
+      nd.style.boxShadow   = '0 2px 12px rgba(0,0,0,.5)';
+      nd.style.transform   = '';
+      nd.style.background  = 'rgba(8,16,36,0.88)';
+    });
+  });
+}
+
+// ── Toggle group collapse ──────────────────────────────────────────────────────
+function obsToggleGroup(gid) {
+  const block = document.getElementById('ob-elems-' + gid);
+  const arrow = document.getElementById('ob-arr-' + gid);
+  const gnode = document.getElementById('ob-g-' + gid);
+  if (!block) return;
+  const collapsed = block.style.display === 'none';
+  block.style.display = collapsed ? '' : 'none';
+  if (arrow) arrow.style.transform = collapsed ? '' : 'rotate(-90deg)';
+  if (gnode) gnode.style.opacity   = collapsed ? '1' : '0.55';
+  requestAnimationFrame(drawTreeLines);
+}
+
+// ── Toggle areas expand ────────────────────────────────────────────────────────
+function obsToggleAreas(eid, color) {
+  const panel = document.getElementById('ob-areas-' + eid);
+  const enode = document.getElementById('ob-e-' + eid);
+  if (!panel) return;
+  const open = panel.classList.toggle('open');
+  if (enode) {
+    enode.style.borderColor = open ? (color || '#38bdf8') + 'cc' : (color || '#64748b') + '44';
+    enode.style.boxShadow   = open ? `0 0 20px ${color || '#38bdf8'}44` : '0 2px 12px rgba(0,0,0,.5)';
+  }
+  requestAnimationFrame(drawTreeLines);
+}
+
+// ── Draw SVG connections using getBoundingClientRect ───────────────────────────
+function drawTreeLines() {
+  const wrap = document.getElementById('obs-wrap');
+  const svg  = document.getElementById('obs-svg-layer');
+  if (!wrap || !svg) return;
+
+  svg.innerHTML = '';
+  const W = wrap.scrollWidth;
+  const H = wrap.scrollHeight;
+  svg.setAttribute('width',  W);
+  svg.setAttribute('height', H);
+  svg.style.width  = W + 'px';
+  svg.style.height = H + 'px';
+
+  const wr = wrap.getBoundingClientRect();
+  const sx = wrap.scrollLeft;
+  const sy = wrap.scrollTop;
+
+  function cx(el) {
+    const r = el.getBoundingClientRect();
+    return r.left - wr.left + sx + r.width  / 2;
+  }
+  function cy(el) {
+    const r = el.getBoundingClientRect();
+    return r.top  - wr.top  + sy + r.height / 2;
+  }
+  function bot(el) {
+    const r = el.getBoundingClientRect();
+    return r.top  - wr.top  + sy + r.height;
+  }
+  function top(el) {
+    const r = el.getBoundingClientRect();
+    return r.top  - wr.top  + sy;
+  }
+
+  function bezier(x1,y1, x2,y2, stroke, w) {
+    const my = (y1+y2)/2;
+    const p  = document.createElementNS('http://www.w3.org/2000/svg','path');
+    p.setAttribute('d', `M${x1},${y1} C${x1},${my} ${x2},${my} ${x2},${y2}`);
+    p.setAttribute('stroke', stroke);
+    p.setAttribute('stroke-width', w || '1.6');
+    p.setAttribute('fill', 'none');
+    p.setAttribute('stroke-linecap', 'round');
+    svg.appendChild(p);
+  }
+
+  const root = document.getElementById('ob-root');
+  if (!root) return;
+
+  // root → visible group nodes
+  document.querySelectorAll('.obs-n-group').forEach(gnd => {
+    if (gnd.style.opacity === '0.55') return; // collapsed
+    bezier(cx(root), bot(root), cx(gnd), top(gnd), 'rgba(56,189,248,0.22)', '1.4');
   });
 
-  const totalW = Math.max(curX - gGap + padX, wrap.clientWidth || 700);
-  const totalH = (showGroupRow ? padY + GH + vGap + EH : padY + EH) + padY + 10;
+  // group → element blocks (for each visible element block)
+  document.querySelectorAll('.obs-elems-block').forEach(block => {
+    if (block.style.display === 'none') return;
+    const gid  = block.id.replace('ob-elems-','');
+    const gnd  = document.getElementById('ob-g-' + gid);
+    if (!gnd)  return;
+    const color = gnd.dataset.color || '#64748b';
 
-  canvas.style.width  = totalW + 'px';
-  canvas.style.height = totalH + 'px';
-  svgEl.setAttribute('width',  totalW);
-  svgEl.setAttribute('height', totalH);
-  svgEl.style.width  = totalW + 'px';
-  svgEl.style.height = totalH + 'px';
-
-  // ── Utilities ──
-  function ha(hex, a) {
-    if (!hex || hex.length < 7) return `rgba(71,85,105,${a})`;
-    try {
-      const r=parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16);
-      return `rgba(${r},${g},${b},${a})`;
-    } catch(e) { return `rgba(71,85,105,${a})`; }
-  }
-  function esc(s) {
-    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
-
-  // ── Render ──
-  groups.forEach(g => {
-
-    // SVG bezier connections: group → elements
-    if (showGroupRow) {
-      const x1 = g.gx + GW/2, y1 = g.gy + GH;
-      g.elements.forEach(el => {
-        const x2 = el.ex + EW/2, y2 = el.ey;
-        const my = (y1 + y2) / 2;
-        const path = document.createElementNS('http://www.w3.org/2000/svg','path');
-        path.setAttribute('d', `M${x1},${y1} C${x1},${my} ${x2},${my} ${x2},${y2}`);
-        path.setAttribute('stroke', ha(g.color, 0.38));
-        path.setAttribute('stroke-width','1.8');
-        path.setAttribute('fill','none');
-        path.setAttribute('stroke-linecap','round');
-        path.dataset.gid = g.id;
-        svgEl.appendChild(path);
-      });
-    }
-
-    // Group node
-    if (showGroupRow) {
-      const nd = document.createElement('div');
-      nd.className = 'obs-node obs-group-node';
-      nd.dataset.gid = g.id;
-      nd.style.cssText = `left:${g.gx}px;top:${g.gy}px;width:${GW}px;height:${GH}px;`
-        + `background:${ha(g.color,.13)};`
-        + `border:1.5px solid ${ha(g.color,.52)};`
-        + `box-shadow:0 0 22px ${ha(g.color,.18)},inset 0 1px 0 ${ha(g.color,.18)};`;
-      nd.innerHTML =
-        `<div style="width:9px;height:9px;border-radius:50%;background:${g.color};box-shadow:0 0 10px ${g.color};flex-shrink:0;"></div>`
-        + `<span style="font-size:12px;font-weight:800;color:${g.color};letter-spacing:.04em;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(g.name)}</span>`
-        + `<span style="font-size:11px;font-weight:800;padding:1px 8px;border-radius:8px;background:${ha(g.color,.24)};color:${g.color};">${g.elements.length}</span>`
-        + `<i class="fa-solid fa-chevron-down" id="garrow-${esc(g.id)}" style="font-size:9px;color:${g.color};opacity:.7;transition:transform .25s;flex-shrink:0;margin-left:2px;"></i>`;
-      nd.addEventListener('click', () => collapseGroup(g));
-      nd.addEventListener('mouseenter', () => {
-        nd.style.boxShadow = `0 0 34px ${ha(g.color,.4)},inset 0 1px 0 ${ha(g.color,.3)}`;
-        nd.style.transform = 'translateY(-2px)';
-      });
-      nd.addEventListener('mouseleave', () => {
-        if (!g._collapsed) nd.style.boxShadow = `0 0 22px ${ha(g.color,.18)},inset 0 1px 0 ${ha(g.color,.18)}`;
-        nd.style.transform = '';
-      });
-      nodesEl.appendChild(nd);
-    }
-
-    // Element nodes
-    g.elements.forEach(el => {
-      const hasData = (el.pass + el.fail + el.pend) > 0;
-      const sc = !hasData ? '#475569' : el.fail > 0 ? '#ef4444' : el.pend > 0 ? '#f59e0b' : '#22c55e';
-      const nd = document.createElement('div');
-      nd.className = 'obs-node obs-elem-node';
-      nd.dataset.gid = g.id;
-      nd.title = `${el.name}  ·  ${el.areas} area(s)  ·  ${el.pass}✓ ${el.fail}✗ ${el.pend}⏳`;
-      nd.style.cssText = `left:${el.ex}px;top:${el.ey}px;width:${EW}px;height:${EH}px;`
-        + `background:rgba(8,16,36,0.88);`
-        + `border:1px solid ${ha(g.color,.3)};`
-        + `box-shadow:0 2px 14px rgba(0,0,0,.55);`;
-      nd.innerHTML =
-        `<i class="fa-solid fa-tower-broadcast" style="font-size:10px;color:${g.color};opacity:.75;flex-shrink:0;"></i>`
-        + `<span style="font-size:12px;font-weight:700;color:#dde6f0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(el.name)}</span>`
-        + `<div style="width:8px;height:8px;border-radius:50%;background:${sc};box-shadow:0 0 7px ${sc};flex-shrink:0;"></div>`;
-      nd.addEventListener('click', () => { window.location.href = el.url; });
-      nd.addEventListener('mouseenter', () => {
-        nd.style.borderColor = ha(g.color,.7);
-        nd.style.boxShadow   = `0 0 20px ${ha(g.color,.3)},0 4px 16px rgba(0,0,0,.65)`;
-        nd.style.transform   = 'translateY(-2px)';
-        nd.style.background  = 'rgba(14,26,56,0.96)';
-      });
-      nd.addEventListener('mouseleave', () => {
-        nd.style.borderColor = ha(g.color,.3);
-        nd.style.boxShadow   = '0 2px 14px rgba(0,0,0,.55)';
-        nd.style.transform   = '';
-        nd.style.background  = 'rgba(8,16,36,0.88)';
-      });
-      nodesEl.appendChild(nd);
+    block.querySelectorAll('.obs-n-elem').forEach(end => {
+      bezier(cx(gnd), bot(gnd), cx(end), top(end), color + '55', '1.5');
     });
   });
 
-  // ── Collapse / expand ──
-  function collapseGroup(g) {
-    g._collapsed = !g._collapsed;
-    const arrow = document.getElementById('garrow-' + g.id);
-    if (arrow) arrow.style.transform = g._collapsed ? 'rotate(-90deg)' : '';
-    const gnd = nodesEl.querySelector(`.obs-group-node[data-gid="${g.id}"]`);
-    if (gnd) {
-      gnd.style.opacity = g._collapsed ? '.6' : '1';
-      gnd.style.boxShadow = g._collapsed
-        ? `0 0 10px ${ha(g.color,.1)}`
-        : `0 0 22px ${ha(g.color,.18)},inset 0 1px 0 ${ha(g.color,.18)}`;
-    }
-    nodesEl.querySelectorAll(`.obs-elem-node[data-gid="${g.id}"]`).forEach(n => {
-      n.style.opacity = g._collapsed ? '0' : '1';
-      n.style.pointerEvents = g._collapsed ? 'none' : '';
-      n.style.transform = g._collapsed ? 'scale(.88)' : '';
+  // element → area chips (for each open areas panel)
+  document.querySelectorAll('.obs-areas-panel.open').forEach(panel => {
+    const eid  = panel.id.replace('ob-areas-','');
+    const end  = document.getElementById('ob-e-' + eid);
+    if (!end)  return;
+    const color = end.dataset.color || '#64748b';
+    panel.querySelectorAll('.obs-n-area').forEach(and => {
+      bezier(cx(end), bot(end), cx(and), top(and), color + '44', '1.2');
     });
-    svgEl.querySelectorAll(`path[data-gid="${g.id}"]`).forEach(p => {
-      p.style.opacity = g._collapsed ? '0' : '1';
-    });
-  }
+  });
 }
 </script>
 {% endblock %}
