@@ -140,6 +140,17 @@
               transition:all .15s; }
   .icon-opt.selected { border-color:#7c3aed;background:#f5f3ff;color:#7c3aed; }
   .icon-opt:hover { background:#ede9fe;color:#7c3aed; }
+
+  /* Edit-mode checkboxes for WPs and Elements */
+  .wp-select-cb, .el-select-cb {
+    width:16px;height:16px;border-radius:4px;accent-color:#dc2626;cursor:pointer;flex-shrink:0;
+  }
+  /* WP group section in WP tab */
+  .wp-grp-section { margin-bottom:20px; }
+  /* Element WP-section divider in Elements tab */
+  .el-wp-section { }
+  /* Select-all label hidden by default, shown in edit mode */
+  .el-areas-select-all-label { display:none; }
 </style>
 {% endblock %}
 
@@ -223,7 +234,18 @@
         <p class="font-bold text-slate-800">Project Elements</p>
         <p class="text-xs text-slate-400 mt-0.5">Add, rename or remove elements and manage their QA areas</p>
       </div>
-      <div class="flex gap-2" style="position:relative;">
+      <div class="flex gap-2 items-center flex-wrap">
+        <!-- Edit Elements bulk bar -->
+        <div id="els-bulk-bar" style="display:none;align-items:center;gap:8px;">
+          <span id="els-sel-count" style="font-size:12px;font-weight:600;color:#64748b;">0 selected</span>
+          <button onclick="deleteSelectedElements()"
+                  style="background:#fee2e2;color:#dc2626;border:none;padding:6px 14px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">
+            <i class="fa-solid fa-trash mr-1"></i> Delete Selected
+          </button>
+        </div>
+        <button id="els-edit-btn" onclick="toggleElementsEditMode()" class="btn-sm btn-ghost">
+          <i class="fa-solid fa-pen mr-1"></i> Edit Elements
+        </button>
         <!-- Assign to Work Package button + dropdown -->
         <div style="position:relative;">
           <button onclick="toggleWpDropdown(this)" id="wp-assign-btn"
@@ -233,18 +255,37 @@
           </button>
           <div id="wp-dropdown-popup">
             {% if work_packages %}
-            {% for wp in work_packages %}
-            <div class="wpdrop-item" onclick="startAssignWp({{ wp.id }}, '{{ wp.name }}', '{{ wp.color }}')">
-              <div style="width:10px;height:10px;border-radius:50%;background:{{ wp.color }};flex-shrink:0;"></div>
+            {% for g in groups %}{% if g.work_packages %}
+            <div style="padding:5px 14px 4px;font-size:9px;font-weight:800;color:{{ g.color }};text-transform:uppercase;letter-spacing:.8px;background:{{ g.color }}0d;border-bottom:1px solid {{ g.color }}22;display:flex;align-items:center;gap:5px;">
+              <div style="width:6px;height:6px;border-radius:50%;background:{{ g.color }};flex-shrink:0;"></div>{{ g.name }}
+            </div>
+            {% for wp in g.work_packages %}
+            <div class="wpdrop-item" onclick="startAssignWp({{ wp.id }}, '{{ wp.name }}', '{{ wp.color }}')"
+                 style="border-left:4px solid {{ wp.color }};padding-left:10px;">
               <div style="flex:1;min-width:0;">
                 <div style="font-weight:700;font-size:13px;color:#1e293b;">{{ wp.name }}</div>
-                {% if wp.group %}
-                <div style="font-size:10px;font-weight:600;color:{{ wp.group.color }};">{{ wp.group.name }}</div>
-                {% endif %}
               </div>
-              <span style="font-size:10px;color:#94a3b8;">{{ wp.elements|length }} elem.</span>
+              <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
+                <div style="width:8px;height:8px;border-radius:50%;background:{{ wp.color }};"></div>
+                <span style="font-size:10px;color:#94a3b8;">{{ wp.elements|length }}</span>
+              </div>
             </div>
             {% endfor %}
+            {% endif %}{% endfor %}
+            {% set has_ung_wp = namespace(v=false) %}
+            {% for wp in work_packages %}{% if not wp.group_id %}{% set has_ung_wp.v = true %}{% endif %}{% endfor %}
+            {% if has_ung_wp.v %}
+            <div style="padding:5px 14px 4px;font-size:9px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.8px;border-bottom:1px solid #f1f5f9;">Ungrouped</div>
+            {% for wp in work_packages %}{% if not wp.group_id %}
+            <div class="wpdrop-item" onclick="startAssignWp({{ wp.id }}, '{{ wp.name }}', '{{ wp.color }}')"
+                 style="border-left:4px solid {{ wp.color }};padding-left:10px;">
+              <div style="flex:1;min-width:0;">
+                <div style="font-weight:700;font-size:13px;color:#1e293b;">{{ wp.name }}</div>
+              </div>
+              <span style="font-size:10px;color:#94a3b8;">{{ wp.elements|length }}</span>
+            </div>
+            {% endif %}{% endfor %}
+            {% endif %}
             {% else %}
             <div style="padding:14px 16px;font-size:12px;color:#94a3b8;text-align:center;">
               No work packages yet.<br>
@@ -260,88 +301,135 @@
       </div>
     </div>
 
-    <!-- Element list -->
+    <!-- Element list grouped by Work Package -->
     <div id="element-list">
-      {% for el in elements %}
-      <div class="el-row" id="elrow-{{ el.id }}"
-           data-group-id="{{ el.group_id or '' }}"
-           data-group-name="{{ el.group.name if el.group else '' }}"
-           data-group-color="{{ el.group.color if el.group else '' }}"
-           data-wp-id="{{ el.work_package_id or '' }}"
-           data-wp-name="{{ el.work_package.name if el.work_package else '' }}"
-           data-wp-color="{{ el.work_package.color if el.work_package else '' }}"
-           onclick="rowClick({{ el.id }}, this)">
+      {% if elements %}
 
-        <!-- Assign checkbox (hidden until assign mode) -->
-        <div class="assign-cb" id="cb-{{ el.id }}"></div>
-
-        <div style="width:34px;height:34px;border-radius:9px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-          <i class="fa-solid fa-tower-broadcast text-slate-400 text-sm"></i>
+      {# ── Elements assigned to a Work Package, grouped by WP ── #}
+      {% for wp in work_packages %}{% if wp.elements %}
+      <div class="el-wp-section" id="el-wp-section-{{ wp.id }}">
+        <div style="display:flex;align-items:center;gap:8px;padding:7px 14px;background:{{ wp.color }}0d;border-left:4px solid {{ wp.color }};border-bottom:1px solid {{ wp.color }}22;">
+          <div style="width:22px;height:22px;border-radius:5px;background:{{ wp.color }}22;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <i class="fa-solid fa-{{ wp.icon }}" style="color:{{ wp.color }};font-size:9px;"></i>
+          </div>
+          <span style="font-weight:800;font-size:12px;color:{{ wp.color }};">{{ wp.name }}</span>
+          {% if wp.group %}<span style="font-size:10px;font-weight:600;color:#94a3b8;margin-left:2px;">· {{ wp.group.name }}</span>{% endif %}
+          <span style="font-size:10px;color:#94a3b8;margin-left:auto;">{{ wp.elements|length }} element(s)</span>
         </div>
-
-        <div style="flex:1;min-width:0;">
-          <p class="font-semibold text-slate-800 text-sm" id="elname-{{ el.id }}">{{ el.name }}</p>
-          <div class="flex flex-wrap gap-1 mt-0.5" id="el-badges-{{ el.id }}">
-            <span class="badge-type">{{ el.element_type_label }}</span>
-            {% if el.work_package %}
-            {% set eff_group = el.work_package.group %}
-            {% if eff_group %}
-            <span class="group-badge" style="background:{{ eff_group.color }}22;color:{{ eff_group.color }};">
-              {{ eff_group.name }}
+        {% for el in wp.elements %}
+        <div class="el-row" id="elrow-{{ el.id }}"
+             data-group-id="{{ el.group_id or '' }}"
+             data-group-name="{{ el.group.name if el.group else '' }}"
+             data-group-color="{{ el.group.color if el.group else '' }}"
+             data-wp-id="{{ el.work_package_id or '' }}"
+             data-wp-name="{{ el.work_package.name if el.work_package else '' }}"
+             data-wp-color="{{ el.work_package.color if el.work_package else '' }}"
+             onclick="rowClick({{ el.id }}, this)">
+          <div class="assign-cb" id="cb-{{ el.id }}"></div>
+          <input type="checkbox" class="el-select-cb" data-el-id="{{ el.id }}"
+                 style="display:none;width:16px;height:16px;accent-color:#dc2626;cursor:pointer;flex-shrink:0;"
+                 onclick="event.stopPropagation();" onchange="updateElementsSelectedCount()">
+          <div style="width:34px;height:34px;border-radius:9px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <i class="fa-solid fa-tower-broadcast text-slate-400 text-sm"></i>
+          </div>
+          <div style="flex:1;min-width:0;">
+            <p class="font-semibold text-slate-800 text-sm" id="elname-{{ el.id }}">{{ el.name }}</p>
+            <div class="flex flex-wrap gap-1 mt-0.5" id="el-badges-{{ el.id }}">
+              <span class="badge-type">{{ el.element_type_label }}</span>
+              {% set eff_group = el.work_package.group if el.work_package else none %}
+              {% if eff_group %}
+              <span class="group-badge" style="background:{{ eff_group.color }}22;color:{{ eff_group.color }};">{{ eff_group.name }}</span>
+              {% endif %}
+              <span class="group-badge" style="background:{{ el.work_package.color }}22;color:{{ el.work_package.color }};" id="el-wp-badge-{{ el.id }}">
+                <i class="fa-solid fa-boxes-stacked" style="font-size:9px;margin-right:3px;"></i>{{ el.work_package.name }}
+                <span onclick="event.stopPropagation();removeFromWp({{ el.id }})" style="opacity:.6;cursor:pointer;margin-left:3px;" title="Remove from WP">×</span>
+              </span>
+            </div>
+          </div>
+          <div class="flex flex-wrap gap-1 max-w-xs" id="areas-{{ el.id }}" onclick="event.stopPropagation()">
+            {% for area in el.areas %}
+            <span class="area-pill" id="areapill-{{ area.id }}" style="cursor:pointer;"
+                  onclick="openActivityModal({{ area.id }}, '{{ area.label }}', '{{ el.name }}')"
+                  title="Manage activities for {{ area.label }}">
+              {{ area.label }}
+              {% if area.activities %}<span style="background:#f59e0b;color:#fff;border-radius:20px;padding:0px 5px;font-size:9px;font-weight:800;margin-left:2px;">{{ area.activities|length }}</span>{% endif %}
+              <span class="del" onclick="event.stopPropagation();deleteArea({{ area.id }}, {{ el.id }})" title="Remove area">×</span>
             </span>
-            {% endif %}
-            <span class="group-badge" style="background:{{ el.work_package.color }}22;color:{{ el.work_package.color }};"
-                  id="el-wp-badge-{{ el.id }}">
-              <i class="fa-solid fa-boxes-stacked" style="font-size:9px;margin-right:3px;"></i>{{ el.work_package.name }}
-              <span onclick="event.stopPropagation();removeFromWp({{ el.id }})"
-                    style="opacity:.6;cursor:pointer;margin-left:3px;" title="Remove from WP">×</span>
-            </span>
-            {% else %}
-            <span class="group-badge" style="background:#f1f5f9;color:#94a3b8;font-style:italic;"
-                  id="el-wp-badge-{{ el.id }}">unassigned</span>
-            {% endif %}
+            {% endfor %}
+            <button onclick="openAddArea({{ el.id }}, '{{ el.name }}')"
+                    style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:6px;background:transparent;border:1px dashed #cbd5e1;color:#94a3b8;cursor:pointer;"
+                    onmouseover="this.style.borderColor='#0ea5e9';this.style.color='#0ea5e9'"
+                    onmouseout="this.style.borderColor='#cbd5e1';this.style.color='#94a3b8'">+ area</button>
+          </div>
+          <div class="flex gap-2 flex-shrink-0 el-actions" onclick="event.stopPropagation()">
+            <button onclick="renameElement({{ el.id }})" class="btn-sm btn-ghost" title="Rename"><i class="fa-solid fa-pen text-xs"></i></button>
+            <button onclick="deleteElement({{ el.id }}, '{{ el.name }}')" class="btn-sm btn-danger" title="Delete"><i class="fa-solid fa-trash text-xs"></i></button>
           </div>
         </div>
-
-        <!-- Areas summary -->
-        <div class="flex flex-wrap gap-1 max-w-xs" id="areas-{{ el.id }}"
-             onclick="event.stopPropagation()">
-          {% for area in el.areas %}
-          <span class="area-pill" id="areapill-{{ area.id }}" style="cursor:pointer;"
-                onclick="openActivityModal({{ area.id }}, '{{ area.label }}', '{{ el.name }}')"
-                title="Manage activities for {{ area.label }}">
-            {{ area.label }}
-            {% if area.activities %}
-            <span style="background:#f59e0b;color:#fff;border-radius:20px;padding:0px 5px;font-size:9px;font-weight:800;margin-left:2px;">{{ area.activities|length }}</span>
-            {% endif %}
-            <span class="del" onclick="event.stopPropagation();deleteArea({{ area.id }}, {{ el.id }})" title="Remove area">×</span>
-          </span>
-          {% endfor %}
-          <button onclick="openAddArea({{ el.id }}, '{{ el.name }}')"
-                  style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:6px;background:transparent;border:1px dashed #cbd5e1;color:#94a3b8;cursor:pointer;"
-                  onmouseover="this.style.borderColor='#0ea5e9';this.style.color='#0ea5e9'"
-                  onmouseout="this.style.borderColor='#cbd5e1';this.style.color='#94a3b8'">
-            + area
-          </button>
-        </div>
-
-        <!-- Actions (hidden during assign mode) -->
-        <div class="flex gap-2 flex-shrink-0 el-actions" onclick="event.stopPropagation()">
-          <button onclick="renameElement({{ el.id }})" class="btn-sm btn-ghost" title="Rename">
-            <i class="fa-solid fa-pen text-xs"></i>
-          </button>
-          <button onclick="deleteElement({{ el.id }}, '{{ el.name }}')" class="btn-sm btn-danger" title="Delete">
-            <i class="fa-solid fa-trash text-xs"></i>
-          </button>
-        </div>
+        {% endfor %}
       </div>
+      {% endif %}{% endfor %}
+
+      {# ── Elements NOT assigned to any Work Package ── #}
+      {% set has_unassigned = namespace(v=false) %}
+      {% for el in elements %}{% if not el.work_package_id %}{% set has_unassigned.v = true %}{% endif %}{% endfor %}
+      {% if has_unassigned.v %}
+      <div class="el-wp-section" id="el-wp-section-unassigned">
+        <div style="display:flex;align-items:center;gap:8px;padding:7px 14px;background:#f8fafc;border-left:4px solid #cbd5e1;border-bottom:1px solid #f1f5f9;">
+          <span style="font-weight:700;font-size:12px;color:#94a3b8;font-style:italic;">No Work Package Assigned</span>
+        </div>
+        {% for el in elements %}{% if not el.work_package_id %}
+        <div class="el-row" id="elrow-{{ el.id }}"
+             data-group-id="{{ el.group_id or '' }}"
+             data-group-name="{{ el.group.name if el.group else '' }}"
+             data-group-color="{{ el.group.color if el.group else '' }}"
+             data-wp-id="" data-wp-name="" data-wp-color=""
+             onclick="rowClick({{ el.id }}, this)">
+          <div class="assign-cb" id="cb-{{ el.id }}"></div>
+          <input type="checkbox" class="el-select-cb" data-el-id="{{ el.id }}"
+                 style="display:none;width:16px;height:16px;accent-color:#dc2626;cursor:pointer;flex-shrink:0;"
+                 onclick="event.stopPropagation();" onchange="updateElementsSelectedCount()">
+          <div style="width:34px;height:34px;border-radius:9px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <i class="fa-solid fa-tower-broadcast text-slate-400 text-sm"></i>
+          </div>
+          <div style="flex:1;min-width:0;">
+            <p class="font-semibold text-slate-800 text-sm" id="elname-{{ el.id }}">{{ el.name }}</p>
+            <div class="flex flex-wrap gap-1 mt-0.5" id="el-badges-{{ el.id }}">
+              <span class="badge-type">{{ el.element_type_label }}</span>
+              <span class="group-badge" style="background:#f1f5f9;color:#94a3b8;font-style:italic;" id="el-wp-badge-{{ el.id }}">unassigned</span>
+            </div>
+          </div>
+          <div class="flex flex-wrap gap-1 max-w-xs" id="areas-{{ el.id }}" onclick="event.stopPropagation()">
+            {% for area in el.areas %}
+            <span class="area-pill" id="areapill-{{ area.id }}" style="cursor:pointer;"
+                  onclick="openActivityModal({{ area.id }}, '{{ area.label }}', '{{ el.name }}')"
+                  title="Manage activities for {{ area.label }}">
+              {{ area.label }}
+              {% if area.activities %}<span style="background:#f59e0b;color:#fff;border-radius:20px;padding:0px 5px;font-size:9px;font-weight:800;margin-left:2px;">{{ area.activities|length }}</span>{% endif %}
+              <span class="del" onclick="event.stopPropagation();deleteArea({{ area.id }}, {{ el.id }})" title="Remove area">×</span>
+            </span>
+            {% endfor %}
+            <button onclick="openAddArea({{ el.id }}, '{{ el.name }}')"
+                    style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:6px;background:transparent;border:1px dashed #cbd5e1;color:#94a3b8;cursor:pointer;"
+                    onmouseover="this.style.borderColor='#0ea5e9';this.style.color='#0ea5e9'"
+                    onmouseout="this.style.borderColor='#cbd5e1';this.style.color='#94a3b8'">+ area</button>
+          </div>
+          <div class="flex gap-2 flex-shrink-0 el-actions" onclick="event.stopPropagation()">
+            <button onclick="renameElement({{ el.id }})" class="btn-sm btn-ghost" title="Rename"><i class="fa-solid fa-pen text-xs"></i></button>
+            <button onclick="deleteElement({{ el.id }}, '{{ el.name }}')" class="btn-sm btn-danger" title="Delete"><i class="fa-solid fa-trash text-xs"></i></button>
+          </div>
+        </div>
+        {% endif %}{% endfor %}
+      </div>
+      {% endif %}
+
       {% else %}
       <div class="empty-state" id="empty-elements">
         <i class="fa-solid fa-tower-broadcast text-3xl mb-2 block"></i>
         <p class="font-semibold">No elements yet</p>
         <p class="text-sm mt-1">Click "Add Element" to create WTGs, access tracks and more</p>
       </div>
-      {% endfor %}
+      {% endif %}
     </div>
   </div>
 </div>
@@ -384,6 +472,13 @@
       <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:{{ el.work_package.group.color }}22;color:{{ el.work_package.group.color }};">{{ el.work_package.group.name }}</span>
       {% endif %}
       {% endif %}
+      <!-- Select-all for this element (visible in edit mode only) -->
+      <label class="el-areas-select-all-label" style="align-items:center;gap:5px;font-size:11px;font-weight:700;color:#64748b;cursor:pointer;padding:3px 9px;border-radius:6px;border:1px solid #e2e8f0;background:#fff;">
+        <input type="checkbox" class="el-areas-select-all" data-el-id="{{ el.id }}"
+               style="width:13px;height:13px;accent-color:#ef4444;cursor:pointer;"
+               onchange="selectAllAreasForEl({{ el.id }}, this.checked)">
+        Select All
+      </label>
       <button onclick="openAddArea({{ el.id }}, '{{ el.name }}')" class="area-add-btn"
               style="font-size:11px;font-weight:700;padding:4px 10px;border-radius:7px;background:#fef3c7;color:#d97706;border:none;cursor:pointer;">
         <i class="fa-solid fa-plus mr-1"></i> Add Area
@@ -589,73 +684,142 @@
       <p class="font-bold text-slate-800">Work Packages</p>
       <p class="text-xs text-slate-400 mt-0.5">Each Work Package belongs to a Group and contains Elements</p>
     </div>
-    <button onclick="openAddWp(null,null,null)" class="btn-sm" style="background:#7c3aed;color:#fff;border:none;">
-      <i class="fa-solid fa-plus mr-1"></i> Create Work Package
-    </button>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+      <div id="wps-bulk-bar" style="display:none;align-items:center;gap:8px;">
+        <span id="wps-sel-count" style="font-size:12px;font-weight:600;color:#64748b;">0 selected</span>
+        <button onclick="deleteSelectedWps()"
+                style="background:#fee2e2;color:#dc2626;border:none;padding:6px 14px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">
+          <i class="fa-solid fa-trash mr-1"></i> Delete Selected
+        </button>
+      </div>
+      <button id="wps-edit-btn" onclick="toggleWpsEditMode()" class="btn-sm btn-ghost">
+        <i class="fa-solid fa-pen mr-1"></i> Edit WPs
+      </button>
+      <button onclick="openAddWp(null,null,null)" class="btn-sm" style="background:#7c3aed;color:#fff;border:none;">
+        <i class="fa-solid fa-plus mr-1"></i> Create Work Package
+      </button>
+    </div>
   </div>
 
   <div id="wp-list">
-    {% for wp in work_packages %}
-    <div class="wp-card" id="wpcard-{{ wp.id }}">
-      <div class="wp-header" style="background:{{ wp.color }}11;border-bottom:1px solid {{ wp.color }}22;">
-        <div style="width:32px;height:32px;border-radius:8px;background:{{ wp.color }}22;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-          <i class="fa-solid fa-{{ wp.icon }}" style="color:{{ wp.color }};font-size:13px;"></i>
-        </div>
-        <div style="flex:1;min-width:0;">
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-            <span id="wpname-{{ wp.id }}" style="font-size:14px;font-weight:800;color:#1e293b;">{{ wp.name }}</span>
-            {% if wp.group %}
-            <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:{{ wp.group.color }}22;color:{{ wp.group.color }};">
-              <i class="fa-solid fa-layer-group" style="font-size:8px;margin-right:3px;"></i>{{ wp.group.name }}
+    {% if work_packages %}
+
+    {# ── Work Packages grouped by Group ── #}
+    {% for g in groups %}{% if g.work_packages %}
+    <div class="wp-grp-section">
+      <div style="display:flex;align-items:center;gap:8px;padding:9px 14px;background:{{ g.color }}0d;border:1.5px solid {{ g.color }}33;border-radius:10px 10px 0 0;border-bottom:none;">
+        <div style="width:10px;height:10px;border-radius:50%;background:{{ g.color }};flex-shrink:0;"></div>
+        <span style="font-weight:800;font-size:13px;color:{{ g.color }};">{{ g.name }}</span>
+        <span style="font-size:10px;color:#94a3b8;margin-left:4px;">{{ g.work_packages|length }} WP(s)</span>
+      </div>
+      <div style="border:1.5px solid {{ g.color }}33;border-top:none;border-radius:0 0 12px 12px;overflow:hidden;">
+        {% for wp in g.work_packages %}
+        <div class="wp-card" id="wpcard-{{ wp.id }}" style="border:none;border-bottom:1px solid #f1f5f9;border-radius:0;margin-bottom:0;">
+          <div class="wp-header" style="background:{{ wp.color }}08;border-bottom:1px solid {{ wp.color }}18;">
+            <input type="checkbox" class="wp-select-cb" data-wp-id="{{ wp.id }}"
+                   style="display:none;width:16px;height:16px;accent-color:#dc2626;cursor:pointer;flex-shrink:0;margin-right:2px;"
+                   onclick="event.stopPropagation();" onchange="updateWpsSelectedCount()">
+            <div style="width:32px;height:32px;border-radius:8px;background:{{ wp.color }}22;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              <i class="fa-solid fa-{{ wp.icon }}" style="color:{{ wp.color }};font-size:13px;"></i>
+            </div>
+            <div style="flex:1;min-width:0;">
+              <span id="wpname-{{ wp.id }}" style="font-size:14px;font-weight:800;color:#1e293b;">{{ wp.name }}</span>
+            </div>
+            <span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;background:{{ wp.color }}22;color:{{ wp.color }};margin-right:6px;" id="wpcount-{{ wp.id }}">
+              {{ wp.elements|length }} elem.
+            </span>
+            <button onclick="switchTab('elements',document.getElementById('tab-btn-elements'));startAssignWp({{ wp.id }},'{{ wp.name }}','{{ wp.color }}')"
+                    style="background:{{ wp.color }}22;color:{{ wp.color }};border:none;padding:5px 10px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;margin-right:4px;">
+              <i class="fa-solid fa-plus mr-1"></i> Elements
+            </button>
+            <button onclick="reassignWpGroup({{ wp.id }})" class="btn-sm btn-ghost" style="padding:4px 10px;" title="Change group">
+              <i class="fa-solid fa-layer-group text-xs"></i>
+            </button>
+            <button onclick="renameWp({{ wp.id }})" class="btn-sm btn-ghost" style="padding:4px 10px;">
+              <i class="fa-solid fa-pen text-xs"></i>
+            </button>
+            <button onclick="deleteWp({{ wp.id }},'{{ wp.name }}')" class="btn-sm btn-danger" style="padding:4px 10px;">
+              <i class="fa-solid fa-trash text-xs"></i>
+            </button>
+          </div>
+          <div style="padding:10px 14px;display:flex;flex-wrap:wrap;gap:8px;" id="wpmembers-{{ wp.id }}">
+            {% for el in wp.elements %}
+            <span style="display:inline-flex;align-items:center;gap:6px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:600;color:#334155;" id="wptag-{{ el.id }}">
+              <i class="fa-solid fa-tower-broadcast text-slate-300 text-xs"></i>
+              {{ el.name }}
+              <span onclick="removeFromWp({{ el.id }},{{ wp.id }})" style="color:#94a3b8;cursor:pointer;font-size:13px;font-weight:900;line-height:1;" title="Remove">×</span>
             </span>
             {% else %}
-            <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:#f1f5f9;color:#94a3b8;cursor:pointer;"
-                  onclick="reassignWpGroup({{ wp.id }})">
-              <i class="fa-solid fa-exclamation-triangle" style="font-size:8px;margin-right:3px;"></i>No group — assign
-            </span>
-            {% endif %}
+            <span style="color:#94a3b8;font-size:12px;font-style:italic;" id="wpempty-{{ wp.id }}">No elements — click "+ Elements" above</span>
+            {% endfor %}
           </div>
         </div>
-        <span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;background:{{ wp.color }}22;color:{{ wp.color }};margin-right:6px;" id="wpcount-{{ wp.id }}">
-          {{ wp.elements|length }} elem.
-        </span>
-        <button onclick="switchTab('elements',document.getElementById('tab-btn-elements'));startAssignWp({{ wp.id }},'{{ wp.name }}','{{ wp.color }}')"
-                style="background:{{ wp.color }}22;color:{{ wp.color }};border:none;padding:5px 10px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;margin-right:4px;">
-          <i class="fa-solid fa-plus mr-1"></i> Elements
-        </button>
-        <button onclick="reassignWpGroup({{ wp.id }})" class="btn-sm btn-ghost" style="padding:4px 10px;" title="Change group">
-          <i class="fa-solid fa-layer-group text-xs"></i>
-        </button>
-        <button onclick="renameWp({{ wp.id }})" class="btn-sm btn-ghost" style="padding:4px 10px;">
-          <i class="fa-solid fa-pen text-xs"></i>
-        </button>
-        <button onclick="deleteWp({{ wp.id }},'{{ wp.name }}')" class="btn-sm btn-danger" style="padding:4px 10px;">
-          <i class="fa-solid fa-trash text-xs"></i>
-        </button>
-      </div>
-      <div style="padding:10px 14px;display:flex;flex-wrap:wrap;gap:8px;" id="wpmembers-{{ wp.id }}">
-        {% for el in wp.elements %}
-        <span style="display:inline-flex;align-items:center;gap:6px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:600;color:#334155;"
-              id="wptag-{{ el.id }}">
-          <i class="fa-solid fa-tower-broadcast text-slate-300 text-xs"></i>
-          {{ el.name }}
-          <span onclick="removeFromWp({{ el.id }},{{ wp.id }})"
-                style="color:#94a3b8;cursor:pointer;font-size:13px;font-weight:900;line-height:1;" title="Remove">×</span>
-        </span>
-        {% else %}
-        <span style="color:#94a3b8;font-size:12px;font-style:italic;" id="wpempty-{{ wp.id }}">
-          No elements — click "+ Elements" above
-        </span>
         {% endfor %}
       </div>
     </div>
+    {% endif %}{% endfor %}
+
+    {# ── Work Packages with no group ── #}
+    {% set has_ung = namespace(v=false) %}
+    {% for wp in work_packages %}{% if not wp.group_id %}{% set has_ung.v = true %}{% endif %}{% endfor %}
+    {% if has_ung.v %}
+    <div class="wp-grp-section">
+      <div style="display:flex;align-items:center;gap:8px;padding:9px 14px;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px 10px 0 0;border-bottom:none;">
+        <span style="font-weight:700;font-size:13px;color:#94a3b8;font-style:italic;">No Group Assigned</span>
+      </div>
+      <div style="border:1.5px solid #e2e8f0;border-top:none;border-radius:0 0 12px 12px;overflow:hidden;">
+        {% for wp in work_packages %}{% if not wp.group_id %}
+        <div class="wp-card" id="wpcard-{{ wp.id }}" style="border:none;border-bottom:1px solid #f1f5f9;border-radius:0;margin-bottom:0;">
+          <div class="wp-header" style="background:{{ wp.color }}08;border-bottom:1px solid {{ wp.color }}18;">
+            <input type="checkbox" class="wp-select-cb" data-wp-id="{{ wp.id }}"
+                   style="display:none;width:16px;height:16px;accent-color:#dc2626;cursor:pointer;flex-shrink:0;margin-right:2px;"
+                   onclick="event.stopPropagation();" onchange="updateWpsSelectedCount()">
+            <div style="width:32px;height:32px;border-radius:8px;background:{{ wp.color }}22;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              <i class="fa-solid fa-{{ wp.icon }}" style="color:{{ wp.color }};font-size:13px;"></i>
+            </div>
+            <div style="flex:1;min-width:0;">
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                <span id="wpname-{{ wp.id }}" style="font-size:14px;font-weight:800;color:#1e293b;">{{ wp.name }}</span>
+                <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:#f1f5f9;color:#94a3b8;cursor:pointer;"
+                      onclick="reassignWpGroup({{ wp.id }})">
+                  <i class="fa-solid fa-exclamation-triangle" style="font-size:8px;margin-right:3px;"></i>No group — assign
+                </span>
+              </div>
+            </div>
+            <span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;background:{{ wp.color }}22;color:{{ wp.color }};margin-right:6px;" id="wpcount-{{ wp.id }}">
+              {{ wp.elements|length }} elem.
+            </span>
+            <button onclick="switchTab('elements',document.getElementById('tab-btn-elements'));startAssignWp({{ wp.id }},'{{ wp.name }}','{{ wp.color }}')"
+                    style="background:{{ wp.color }}22;color:{{ wp.color }};border:none;padding:5px 10px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;margin-right:4px;">
+              <i class="fa-solid fa-plus mr-1"></i> Elements
+            </button>
+            <button onclick="renameWp({{ wp.id }})" class="btn-sm btn-ghost" style="padding:4px 10px;"><i class="fa-solid fa-pen text-xs"></i></button>
+            <button onclick="deleteWp({{ wp.id }},'{{ wp.name }}')" class="btn-sm btn-danger" style="padding:4px 10px;"><i class="fa-solid fa-trash text-xs"></i></button>
+          </div>
+          <div style="padding:10px 14px;display:flex;flex-wrap:wrap;gap:8px;" id="wpmembers-{{ wp.id }}">
+            {% for el in wp.elements %}
+            <span style="display:inline-flex;align-items:center;gap:6px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:600;color:#334155;" id="wptag-{{ el.id }}">
+              <i class="fa-solid fa-tower-broadcast text-slate-300 text-xs"></i>
+              {{ el.name }}
+              <span onclick="removeFromWp({{ el.id }},{{ wp.id }})" style="color:#94a3b8;cursor:pointer;font-size:13px;font-weight:900;line-height:1;" title="Remove">×</span>
+            </span>
+            {% else %}
+            <span style="color:#94a3b8;font-size:12px;font-style:italic;" id="wpempty-{{ wp.id }}">No elements — click "+ Elements" above</span>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}{% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
     {% else %}
     <div class="empty-state" id="empty-wps">
       <i class="fa-solid fa-boxes-stacked text-3xl mb-2 block"></i>
       <p class="font-semibold">No work packages yet</p>
       <p class="text-sm mt-1">Create a Group first, then add Work Packages inside it from the Groups tab</p>
     </div>
-    {% endfor %}
+    {% endif %}
   </div>
 </div>
 
@@ -1221,11 +1385,12 @@ let _areasEditMode = false;
 
 function toggleAreasEditMode() {
   _areasEditMode = !_areasEditMode;
-  const editBtn  = document.getElementById('areas-edit-btn');
-  const bulkBar  = document.getElementById('areas-bulk-bar');
-  const cbs      = document.querySelectorAll('.area-select-cb');
-  const delBtns  = document.querySelectorAll('.area-del-btn');
-  const addBtns  = document.querySelectorAll('.area-add-btn');
+  const editBtn       = document.getElementById('areas-edit-btn');
+  const bulkBar       = document.getElementById('areas-bulk-bar');
+  const cbs           = document.querySelectorAll('.area-select-cb');
+  const delBtns       = document.querySelectorAll('.area-del-btn');
+  const addBtns       = document.querySelectorAll('.area-add-btn');
+  const selAllLabels  = document.querySelectorAll('.el-areas-select-all-label');
 
   if (_areasEditMode) {
     editBtn.innerHTML = '<i class="fa-solid fa-xmark mr-1"></i> Cancel';
@@ -1234,6 +1399,7 @@ function toggleAreasEditMode() {
     cbs.forEach(cb => { cb.style.display = 'block'; cb.checked = false; });
     delBtns.forEach(b => b.style.display = 'none');
     addBtns.forEach(b => b.style.display = 'none');
+    selAllLabels.forEach(l => l.style.display = 'flex');
   } else {
     editBtn.innerHTML = '<i class="fa-solid fa-pen mr-1"></i> Edit Areas';
     editBtn.style.background = ''; editBtn.style.color = '';
@@ -1241,6 +1407,7 @@ function toggleAreasEditMode() {
     cbs.forEach(cb => { cb.style.display = 'none'; cb.checked = false; });
     delBtns.forEach(b => b.style.display = '');
     addBtns.forEach(b => b.style.display = '');
+    selAllLabels.forEach(l => { l.style.display = 'none'; l.querySelector('input').checked = false; });
     updateAreasSelectedCount();
   }
 }
@@ -1851,6 +2018,114 @@ async function deleteSelectedActivities() {
 
   toggleActivitiesEditMode();
   if (deleted) showToast(`${deleted} activity(ies) deleted`, 'success');
+}
+
+// ── WPs Edit Mode (bulk delete) ───────────────────────────────────────────────
+let _wpsEditMode = false;
+
+function toggleWpsEditMode() {
+  _wpsEditMode = !_wpsEditMode;
+  const editBtn = document.getElementById('wps-edit-btn');
+  const bulkBar = document.getElementById('wps-bulk-bar');
+  const cbs     = document.querySelectorAll('.wp-select-cb');
+
+  if (_wpsEditMode) {
+    editBtn.innerHTML = '<i class="fa-solid fa-xmark mr-1"></i> Cancel';
+    editBtn.style.background = '#fee2e2'; editBtn.style.color = '#dc2626';
+    bulkBar.style.display = 'flex';
+    cbs.forEach(cb => { cb.style.display = 'inline-block'; cb.checked = false; });
+  } else {
+    editBtn.innerHTML = '<i class="fa-solid fa-pen mr-1"></i> Edit WPs';
+    editBtn.style.background = ''; editBtn.style.color = '';
+    bulkBar.style.display = 'none';
+    cbs.forEach(cb => { cb.style.display = 'none'; cb.checked = false; });
+    updateWpsSelectedCount();
+  }
+}
+
+function updateWpsSelectedCount() {
+  const n = document.querySelectorAll('.wp-select-cb:checked').length;
+  const el = document.getElementById('wps-sel-count');
+  if (el) el.textContent = `${n} selected`;
+}
+
+async function deleteSelectedWps() {
+  const checked = [...document.querySelectorAll('.wp-select-cb:checked')];
+  if (!checked.length) { showToast('Select at least one work package', 'error'); return; }
+  if (!confirm(`Delete ${checked.length} work package(s)? Elements will be unassigned (not deleted).`)) return;
+  let deleted = 0;
+  await Promise.all(checked.map(async cb => {
+    const wpId = parseInt(cb.dataset.wpId);
+    const res  = await fetch(`/api/work-packages/${wpId}`, { method: 'DELETE' });
+    if (res.ok) {
+      document.getElementById('wpcard-' + wpId)?.remove();
+      document.getElementById('gwp-' + wpId)?.remove();
+      deleted++;
+    }
+  }));
+  toggleWpsEditMode();
+  if (deleted) {
+    showToast(`${deleted} work package(s) deleted`, 'success');
+    setTimeout(() => location.reload(), 700);
+  }
+}
+
+// ── Elements Edit Mode (bulk delete) ─────────────────────────────────────────
+let _elementsEditMode = false;
+
+function toggleElementsEditMode() {
+  _elementsEditMode = !_elementsEditMode;
+  const editBtn = document.getElementById('els-edit-btn');
+  const bulkBar = document.getElementById('els-bulk-bar');
+  const cbs     = document.querySelectorAll('.el-select-cb');
+
+  if (_elementsEditMode) {
+    editBtn.innerHTML = '<i class="fa-solid fa-xmark mr-1"></i> Cancel';
+    editBtn.style.background = '#fee2e2'; editBtn.style.color = '#dc2626';
+    bulkBar.style.display = 'flex';
+    cbs.forEach(cb => { cb.style.display = 'inline-block'; cb.checked = false; });
+    document.querySelectorAll('.el-actions').forEach(a => a.style.display = 'none');
+    // Cancel WP assign mode if active
+    if (_assignWpMode) cancelAssignWp();
+  } else {
+    editBtn.innerHTML = '<i class="fa-solid fa-pen mr-1"></i> Edit Elements';
+    editBtn.style.background = ''; editBtn.style.color = '';
+    bulkBar.style.display = 'none';
+    cbs.forEach(cb => { cb.style.display = 'none'; cb.checked = false; });
+    document.querySelectorAll('.el-actions').forEach(a => a.style.display = '');
+    updateElementsSelectedCount();
+  }
+}
+
+function updateElementsSelectedCount() {
+  const n = document.querySelectorAll('.el-select-cb:checked').length;
+  const el = document.getElementById('els-sel-count');
+  if (el) el.textContent = `${n} selected`;
+}
+
+async function deleteSelectedElements() {
+  const checked = [...document.querySelectorAll('.el-select-cb:checked')];
+  if (!checked.length) { showToast('Select at least one element', 'error'); return; }
+  if (!confirm(`Delete ${checked.length} element(s) and all their QA data? This cannot be undone.`)) return;
+  let deleted = 0;
+  await Promise.all(checked.map(async cb => {
+    const elId = parseInt(cb.dataset.elId);
+    const res  = await fetch(`/api/elements/${elId}`, { method: 'DELETE' });
+    if (res.ok) {
+      document.getElementById('elrow-' + elId)?.remove();
+      deleted++;
+    }
+  }));
+  toggleElementsEditMode();
+  if (deleted) showToast(`${deleted} element(s) deleted`, 'success');
+}
+
+// ── Select All areas for one element (Areas edit mode) ────────────────────────
+function selectAllAreasForEl(elId, checked) {
+  document.querySelectorAll(`.area-select-cb[data-el-id="${elId}"]`).forEach(cb => {
+    cb.checked = checked;
+  });
+  updateAreasSelectedCount();
 }
 
 // ── Deploy to QA ─────────────────────────────────────────────────────────────
