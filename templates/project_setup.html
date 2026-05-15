@@ -711,12 +711,12 @@
     {# ── Work Packages grouped by Group ── #}
     {% for g in groups %}{% if g.work_packages %}
     <div class="wp-grp-section">
-      <div style="display:flex;align-items:center;gap:8px;padding:9px 14px;background:{{ g.color }}0d;border:1.5px solid {{ g.color }}33;border-radius:10px 10px 0 0;border-bottom:none;">
+      <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;background:{{ g.color }}18;border:2px solid {{ g.color }}99;border-radius:12px 12px 0 0;border-bottom:none;">
         <div style="width:10px;height:10px;border-radius:50%;background:{{ g.color }};flex-shrink:0;"></div>
         <span style="font-weight:800;font-size:13px;color:{{ g.color }};">{{ g.name }}</span>
         <span style="font-size:10px;color:#94a3b8;margin-left:4px;">{{ g.work_packages|length }} WP(s)</span>
       </div>
-      <div style="border:1.5px solid {{ g.color }}33;border-top:none;border-radius:0 0 12px 12px;overflow:hidden;">
+      <div style="border:2px solid {{ g.color }}99;border-top:none;border-radius:0 0 12px 12px;overflow:hidden;">
         {% for wp in g.work_packages %}
         <div class="wp-card" id="wpcard-{{ wp.id }}" style="border:none;border-bottom:1px solid #f1f5f9;border-radius:0;margin-bottom:0;">
           <div class="wp-header" style="background:{{ wp.color }}08;border-bottom:1px solid {{ wp.color }}18;">
