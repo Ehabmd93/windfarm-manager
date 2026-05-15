@@ -1040,6 +1040,40 @@ def api_deploy_project(pid):
     return jsonify({'ok': True, 'created': created})
 
 
+@app.route('/api/projects/<int:pid>/reset-setup', methods=['DELETE'])
+@login_required
+def api_reset_project_setup(pid):
+    if current_user.role not in ('engineer', 'manager', 'admin'):
+        return jsonify({'error': 'Forbidden'}), 403
+    Project.query.get_or_404(pid)
+    try:
+        # Walk all elements → areas → tests/activities → delete bottom-up
+        for el in list(WTG.query.filter_by(project_id=pid).all()):
+            for area in list(el.areas):
+                for test in list(area.required_tests):
+                    for rec  in list(test.records):      db.session.delete(rec)
+                    for pr   in list(test.proof_rolls):
+                        for obj in list(pr.signatories):    db.session.delete(obj)
+                        for obj in list(pr.equipment_rows): db.session.delete(obj)
+                        for obj in list(pr.pr_photos):      db.session.delete(obj)
+                        for obj in list(pr.rect_photos):    db.session.delete(obj)
+                        db.session.delete(pr)
+                    for ph in list(test.photos): db.session.delete(ph)
+                    db.session.delete(test)
+                for act in list(area.activities): db.session.delete(act)
+                db.session.delete(area)
+            db.session.delete(el)
+        for wp in list(WorkPackage.query.filter_by(project_id=pid).all()):
+            db.session.delete(wp)
+        for g in list(WTGGroup.query.filter_by(project_id=pid).all()):
+            db.session.delete(g)
+        db.session.commit()
+        return jsonify({'ok': True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/elements/<int:eid>/areas', methods=['POST'])
 @login_required
 def api_add_area(eid):

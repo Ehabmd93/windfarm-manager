@@ -167,6 +167,10 @@
           style="background:linear-gradient(135deg,#16a34a,#22c55e);color:#fff;border:none;padding:8px 20px;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:7px;box-shadow:0 3px 12px rgba(22,163,74,0.3);">
     <i class="fa-solid fa-rocket"></i> Deploy to QA
   </button>
+  <button onclick="openModal('modal-reset-setup')"
+          style="background:#fff1f2;color:#dc2626;border:1.5px solid #fecaca;padding:8px 16px;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:7px;">
+    <i class="fa-solid fa-arrow-rotate-left"></i> Reset Setup
+  </button>
 </div>
 
 <!-- Hierarchy hint -->
@@ -1234,6 +1238,58 @@
   </div>
 </div>
 
+<!-- Reset Project Setup Modal -->
+<div id="modal-reset-setup" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:300;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:16px;padding:28px;width:480px;max-width:95vw;box-shadow:0 24px 60px rgba(220,38,38,0.2);border-top:5px solid #dc2626;">
+
+    <!-- Header -->
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+      <div style="width:44px;height:44px;border-radius:12px;background:#fee2e2;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <i class="fa-solid fa-triangle-exclamation" style="color:#dc2626;font-size:20px;"></i>
+      </div>
+      <div>
+        <p style="font-weight:800;font-size:16px;color:#1e293b;">Factory Reset — Project Setup</p>
+        <p style="font-size:12px;color:#dc2626;font-weight:600;">This action is permanent and cannot be undone</p>
+      </div>
+    </div>
+
+    <!-- Disclaimer box -->
+    <div style="background:#fff1f2;border:1.5px solid #fecaca;border-radius:10px;padding:14px 16px;margin-bottom:18px;">
+      <p style="font-size:12px;font-weight:800;color:#dc2626;margin-bottom:8px;"><i class="fa-solid fa-circle-exclamation mr-1"></i> The following will be permanently deleted:</p>
+      <ul style="font-size:12px;color:#7f1d1d;font-weight:600;display:flex;flex-direction:column;gap:5px;padding-left:4px;">
+        <li style="display:flex;align-items:center;gap:7px;"><i class="fa-solid fa-layer-group" style="color:#dc2626;width:14px;"></i> All Groups</li>
+        <li style="display:flex;align-items:center;gap:7px;"><i class="fa-solid fa-boxes-stacked" style="color:#dc2626;width:14px;"></i> All Work Packages</li>
+        <li style="display:flex;align-items:center;gap:7px;"><i class="fa-solid fa-tower-broadcast" style="color:#dc2626;width:14px;"></i> All Elements</li>
+        <li style="display:flex;align-items:center;gap:7px;"><i class="fa-solid fa-map-pin" style="color:#dc2626;width:14px;"></i> All Areas and their Activities</li>
+        <li style="display:flex;align-items:center;gap:7px;"><i class="fa-solid fa-file-shield" style="color:#dc2626;width:14px;"></i> All deployed QA test records, Proof Rolls, photos and signatures</li>
+      </ul>
+      <p style="font-size:11px;color:#991b1b;margin-top:10px;font-style:italic;">The project itself will remain — only its entire setup and QA data will be wiped.</p>
+    </div>
+
+    <!-- Confirmation input -->
+    <div style="margin-bottom:18px;">
+      <label style="font-size:12px;font-weight:700;color:#475569;display:block;margin-bottom:6px;">
+        Type <span style="background:#fee2e2;color:#dc2626;font-family:monospace;padding:1px 6px;border-radius:4px;font-weight:900;letter-spacing:1px;">RESET</span> to confirm
+      </label>
+      <input id="reset-confirm-input" type="text" placeholder="Type RESET here…"
+             oninput="document.getElementById('reset-confirm-btn').disabled = this.value !== 'RESET';"
+             style="width:100%;border:2px solid #fecaca;border-radius:8px;padding:9px 13px;font-size:14px;font-weight:700;outline:none;color:#1e293b;letter-spacing:1px;"
+             onfocus="this.style.borderColor='#dc2626'" onblur="this.style.borderColor='#fecaca'">
+    </div>
+
+    <div class="flex gap-2 justify-end">
+      <button onclick="closeModal('modal-reset-setup');document.getElementById('reset-confirm-input').value='';document.getElementById('reset-confirm-btn').disabled=true;"
+              class="btn-sm btn-ghost">Cancel</button>
+      <button id="reset-confirm-btn" onclick="submitResetSetup()" disabled
+              style="background:#dc2626;color:#fff;border:none;padding:8px 22px;border-radius:9px;font-weight:800;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:7px;opacity:.5;transition:opacity .15s;"
+              onmouseenter="if(!this.disabled)this.style.background='#b91c1c'"
+              onmouseleave="this.style.background='#dc2626'">
+        <i class="fa-solid fa-arrow-rotate-left"></i> Reset Everything
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- Toast (bottom-right) -->
 <div id="toast"><i class="fa-solid fa-circle-check"></i><span id="toast-msg"></span></div>
 
@@ -1295,7 +1351,7 @@ function openModal(id) { document.getElementById(id).style.display = 'flex'; }
 function closeModal(id) { document.getElementById(id).style.display = 'none'; }
 ['modal-add-element','modal-add-area','modal-add-group','modal-add-wp',
  'modal-reassign-wp-group','modal-add-activity',
- 'modal-bulk-area','modal-bulk-activity','modal-deploy'].forEach(id => {
+ 'modal-bulk-area','modal-bulk-activity','modal-deploy','modal-reset-setup'].forEach(id => {
   const el = document.getElementById(id);
   if (el) el.addEventListener('click', function(e) {
     if (e.target === this) closeModal(id);
@@ -2193,6 +2249,37 @@ async function deleteSelectedElements() {
   toggleElementsEditMode();
   if (deleted) showToast(`${deleted} element(s) deleted`, 'success');
 }
+
+// ── Reset Project Setup ───────────────────────────────────────────────────────
+async function submitResetSetup() {
+  const btn = document.getElementById('reset-confirm-btn');
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Resetting…';
+  btn.disabled  = true;
+  const res  = await fetch(`/api/projects/${PID}/reset-setup`, { method: 'DELETE' });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    btn.innerHTML = '<i class="fa-solid fa-arrow-rotate-left"></i> Reset Everything';
+    btn.disabled  = false;
+    showToast(data.error || 'Reset failed', 'error');
+    return;
+  }
+  closeModal('modal-reset-setup');
+  showToast('Project setup has been reset', 'success');
+  setTimeout(() => location.reload(), 900);
+}
+
+// Enable/disable reset button styles when input matches
+document.addEventListener('DOMContentLoaded', () => {
+  const inp = document.getElementById('reset-confirm-input');
+  const btn = document.getElementById('reset-confirm-btn');
+  if (inp && btn) {
+    inp.addEventListener('input', () => {
+      const ok = inp.value === 'RESET';
+      btn.style.opacity = ok ? '1' : '.5';
+      btn.style.cursor  = ok ? 'pointer' : 'not-allowed';
+    });
+  }
+});
 
 // ── Select All areas for one element (Areas edit mode) ────────────────────────
 function selectAllAreasForEl(elId, checked) {
