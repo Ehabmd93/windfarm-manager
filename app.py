@@ -829,11 +829,13 @@ def api_add_element(pid):
     # Check duplicate name within project
     if WTG.query.filter_by(project_id=pid, name=name).first():
         return jsonify({'error': f'An element named "{name}" already exists in this project'}), 400
-    el = WTG(name=name, element_type=etype, project_id=pid)
+    wp_id = data.get('work_package_id') or None
+    el = WTG(name=name, element_type=etype, project_id=pid, work_package_id=wp_id)
     db.session.add(el)
     db.session.commit()
     return jsonify({'id': el.id, 'name': el.name, 'element_type': el.element_type,
-                    'element_type_label': el.element_type_label, 'group_id': el.group_id})
+                    'element_type_label': el.element_type_label, 'group_id': el.group_id,
+                    'work_package_id': el.work_package_id})
 
 
 @app.route('/api/elements/<int:eid>', methods=['PATCH', 'DELETE'])

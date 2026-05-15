@@ -828,25 +828,68 @@
 
 <!-- Add Element Modal -->
 <div id="modal-add-element" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:300;align-items:center;justify-content:center;">
-  <div style="background:#fff;border-radius:16px;padding:24px;width:380px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.2);">
-    <p class="font-bold text-slate-800 text-base mb-4">Add New Element</p>
-    <div class="flex flex-col gap-3">
+  <div style="background:#fff;border-radius:16px;padding:24px;width:460px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.2);">
+    <p class="font-bold text-slate-800 text-base mb-1">Add New Element</p>
+    <p class="text-xs text-slate-400 mb-4">Assign to one or more Work Packages now, or leave blank to assign later</p>
+    <div class="flex flex-col gap-4">
       <div>
-        <label class="text-xs font-semibold text-slate-500 block mb-1">Element Name</label>
+        <label class="text-xs font-semibold text-slate-500 block mb-1">Element Name <span style="color:#ef4444;">*</span></label>
         <input id="new-el-name" type="text" placeholder="e.g. WTG01, AT-North, HS-01" style="width:100%;">
       </div>
       <div>
-        <label class="text-xs font-semibold text-slate-500 block mb-1">Type</label>
-        <select id="new-el-type" style="width:100%;">
-          {% for key, label in element_types %}
-          <option value="{{ key }}">{{ label }}</option>
+        <label class="text-xs font-semibold text-slate-500 block mb-2">Assign to Work Package(s)
+          <span style="font-weight:400;color:#94a3b8;margin-left:4px;">tick one or more (optional)</span>
+        </label>
+        {% if work_packages %}
+        <div id="new-el-wp-checkboxes" style="max-height:200px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;padding:6px;border:1px solid #e2e8f0;border-radius:9px;background:#fafafa;">
+          {% for g in groups %}{% if g.work_packages %}
+          <div style="padding:4px 6px 2px;font-size:9px;font-weight:800;color:{{ g.color }};text-transform:uppercase;letter-spacing:.7px;display:flex;align-items:center;gap:4px;">
+            <div style="width:5px;height:5px;border-radius:50%;background:{{ g.color }};flex-shrink:0;"></div>{{ g.name }}
+          </div>
+          {% for wp in g.work_packages %}
+          <label style="display:flex;align-items:center;gap:8px;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;color:#334155;background:#fff;transition:all .1s;margin-left:8px;"
+                 onmouseover="this.style.borderColor='{{ wp.color }}'"
+                 onmouseout="if(!this.querySelector('input').checked)this.style.borderColor='#e2e8f0'">
+            <input type="checkbox" value="{{ wp.id }}" class="new-el-wp-cb" style="width:14px;height:14px;accent-color:{{ wp.color }};"
+                   onchange="this.closest('label').style.borderColor=this.checked?'{{ wp.color }}':'#e2e8f0';this.closest('label').style.background=this.checked?'{{ wp.color }}11':'#fff'">
+            <div style="width:20px;height:20px;border-radius:5px;background:{{ wp.color }}22;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              <i class="fa-solid fa-{{ wp.icon }}" style="color:{{ wp.color }};font-size:9px;"></i>
+            </div>
+            <span style="flex:1;">{{ wp.name }}</span>
+            <span style="font-size:10px;color:#94a3b8;">{{ wp.elements|length }} elem.</span>
+          </label>
           {% endfor %}
-        </select>
+          {% endif %}{% endfor %}
+          {% set has_ung_wp2 = namespace(v=false) %}
+          {% for wp in work_packages %}{% if not wp.group_id %}{% set has_ung_wp2.v = true %}{% endif %}{% endfor %}
+          {% if has_ung_wp2.v %}
+          <div style="padding:4px 6px 2px;font-size:9px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.7px;">Ungrouped</div>
+          {% for wp in work_packages %}{% if not wp.group_id %}
+          <label style="display:flex;align-items:center;gap:8px;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;color:#334155;background:#fff;transition:all .1s;"
+                 onmouseover="this.style.borderColor='{{ wp.color }}'"
+                 onmouseout="if(!this.querySelector('input').checked)this.style.borderColor='#e2e8f0'">
+            <input type="checkbox" value="{{ wp.id }}" class="new-el-wp-cb" style="width:14px;height:14px;accent-color:{{ wp.color }};"
+                   onchange="this.closest('label').style.borderColor=this.checked?'{{ wp.color }}':'#e2e8f0';this.closest('label').style.background=this.checked?'{{ wp.color }}11':'#fff'">
+            <span style="flex:1;">{{ wp.name }}</span>
+            <span style="font-size:10px;color:#94a3b8;">{{ wp.elements|length }} elem.</span>
+          </label>
+          {% endif %}{% endfor %}
+          {% endif %}
+        </div>
+        {% else %}
+        <div style="padding:10px 14px;font-size:12px;color:#94a3b8;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">
+          <i class="fa-solid fa-circle-info mr-1"></i> No work packages yet — element will be created unassigned.
+          <span onclick="closeModal('modal-add-element');switchTab('workpackages',document.getElementById('tab-btn-workpackages'));"
+                style="color:#7c3aed;cursor:pointer;font-weight:700;margin-left:4px;">Create WPs first →</span>
+        </div>
+        {% endif %}
       </div>
     </div>
     <div class="flex gap-2 mt-5 justify-end">
       <button onclick="closeModal('modal-add-element')" class="btn-sm btn-ghost">Cancel</button>
-      <button onclick="submitAddElement()" class="btn-sm btn-primary">Add Element</button>
+      <button onclick="submitAddElement()" class="btn-sm btn-primary">
+        <i class="fa-solid fa-plus mr-1"></i> Add Element
+      </button>
     </div>
   </div>
 </div>
@@ -1277,23 +1320,54 @@ function rowClick(elId, row) {
 // ── Add Element ──────────────────────────────────────────────────────────────
 function openAddElement() {
   document.getElementById('new-el-name').value = '';
+  document.querySelectorAll('.new-el-wp-cb').forEach(cb => {
+    cb.checked = false;
+    const lbl = cb.closest('label');
+    if (lbl) { lbl.style.borderColor = '#e2e8f0'; lbl.style.background = '#fff'; }
+  });
   openModal('modal-add-element');
   setTimeout(() => document.getElementById('new-el-name').focus(), 50);
 }
 async function submitAddElement() {
-  const name  = document.getElementById('new-el-name').value.trim();
-  const etype = document.getElementById('new-el-type').value;
+  const name    = document.getElementById('new-el-name').value.trim();
   if (!name) { alert('Name is required'); return; }
-  const res  = await fetch(`/api/projects/${PID}/elements`, {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({name, element_type: etype})
-  });
-  const data = await res.json();
-  if (!res.ok) { showToast(data.error || 'Error', 'error'); return; }
-  closeModal('modal-add-element');
-  showToast(`"${data.name}" added`, 'success');
-  // Reload to show new row
-  setTimeout(() => location.reload(), 800);
+  const wpIds   = [...document.querySelectorAll('.new-el-wp-cb:checked')].map(c => parseInt(c.value));
+
+  const btn = document.querySelector('#modal-add-element button.btn-primary');
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Adding…';
+  btn.disabled  = true;
+
+  let created = 0, errors = 0;
+  if (wpIds.length) {
+    // Create one element per selected WP
+    for (const wpId of wpIds) {
+      const res  = await fetch(`/api/projects/${PID}/elements`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({name, element_type: 'wtg', work_package_id: wpId})
+      });
+      const data = await res.json();
+      if (!res.ok) { showToast(data.error || 'Error', 'error'); errors++; }
+      else created++;
+    }
+  } else {
+    // No WP selected — create one unassigned element
+    const res  = await fetch(`/api/projects/${PID}/elements`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({name, element_type: 'wtg'})
+    });
+    const data = await res.json();
+    if (!res.ok) { showToast(data.error || 'Error', 'error'); errors++; }
+    else created++;
+  }
+
+  btn.innerHTML = '<i class="fa-solid fa-plus mr-1"></i> Add Element';
+  btn.disabled  = false;
+
+  if (created) {
+    closeModal('modal-add-element');
+    showToast(`"${name}" added to ${created} work package(s)`, 'success');
+    setTimeout(() => location.reload(), 700);
+  }
 }
 
 // ── Rename Element ───────────────────────────────────────────────────────────
