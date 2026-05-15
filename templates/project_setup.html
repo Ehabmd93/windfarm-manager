@@ -300,7 +300,7 @@
           </div>
         </div>
         <button onclick="openAddElement()" class="btn-sm btn-primary">
-          <i class="fa-solid fa-plus mr-1"></i> Add Element
+          <i class="fa-solid fa-plus mr-1"></i> Create Element
         </button>
       </div>
     </div>
@@ -311,8 +311,9 @@
 
       {# ── Elements assigned to a Work Package, grouped by WP ── #}
       {% for wp in work_packages %}{% if wp.elements %}
-      <div class="el-wp-section" id="el-wp-section-{{ wp.id }}">
-        <div style="display:flex;align-items:center;gap:8px;padding:7px 14px;background:{{ wp.color }}0d;border-left:4px solid {{ wp.color }};border-bottom:1px solid {{ wp.color }}22;">
+      <div class="el-wp-section" id="el-wp-section-{{ wp.id }}"
+           style="border:2px solid {{ wp.color }}88;border-radius:12px;overflow:hidden;margin-bottom:14px;">
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 14px;background:{{ wp.color }}15;border-bottom:2px solid {{ wp.color }}55;">
           <div style="width:22px;height:22px;border-radius:5px;background:{{ wp.color }}22;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
             <i class="fa-solid fa-{{ wp.icon }}" style="color:{{ wp.color }};font-size:9px;"></i>
           </div>
@@ -378,8 +379,9 @@
       {% set has_unassigned = namespace(v=false) %}
       {% for el in elements %}{% if not el.work_package_id %}{% set has_unassigned.v = true %}{% endif %}{% endfor %}
       {% if has_unassigned.v %}
-      <div class="el-wp-section" id="el-wp-section-unassigned">
-        <div style="display:flex;align-items:center;gap:8px;padding:7px 14px;background:#f8fafc;border-left:4px solid #cbd5e1;border-bottom:1px solid #f1f5f9;">
+      <div class="el-wp-section" id="el-wp-section-unassigned"
+           style="border:2px solid #cbd5e1;border-radius:12px;overflow:hidden;margin-bottom:14px;">
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 14px;background:#f8fafc;border-bottom:2px solid #e2e8f0;">
           <span style="font-weight:700;font-size:12px;color:#94a3b8;font-style:italic;">No Work Package Assigned</span>
         </div>
         {% for el in elements %}{% if not el.work_package_id %}
@@ -832,8 +834,8 @@
 
 <!-- Add Element Modal -->
 <div id="modal-add-element" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:300;align-items:center;justify-content:center;">
-  <div style="background:#fff;border-radius:16px;padding:24px;width:460px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.2);">
-    <p class="font-bold text-slate-800 text-base mb-1">Add New Element</p>
+  <div style="background:#fff;border-radius:16px;padding:24px;width:460px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.2);resize:both;overflow:auto;min-width:340px;min-height:220px;">
+    <p class="font-bold text-slate-800 text-base mb-1">Create Element</p>
     <p class="text-xs text-slate-400 mb-4">Assign to one or more Work Packages now, or leave blank to assign later</p>
     <div class="flex flex-col gap-4">
       <div>
