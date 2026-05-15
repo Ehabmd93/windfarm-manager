@@ -826,10 +826,11 @@ def api_add_element(pid):
     etype = data.get('element_type', 'wtg')
     if not name:
         return jsonify({'error': 'Name is required'}), 400
-    # Check duplicate name within project
-    if WTG.query.filter_by(project_id=pid, name=name).first():
-        return jsonify({'error': f'An element named "{name}" already exists in this project'}), 400
     wp_id = data.get('work_package_id') or None
+    # Duplicate check: same name within the same WP (or among unassigned if no WP)
+    if WTG.query.filter_by(project_id=pid, name=name, work_package_id=wp_id).first():
+        scope = f'work package' if wp_id else 'unassigned elements'
+        return jsonify({'error': f'An element named "{name}" already exists in this {scope}'}), 400
     el = WTG(name=name, element_type=etype, project_id=pid, work_package_id=wp_id)
     db.session.add(el)
     db.session.commit()
