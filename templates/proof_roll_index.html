@@ -357,10 +357,10 @@
 
 
 {# ═══════════════════ TREE VIEW — Obsidian Style ═══════════════════ #}
-{# Build a unified group list including ungrouped #}
+{# Build a unified group list including ungrouped — now with WP sub-level #}
 {% set tg_list = [] %}
-{% for g in grouped %}{% if tg_list.append({'id': g.group.id|string, 'name': g.group.name, 'color': g.group.color, 'entries': g.entries}) %}{% endif %}{% endfor %}
-{% if ungrouped %}{% if tg_list.append({'id': 'ug', 'name': 'Ungrouped', 'color': '#64748b', 'entries': ungrouped}) %}{% endif %}{% endif %}
+{% for g in grouped %}{% if tg_list.append({'id': g.group.id|string, 'name': g.group.name, 'color': g.group.color, 'entries': g.entries, 'wps': g.wps, 'ungrouped_entries': g.ungrouped_entries}) %}{% endif %}{% endfor %}
+{% if ungrouped %}{% if tg_list.append({'id': 'ug', 'name': 'Ungrouped', 'color': '#64748b', 'entries': ungrouped, 'wps': [], 'ungrouped_entries': ungrouped}) %}{% endif %}{% endif %}
 
 <div id="view-tree" style="display:none;">
 
@@ -412,70 +412,110 @@
         {% endfor %}
       </div>
 
-      {# ── Level 2: Elements (one row-block per group) ── #}
+      {# ── Level 2+: Elements grouped by WP (one block per group) ── #}
+      {% macro render_element(entry, g_color, g_id) %}
+      {% set wtg = entry.wtg %}
+      {% set ns_e = namespace(p=0,f=0,n=0) %}
+      {% for a in entry.areas %}{% for t in a.tests %}
+        {% if t.status=='yes' %}{% set ns_e.p=ns_e.p+1 %}
+        {% elif t.status=='no' %}{% set ns_e.f=ns_e.f+1 %}
+        {% else %}{% set ns_e.n=ns_e.n+1 %}{% endif %}
+      {% endfor %}{% endfor %}
+      {% set e_sc = '#475569' if (ns_e.p+ns_e.f+ns_e.n)==0 else '#ef4444' if ns_e.f>0 else '#f59e0b' if ns_e.n>0 else '#22c55e' %}
+      <div class="obs-col" id="ob-ecol-{{ wtg.id }}">
+        <div class="obs-n obs-n-elem"
+             id="ob-e-{{ wtg.id }}"
+             data-gid="{{ g_id }}"
+             data-eid="{{ wtg.id }}"
+             data-color="{{ g_color }}"
+             style="border-color:{{ g_color }}44;"
+             onclick="obsToggleAreas('{{ wtg.id }}', '{{ g_color }}')">
+          <i class="fa-solid fa-tower-broadcast" style="font-size:10px;color:{{ g_color }};opacity:.7;"></i>
+          <span>{{ wtg.name }}</span>
+          <div class="obs-dot" style="background:{{ e_sc }};box-shadow:0 0 7px {{ e_sc }};"></div>
+        </div>
+        <div class="obs-areas-panel" id="ob-areas-{{ wtg.id }}" data-color="{{ g_color }}">
+          <div class="obs-vline" style="height:20px;background:{{ g_color }}44;"></div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;max-width:300px;">
+            {% for a in entry.areas %}
+            {% set ns_a = namespace(p=0,f=0,n=0) %}
+            {% for t in a.tests %}
+              {% if t.status=='yes' %}{% set ns_a.p=ns_a.p+1 %}
+              {% elif t.status=='no' %}{% set ns_a.f=ns_a.f+1 %}
+              {% else %}{% set ns_a.n=ns_a.n+1 %}{% endif %}
+            {% endfor %}
+            {% set a_sc = '#475569' if (ns_a.p+ns_a.f+ns_a.n)==0 else '#ef4444' if ns_a.f>0 else '#f59e0b' if ns_a.n>0 else '#22c55e' %}
+            <a href="{{ url_for('wtg_detail', wtg_id=wtg.id) }}"
+               class="obs-n-area ob-area-chip"
+               data-eid="{{ wtg.id }}"
+               style="border:1px solid {{ g_color }}33;">
+              <i class="fa-solid fa-map-pin" style="font-size:9px;color:#f59e0b;opacity:.8;"></i>
+              <span>{{ a.area.label }}</span>
+              <div class="obs-dot" style="background:{{ a_sc }};box-shadow:0 0 5px {{ a_sc }};"></div>
+            </a>
+            {% else %}
+            <div class="obs-n-area" style="border:1px solid #47556933;opacity:.5;">
+              <span style="font-style:italic;color:#64748b;">No areas</span>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+      {% endmacro %}
+
       {% for g in tg_list %}
       <div class="obs-elems-block" id="ob-elems-{{ g.id }}" style="margin-bottom:56px;">
-        <!-- group label above -->
         <div style="text-align:center;margin-bottom:16px;">
           <span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:{{ g.color }};opacity:.65;">{{ g.name }}</span>
         </div>
-        <div class="obs-row" style="gap:16px;align-items:flex-start;">
-          {% for entry in g.entries %}
-          {% set wtg = entry.wtg %}
-          {% set ns_e = namespace(p=0,f=0,n=0) %}
-          {% for a in entry.areas %}{% for t in a.tests %}
-            {% if t.status=='yes' %}{% set ns_e.p=ns_e.p+1 %}
-            {% elif t.status=='no' %}{% set ns_e.f=ns_e.f+1 %}
-            {% else %}{% set ns_e.n=ns_e.n+1 %}{% endif %}
-          {% endfor %}{% endfor %}
-          {% set e_sc = '#475569' if (ns_e.p+ns_e.f+ns_e.n)==0 else '#ef4444' if ns_e.f>0 else '#f59e0b' if ns_e.n>0 else '#22c55e' %}
 
-          <div class="obs-col" id="ob-ecol-{{ wtg.id }}">
-            {# Element node #}
-            <div class="obs-n obs-n-elem"
-                 id="ob-e-{{ wtg.id }}"
-                 data-gid="{{ g.id }}"
-                 data-eid="{{ wtg.id }}"
-                 data-color="{{ g.color }}"
-                 style="border-color:{{ g.color }}44;"
-                 onclick="obsToggleAreas('{{ wtg.id }}', '{{ g.color }}')">
-              <i class="fa-solid fa-tower-broadcast" style="font-size:10px;color:{{ g.color }};opacity:.7;"></i>
-              <span>{{ wtg.name }}</span>
-              <div class="obs-dot" style="background:{{ e_sc }};box-shadow:0 0 7px {{ e_sc }};"></div>
+        {% if g.wps %}
+          {# WP level: render one sub-section per WP #}
+          <div class="obs-row" style="gap:40px;align-items:flex-start;flex-wrap:wrap;">
+          {% for wp_data in g.wps %}
+          <div style="display:flex;flex-direction:column;align-items:center;gap:0;">
+            {# WP node chip #}
+            <div style="display:inline-flex;align-items:center;gap:6px;padding:5px 14px;border-radius:8px;font-size:11px;font-weight:800;margin-bottom:14px;
+                        background:{{ wp_data.wp.color }}22;border:1.5px solid {{ wp_data.wp.color }}66;color:{{ wp_data.wp.color }};">
+              <i class="fa-solid fa-boxes-stacked" style="font-size:10px;"></i>
+              {{ wp_data.wp.name }}
+              <span style="font-size:10px;padding:1px 6px;border-radius:6px;background:{{ wp_data.wp.color }}28;">{{ wp_data.entries|length }}</span>
             </div>
-
-            {# Areas panel (hidden until element clicked) #}
-            <div class="obs-areas-panel" id="ob-areas-{{ wtg.id }}" data-color="{{ g.color }}">
-              {# vertical stem #}
-              <div class="obs-vline" style="height:20px;background:{{ g.color }}44;"></div>
-              {# area chips row #}
-              <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;max-width:300px;">
-                {% for a in entry.areas %}
-                {% set ns_a = namespace(p=0,f=0,n=0) %}
-                {% for t in a.tests %}
-                  {% if t.status=='yes' %}{% set ns_a.p=ns_a.p+1 %}
-                  {% elif t.status=='no' %}{% set ns_a.f=ns_a.f+1 %}
-                  {% else %}{% set ns_a.n=ns_a.n+1 %}{% endif %}
-                {% endfor %}
-                {% set a_sc = '#475569' if (ns_a.p+ns_a.f+ns_a.n)==0 else '#ef4444' if ns_a.f>0 else '#f59e0b' if ns_a.n>0 else '#22c55e' %}
-                <a href="{{ url_for('wtg_detail', wtg_id=wtg.id) }}"
-                   class="obs-n-area ob-area-chip"
-                   data-eid="{{ wtg.id }}"
-                   style="border:1px solid {{ g.color }}33;">
-                  <i class="fa-solid fa-layer-group" style="font-size:9px;color:{{ g.color }};opacity:.6;"></i>
-                  <span>{{ a.area.label }}</span>
-                  <div class="obs-dot" style="background:{{ a_sc }};box-shadow:0 0 5px {{ a_sc }};"></div>
-                </a>
-                {% else %}
-                <div class="obs-n-area" style="border:1px solid #47556933;opacity:.5;">
-                  <span style="font-style:italic;color:#64748b;">No areas</span>
-                </div>
-                {% endfor %}
-              </div>
+            {# Connector stem down to elements #}
+            <div style="width:1px;height:14px;background:{{ wp_data.wp.color }}44;margin-bottom:4px;"></div>
+            {# Elements for this WP #}
+            <div class="obs-row" style="gap:14px;align-items:flex-start;flex-wrap:wrap;justify-content:center;">
+              {% for entry in wp_data.entries %}
+              {{ render_element(entry, g.color, g.id) }}
+              {% endfor %}
             </div>
           </div>
           {% endfor %}
-        </div>
+          </div>
+
+          {# Ungrouped elements (no WP) within this group #}
+          {% if g.ungrouped_entries %}
+          <div style="margin-top:24px;">
+            <div style="text-align:center;margin-bottom:10px;">
+              <span style="font-size:10px;font-weight:700;color:#94a3b8;font-style:italic;">No Work Package</span>
+            </div>
+            <div class="obs-row" style="gap:14px;align-items:flex-start;flex-wrap:wrap;justify-content:center;">
+              {% for entry in g.ungrouped_entries %}
+              {{ render_element(entry, g.color, g.id) }}
+              {% endfor %}
+            </div>
+          </div>
+          {% endif %}
+
+        {% else %}
+          {# No WPs — flat element list #}
+          <div class="obs-row" style="gap:16px;align-items:flex-start;">
+            {% for entry in g.entries %}
+            {{ render_element(entry, g.color, g.id) }}
+            {% endfor %}
+          </div>
+        {% endif %}
+
       </div>
       {% endfor %}
 

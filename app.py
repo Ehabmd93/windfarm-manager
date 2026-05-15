@@ -1065,9 +1065,28 @@ def api_delete_area(aid):
     if current_user.role not in ('engineer', 'manager', 'admin'):
         return jsonify({'error': 'Forbidden'}), 403
     area = Area.query.get_or_404(aid)
-    db.session.delete(area)
-    db.session.commit()
-    return jsonify({'ok': True})
+    try:
+        # Explicitly cascade to avoid FK constraint issues on PostgreSQL
+        for test in list(area.required_tests):
+            for rec in list(test.records):
+                db.session.delete(rec)
+            for pr in list(test.proof_rolls):
+                for obj in list(pr.signatories):    db.session.delete(obj)
+                for obj in list(pr.equipment_rows): db.session.delete(obj)
+                for obj in list(pr.pr_photos):      db.session.delete(obj)
+                for obj in list(pr.rect_photos):    db.session.delete(obj)
+                db.session.delete(pr)
+            for ph in list(test.photos):
+                db.session.delete(ph)
+            db.session.delete(test)
+        for act in list(area.activities):
+            db.session.delete(act)
+        db.session.delete(area)
+        db.session.commit()
+        return jsonify({'ok': True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/areas/<int:aid>/tests', methods=['POST'])
@@ -1216,19 +1235,36 @@ def proof_roll_index():
             wtg_entry['areas'].append({'area': area, 'tests': area_rows})
         summary.append(wtg_entry)
 
-    # Build grouped structure — use WP→group chain; fall back to direct group FK
-    groups_map = {}   # group_id → {'group': obj, 'entries': []}
+    # Build grouped structure — GROUP → WP → ELEMENT hierarchy
+    groups_map = {}
     ungrouped  = []
     for entry in summary:
         wtg   = entry['wtg']
         g_obj = (wtg.work_package.group if wtg.work_package else None) or wtg.group
+        wp_obj = wtg.work_package
         if g_obj:
             if g_obj.id not in groups_map:
-                groups_map[g_obj.id] = {'group': g_obj, 'entries': []}
-            groups_map[g_obj.id]['entries'].append(entry)
+                groups_map[g_obj.id] = {'group': g_obj, 'wps': {}, 'ungrouped_entries': []}
+            gd = groups_map[g_obj.id]
+            if wp_obj:
+                if wp_obj.id not in gd['wps']:
+                    gd['wps'][wp_obj.id] = {'wp': wp_obj, 'entries': []}
+                gd['wps'][wp_obj.id]['entries'].append(entry)
+            else:
+                gd['ungrouped_entries'].append(entry)
         else:
             ungrouped.append(entry)
-    grouped = sorted(groups_map.values(), key=lambda x: (x['group'].sort_order, x['group'].name))
+
+    grouped = []
+    for gd in sorted(groups_map.values(), key=lambda x: (x['group'].sort_order, x['group'].name)):
+        wps_sorted = sorted(gd['wps'].values(), key=lambda x: (x['wp'].sort_order, x['wp'].name))
+        all_entries = [e for w in wps_sorted for e in w['entries']] + gd['ungrouped_entries']
+        grouped.append({
+            'group': gd['group'],
+            'entries': all_entries,
+            'wps': wps_sorted,
+            'ungrouped_entries': gd['ungrouped_entries'],
+        })
 
     return render_template('proof_roll_index.html',
                            summary=summary,

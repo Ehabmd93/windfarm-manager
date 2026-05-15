@@ -1134,13 +1134,15 @@ async function submitAddArea() {
   showToast(`Area "${data.label}" added`, 'success');
 }
 async function deleteArea(areaId, elId) {
-  if (!confirm('Remove this area and all its QA records?')) return;
-  const res = await fetch(`/api/areas/${areaId}`, { method:'DELETE' });
+  if (!confirm('Remove this area and all its QA records? This cannot be undone.')) return;
+  const res  = await fetch(`/api/areas/${areaId}`, { method:'DELETE' });
+  const data = await res.json().catch(() => ({}));
   if (res.ok) {
-    document.getElementById('areapill-' + areaId)?.remove();
     showToast('Area removed', 'success');
+    setTimeout(() => location.reload(), 600);
   } else {
-    showToast('Error','error');
+    showToast(data.error || 'Error deleting area — check console', 'error');
+    console.error('Delete area error:', data);
   }
 }
 
