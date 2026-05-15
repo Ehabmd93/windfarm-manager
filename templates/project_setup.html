@@ -351,15 +351,28 @@
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
     <div>
       <p class="font-bold text-slate-800">Areas</p>
-      <p class="text-xs text-slate-400 mt-0.5">Manage areas per element — click an area to manage its activities</p>
+      <p class="text-xs text-slate-400 mt-0.5">Click an area to manage activities · Edit mode to select & bulk-delete</p>
     </div>
-    <button onclick="openBulkAddArea()" class="btn-sm" style="background:#f59e0b;color:#fff;border:none;">
-      <i class="fa-solid fa-plus mr-1"></i> Add Area to Elements
-    </button>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+      <!-- Bulk delete bar (shown in edit mode) -->
+      <div id="areas-bulk-bar" style="display:none;align-items:center;gap:8px;">
+        <span id="areas-sel-count" style="font-size:12px;font-weight:600;color:#64748b;">0 selected</span>
+        <button onclick="deleteSelectedAreas()"
+                style="background:#fee2e2;color:#dc2626;border:none;padding:6px 14px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">
+          <i class="fa-solid fa-trash mr-1"></i> Delete Selected
+        </button>
+      </div>
+      <button id="areas-edit-btn" onclick="toggleAreasEditMode()" class="btn-sm btn-ghost">
+        <i class="fa-solid fa-pen mr-1"></i> Edit Areas
+      </button>
+      <button onclick="openBulkAddArea()" class="btn-sm" style="background:#f59e0b;color:#fff;border:none;">
+        <i class="fa-solid fa-plus mr-1"></i> Add Area to Elements
+      </button>
+    </div>
   </div>
   {% if elements %}
   {% for el in elements %}
-  <div style="border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;margin-bottom:10px;">
+  <div style="border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;margin-bottom:10px;" id="el-areas-card-{{ el.id }}">
     <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:#f8fafc;border-bottom:1px solid #f1f5f9;">
       <i class="fa-solid fa-tower-broadcast text-slate-400" style="font-size:12px;"></i>
       <span style="font-weight:700;font-size:14px;color:#1e293b;flex:1;">{{ el.name }}</span>
@@ -371,31 +384,41 @@
       <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:{{ el.work_package.group.color }}22;color:{{ el.work_package.group.color }};">{{ el.work_package.group.name }}</span>
       {% endif %}
       {% endif %}
-      <button onclick="openAddArea({{ el.id }}, '{{ el.name }}')"
+      <button onclick="openAddArea({{ el.id }}, '{{ el.name }}')" class="area-add-btn"
               style="font-size:11px;font-weight:700;padding:4px 10px;border-radius:7px;background:#fef3c7;color:#d97706;border:none;cursor:pointer;">
         <i class="fa-solid fa-plus mr-1"></i> Add Area
       </button>
     </div>
-    {% if el.areas %}
-    <div style="padding:10px 14px;display:flex;flex-wrap:wrap;gap:8px;">
+    <div style="padding:10px 14px;display:flex;flex-wrap:wrap;gap:8px;" id="el-areas-body-{{ el.id }}">
+      {% if el.areas %}
       {% for area in el.areas %}
-      <div style="display:inline-flex;align-items:center;gap:8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:9px;padding:7px 12px;cursor:pointer;transition:all .15s;"
-           onclick="openActivityModal({{ area.id }}, '{{ area.label }}', '{{ el.name }}')"
-           onmouseover="this.style.background='#fef3c7';this.style.borderColor='#f59e0b';"
-           onmouseout="this.style.background='#f8fafc';this.style.borderColor='#e2e8f0';">
-        <i class="fa-solid fa-map-pin" style="color:#f59e0b;font-size:11px;"></i>
-        <span style="font-size:12px;font-weight:700;color:#334155;">{{ area.label }}</span>
-        {% if area.activities %}
-        <span style="background:#f59e0b;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:800;">{{ area.activities|length }} act.</span>
-        {% endif %}
-        <span onclick="event.stopPropagation();deleteArea({{ area.id }}, {{ el.id }})"
-              style="color:#94a3b8;cursor:pointer;font-size:15px;font-weight:900;line-height:1;" title="Remove area">×</span>
+      <div id="areacard-{{ area.id }}"
+           style="display:inline-flex;align-items:center;gap:8px;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:9px;padding:7px 12px;transition:all .15s;position:relative;">
+        <!-- Select checkbox (edit mode only) -->
+        <input type="checkbox" data-area-id="{{ area.id }}" data-el-id="{{ el.id }}"
+               class="area-select-cb"
+               style="display:none;width:15px;height:15px;accent-color:#ef4444;cursor:pointer;flex-shrink:0;"
+               onchange="updateAreasSelectedCount()">
+        <!-- Clickable part (opens activity modal) -->
+        <div style="display:flex;align-items:center;gap:8px;cursor:pointer;flex:1;"
+             onclick="if(!_areasEditMode)openActivityModal({{ area.id }}, '{{ area.label }}', '{{ el.name }}')"
+             onmouseover="if(!_areasEditMode){this.closest('div[id]').style.background='#fef3c7';this.closest('div[id]').style.borderColor='#f59e0b';}"
+             onmouseout="if(!_areasEditMode){this.closest('div[id]').style.background='#f8fafc';this.closest('div[id]').style.borderColor='#e2e8f0';}">
+          <i class="fa-solid fa-map-pin" style="color:#f59e0b;font-size:11px;"></i>
+          <span style="font-size:13px;font-weight:700;color:#334155;">{{ area.label }}</span>
+          {% if area.activities %}
+          <span style="background:#f59e0b;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:800;">{{ area.activities|length }} act.</span>
+          {% endif %}
+        </div>
+        <!-- Delete × (shown in normal mode) -->
+        <span class="area-del-btn" onclick="deleteArea({{ area.id }}, {{ el.id }})"
+              style="color:#94a3b8;cursor:pointer;font-size:16px;font-weight:900;line-height:1;padding:0 2px;" title="Remove area">×</span>
       </div>
       {% endfor %}
+      {% else %}
+      <div style="font-size:12px;color:#94a3b8;font-style:italic;padding:4px 0;">No areas yet — click "Add Area" to get started</div>
+      {% endif %}
     </div>
-    {% else %}
-    <div style="padding:12px 16px;font-size:12px;color:#94a3b8;font-style:italic;">No areas yet — click "Add Area" to get started</div>
-    {% endif %}
   </div>
   {% endfor %}
   {% else %}
@@ -433,7 +456,7 @@
       {% endif %}
     </div>
     {% for area in el.areas %}
-    <div style="padding:10px 14px;border-bottom:1px solid #f8fafc;">
+    <div id="actarea-{{ area.id }}" style="padding:10px 14px;border-bottom:1px solid #f8fafc;">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
         <i class="fa-solid fa-map-pin" style="color:#f59e0b;font-size:11px;"></i>
         <span style="font-weight:700;font-size:13px;color:#475569;">{{ area.label }}</span>
@@ -990,13 +1013,23 @@
 <script>
 const PID = {{ proj.id }};
 
-// ── Tab switching ────────────────────────────────────────────────────────────
+// ── Tab switching (persists active tab across reloads) ───────────────────────
 function switchTab(name, btn) {
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
   if (btn) btn.classList.add('active');
+  try { localStorage.setItem('setup_tab_' + PID, name); } catch(e) {}
 }
+document.addEventListener('DOMContentLoaded', () => {
+  try {
+    const saved = localStorage.getItem('setup_tab_' + PID);
+    if (saved) {
+      const btn = document.getElementById('tab-btn-' + saved);
+      if (btn) switchTab(saved, btn);
+    }
+  } catch(e) {}
+});
 
 // ── Toast (bottom-right, minor feedback) ────────────────────────────────────
 let _toastTimer;
@@ -1138,12 +1171,73 @@ async function deleteArea(areaId, elId) {
   const res  = await fetch(`/api/areas/${areaId}`, { method:'DELETE' });
   const data = await res.json().catch(() => ({}));
   if (res.ok) {
+    _removeAreaFromDOM(areaId);
     showToast('Area removed', 'success');
-    setTimeout(() => location.reload(), 600);
   } else {
-    showToast(data.error || 'Error deleting area — check console', 'error');
+    showToast(data.error || 'Error deleting area', 'error');
     console.error('Delete area error:', data);
   }
+}
+
+function _removeAreaFromDOM(areaId) {
+  // Remove from Elements tab pill
+  document.getElementById('areapill-' + areaId)?.remove();
+  // Remove from Areas tab card
+  document.getElementById('areacard-' + areaId)?.remove();
+  // Remove from Activities tab section
+  document.getElementById('actarea-' + areaId)?.remove();
+}
+
+// ── Areas Edit Mode (bulk delete) ────────────────────────────────────────────
+let _areasEditMode = false;
+
+function toggleAreasEditMode() {
+  _areasEditMode = !_areasEditMode;
+  const editBtn  = document.getElementById('areas-edit-btn');
+  const bulkBar  = document.getElementById('areas-bulk-bar');
+  const cbs      = document.querySelectorAll('.area-select-cb');
+  const delBtns  = document.querySelectorAll('.area-del-btn');
+  const addBtns  = document.querySelectorAll('.area-add-btn');
+
+  if (_areasEditMode) {
+    editBtn.innerHTML = '<i class="fa-solid fa-xmark mr-1"></i> Cancel';
+    editBtn.style.background = '#fee2e2'; editBtn.style.color = '#dc2626';
+    bulkBar.style.display = 'flex';
+    cbs.forEach(cb => { cb.style.display = 'block'; cb.checked = false; });
+    delBtns.forEach(b => b.style.display = 'none');
+    addBtns.forEach(b => b.style.display = 'none');
+  } else {
+    editBtn.innerHTML = '<i class="fa-solid fa-pen mr-1"></i> Edit Areas';
+    editBtn.style.background = ''; editBtn.style.color = '';
+    bulkBar.style.display = 'none';
+    cbs.forEach(cb => { cb.style.display = 'none'; cb.checked = false; });
+    delBtns.forEach(b => b.style.display = '');
+    addBtns.forEach(b => b.style.display = '');
+    updateAreasSelectedCount();
+  }
+}
+
+function updateAreasSelectedCount() {
+  const n = document.querySelectorAll('.area-select-cb:checked').length;
+  document.getElementById('areas-sel-count').textContent = `${n} selected`;
+}
+
+async function deleteSelectedAreas() {
+  const checked = [...document.querySelectorAll('.area-select-cb:checked')];
+  if (!checked.length) { showToast('Select at least one area', 'error'); return; }
+  if (!confirm(`Delete ${checked.length} area(s) and all their QA records? This cannot be undone.`)) return;
+  let deleted = 0;
+  for (const cb of checked) {
+    const areaId = parseInt(cb.dataset.areaId);
+    const res = await fetch(`/api/areas/${areaId}`, { method:'DELETE' });
+    if (res.ok) { _removeAreaFromDOM(areaId); deleted++; }
+    else {
+      const d = await res.json().catch(() => ({}));
+      showToast(d.error || `Failed to delete area ${areaId}`, 'error');
+    }
+  }
+  toggleAreasEditMode();
+  if (deleted) showToast(`${deleted} area(s) deleted`, 'success');
 }
 
 // ── Groups ───────────────────────────────────────────────────────────────────
