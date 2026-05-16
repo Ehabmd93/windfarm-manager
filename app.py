@@ -828,17 +828,39 @@ def api_docs_search():
 @app.route('/')
 @login_required
 def dashboard():
+    from flask import g
+    proj = getattr(g, 'project', None)
+
     wtgs = wtg_summary()
-    total   = len(wtgs)
-    complete = sum(1 for w in wtgs if w.completion_pct == 100)
-    in_prog  = sum(1 for w in wtgs if 0 < w.completion_pct < 100)
+    total       = len(wtgs)
+    complete    = sum(1 for w in wtgs if w.completion_pct == 100)
+    in_prog     = sum(1 for w in wtgs if 0 < w.completion_pct < 100)
     not_started = sum(1 for w in wtgs if w.completion_pct == 0)
+
+    # Project Setup brain stats
+    pid            = proj.id if proj else None
+    group_count    = WTGGroup.query.filter_by(project_id=pid).count()   if pid else 0
+    wp_count       = WorkPackage.query.filter_by(project_id=pid).count() if pid else 0
+    element_count  = WTG.query.filter_by(project_id=pid).count()         if pid else 0
+    area_count     = Area.query.join(WTG, Area.element_id == WTG.id)\
+                         .filter(WTG.project_id == pid).count()          if pid else 0
+    activity_count = Activity.query.join(Area, Activity.area_id == Area.id)\
+                         .join(WTG, Area.element_id == WTG.id)\
+                         .filter(WTG.project_id == pid).count()          if pid else 0
+    member_count   = len(proj.members) if proj else 0
+
     return render_template('dashboard.html',
                            wtgs=wtgs,
                            total=total,
                            complete=complete,
                            in_prog=in_prog,
-                           not_started=not_started)
+                           not_started=not_started,
+                           group_count=group_count,
+                           wp_count=wp_count,
+                           element_count=element_count,
+                           area_count=area_count,
+                           activity_count=activity_count,
+                           member_count=member_count)
 
 # ─── Project Setup (elements + groups) ──────────────────────────────────────
 @app.route('/projects/<int:pid>/setup')
