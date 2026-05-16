@@ -838,16 +838,19 @@ def dashboard():
     not_started = sum(1 for w in wtgs if w.completion_pct == 0)
 
     # Project Setup brain stats
-    pid            = proj.id if proj else None
-    group_count    = WTGGroup.query.filter_by(project_id=pid).count()   if pid else 0
-    wp_count       = WorkPackage.query.filter_by(project_id=pid).count() if pid else 0
-    element_count  = WTG.query.filter_by(project_id=pid).count()         if pid else 0
-    area_count     = Area.query.join(WTG, Area.element_id == WTG.id)\
-                         .filter(WTG.project_id == pid).count()          if pid else 0
-    activity_count = Activity.query.join(Area, Activity.area_id == Area.id)\
-                         .join(WTG, Area.element_id == WTG.id)\
-                         .filter(WTG.project_id == pid).count()          if pid else 0
-    member_count   = len(proj.members) if proj else 0
+    pid = proj.id if proj else None
+    try:
+        group_count    = WTGGroup.query.filter_by(project_id=pid).count()    if pid else 0
+        wp_count       = WorkPackage.query.filter_by(project_id=pid).count() if pid else 0
+        element_count  = WTG.query.filter_by(project_id=pid).count()         if pid else 0
+        area_count     = Area.query.join(WTG, Area.wtg_id == WTG.id)\
+                             .filter(WTG.project_id == pid).count()           if pid else 0
+        activity_count = Activity.query.join(Area, Activity.area_id == Area.id)\
+                             .join(WTG, Area.wtg_id == WTG.id)\
+                             .filter(WTG.project_id == pid).count()           if pid else 0
+        member_count   = len(proj.members) if proj else 0
+    except Exception:
+        group_count = wp_count = element_count = area_count = activity_count = member_count = 0
 
     return render_template('dashboard.html',
                            wtgs=wtgs,
@@ -2599,18 +2602,22 @@ def health():
 
 # ─── Safe column migrations ───────────────────────────────────────────────────
 def run_migrations():
-    with app.app_context():
-        with db.engine.connect() as conn:
-            cols_to_add = [
-                ("users", "position",     "VARCHAR(100) DEFAULT ''"),
-                ("users", "avatar_color", "VARCHAR(20)  DEFAULT '#4f46e5'"),
-            ]
-            for table, col, typedef in cols_to_add:
-                try:
-                    conn.execute(db.text(f"ALTER TABLE {table} ADD COLUMN {col} {typedef}"))
-                    conn.commit()
-                except Exception:
-                    conn.rollback()  # column already exists — ignore
+    try:
+        with app.app_context():
+            with db.engine.connect() as conn:
+                cols_to_add = [
+                    ("users", "position",     "VARCHAR(100) DEFAULT ''"),
+                    ("users", "avatar_color", "VARCHAR(20)  DEFAULT '#4f46e5'"),
+                ]
+                for table, col, typedef in cols_to_add:
+                    try:
+                        conn.execute(db.text(f"ALTER TABLE {table} ADD COLUMN {col} {typedef}"))
+                        conn.commit()
+                    except Exception:
+                        try: conn.rollback()
+                        except Exception: pass
+    except Exception:
+        pass  # migration errors must never crash startup
 
 # ─── Startup: create tables, dirs, seed ──────────────────────────────────────
 def startup():
