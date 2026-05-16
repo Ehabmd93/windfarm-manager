@@ -236,15 +236,15 @@
       </div>
       <div>
         <h3 style="font-size:15px;font-weight:800;color:#0f172a;margin:0;">QA Management</h3>
-        <p style="font-size:11px;color:#94a3b8;margin:0;">Quality assurance &amp; testing records</p>
+        <p style="font-size:11px;color:#94a3b8;margin:0;">Quality assurance & testing records</p>
       </div>
     </div>
     <div style="display:flex;flex-direction:column;gap:8px;">
 
       {% set qa_modules = [
-        ('proof_rolling',    url_for('proof_roll_index'), 'fa-file-circle-check', '#22c55e', '#dcfce7', 'Proof Rolling',    'Record &amp; review proof roll tests'),
-        ('geo_testing',      '#',                         'fa-microscope',        '#10b981', '#d1fae5', 'Geo Testing',      'DCP, compaction &amp; geo test records'),
-        ('itp',              url_for('itp_index'),        'fa-clipboard-list',    '#8b5cf6', '#ede9fe', 'ITPs',             'Inspection test plans &amp; hold points'),
+        ('proof_rolling',    url_for('proof_roll_index'), 'fa-file-circle-check', '#22c55e', '#dcfce7', 'Proof Rolling',    'Record & review proof roll tests'),
+        ('geo_testing',      '#',                         'fa-microscope',        '#10b981', '#d1fae5', 'Geo Testing',      'DCP, compaction & geo test records'),
+        ('itp',              url_for('itp_index'),        'fa-clipboard-list',    '#8b5cf6', '#ede9fe', 'ITPs',             'Inspection test plans & hold points'),
         ('foundation',       url_for('foundation_index'), 'fa-layer-group',       '#f97316', '#fff7ed', 'Foundation Tracker','Foundation stage tracking'),
       ] %}
       {% for key, href, icon, color, bg, title, desc in qa_modules %}
@@ -288,7 +288,7 @@
         </div>
         <div>
           <h3 style="font-size:15px;font-weight:800;color:#0f172a;margin:0;">Analytics</h3>
-          <p style="font-size:11px;color:#94a3b8;margin:0;">Progress, charts &amp; trends</p>
+          <p style="font-size:11px;color:#94a3b8;margin:0;">Progress, charts & trends</p>
         </div>
       </div>
       <div style="display:flex;flex-direction:column;gap:8px;">
@@ -300,7 +300,7 @@
           </div>
           <div style="flex:1;">
             <div class="mod-title">Progress Tracker</div>
-            <div class="mod-desc">Live completion charts &amp; area breakdowns</div>
+            <div class="mod-desc">Live completion charts & area breakdowns</div>
           </div>
           <div class="active-dot"></div>
         </a>
@@ -348,7 +348,7 @@
       </div>
       <div style="flex:1;">
         <div style="font-size:13px;font-weight:800;color:#0f172a;">Documents</div>
-        <div style="font-size:11px;color:#94a3b8;">Upload, version &amp; share project files</div>
+        <div style="font-size:11px;color:#94a3b8;">Upload, version & share project files</div>
       </div>
       <div class="active-dot"></div>
     </a>
@@ -368,7 +368,7 @@
       </div>
       <div>
         <h3 style="font-size:15px;font-weight:800;color:#0f172a;margin:0;">Site Operations</h3>
-        <p style="font-size:11px;color:#94a3b8;margin:0;">Daily site management &amp; capture</p>
+        <p style="font-size:11px;color:#94a3b8;margin:0;">Daily site management & capture</p>
       </div>
     </div>
     <div style="display:flex;flex-direction:column;gap:8px;">
@@ -377,7 +377,7 @@
       {% if proj and proj.feature_enabled('daily_report') %}
       <a href="#" class="mod-card">
         <div class="mod-icon" style="background:#dbeafe;"><i class="fa-solid fa-clipboard-user" style="color:#2563eb;font-size:17px;"></i></div>
-        <div style="flex:1;"><div class="mod-title">Daily Report</div><div class="mod-desc">Log site activities, progress &amp; workforce</div></div>
+        <div style="flex:1;"><div class="mod-title">Daily Report</div><div class="mod-desc">Log site activities, progress & workforce</div></div>
         <div class="active-dot"></div>
       </a>
       {% else %}
@@ -392,7 +392,7 @@
       {% if proj and proj.feature_enabled('site_capture') %}
       <a href="#" class="mod-card">
         <div class="mod-icon" style="background:#ede9fe;"><i class="fa-solid fa-camera-retro" style="color:#7c3aed;font-size:17px;"></i></div>
-        <div style="flex:1;"><div class="mod-title">Daily Site Capture</div><div class="mod-desc">Photos &amp; videos of site conditions</div></div>
+        <div style="flex:1;"><div class="mod-title">Daily Site Capture</div><div class="mod-desc">Photos & videos of site conditions</div></div>
         <div class="active-dot"></div>
       </a>
       {% else %}
@@ -413,8 +413,8 @@
         <i class="fa-solid fa-people-group" style="color:#a21caf;font-size:15px;"></i>
       </div>
       <div>
-        <h3 style="font-size:15px;font-weight:800;color:#0f172a;margin:0;">People &amp; Resources</h3>
-        <p style="font-size:11px;color:#94a3b8;margin:0;">Workforce, scheduling &amp; attendance</p>
+        <h3 style="font-size:15px;font-weight:800;color:#0f172a;margin:0;">People & Resources</h3>
+        <p style="font-size:11px;color:#94a3b8;margin:0;">Workforce, scheduling & attendance</p>
       </div>
     </div>
     <div style="display:flex;flex-direction:column;gap:8px;">
@@ -423,7 +423,7 @@
       {% if proj and proj.feature_enabled('roster') %}
       <a href="#" class="mod-card">
         <div class="mod-icon" style="background:#fae8ff;"><i class="fa-solid fa-users" style="color:#a21caf;font-size:17px;"></i></div>
-        <div style="flex:1;"><div class="mod-title">Roster</div><div class="mod-desc">Crew scheduling &amp; site attendance</div></div>
+        <div style="flex:1;"><div class="mod-title">Roster</div><div class="mod-desc">Crew scheduling & site attendance</div></div>
         <div class="active-dot"></div>
       </a>
       {% else %}
@@ -467,10 +467,10 @@
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
     <div>
       <h2 style="font-weight:800;color:#0f172a;font-size:16px;margin:0;">
-        <i class="fa-solid fa-tower-broadcast" style="color:#3b82f6;margin-right:8px;font-size:14px;"></i>
-        Elements Overview
+        <i class="fa-solid fa-cubes" style="color:#3b82f6;margin-right:8px;font-size:14px;"></i>
+        Project Elements
       </h2>
-      <p style="font-size:12px;color:#94a3b8;margin:4px 0 0;">{{ element_count }} element{{ 's' if element_count != 1 else '' }} configured in this project</p>
+      <p style="font-size:12px;color:#94a3b8;margin:4px 0 0;">{{ element_count }} element{{ 's' if element_count != 1 else '' }} · click any to view details</p>
     </div>
     {% if proj %}
     <a href="{{ url_for('project_setup', pid=proj.id) }}" style="font-size:12px;font-weight:700;color:#4f46e5;text-decoration:none;display:flex;align-items:center;gap:4px;">

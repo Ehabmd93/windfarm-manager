@@ -115,7 +115,7 @@
         </div>
         <div>
           <p style="color:#f1f5f9;font-weight:800;font-size:13px;line-height:1.2;">QA Manager</p>
-          <p style="color:#475569;font-size:10px;margin-top:1px;">Lucas TCS · CBOP</p>
+          <p style="color:#475569;font-size:10px;margin-top:1px;">Project Management Platform</p>
         </div>
       </div>
 
@@ -196,9 +196,9 @@
         <i class="fa-solid fa-map" style="width:16px;color:#34d399;"></i>
         <span>Map</span>
       </a>
-      <a href="{{ url_for('dashboard') }}#wtg-grid" class="sidebar-link" style="margin-top:3px;">
+      <a href="{{ url_for('dashboard') }}#el-grid" class="sidebar-link" style="margin-top:3px;">
         <i class="fa-solid fa-tower-broadcast" style="width:16px;color:#60a5fa;"></i>
-        <span>All WTGs</span>
+        <span>All Elements</span>
       </a>
       <a href="{{ url_for('projects_list') }}" class="sidebar-link {% if request.endpoint in ['projects_list','new_project','project_settings'] %}active{% endif %}" style="margin-top:3px;">
         <i class="fa-solid fa-folder-open" style="width:16px;color:#f59e0b;"></i>
@@ -220,73 +220,108 @@
         <span>Documents</span>
       </a>
 
-      <!-- Modules -->
+      <!-- Dynamic modules based on active project features -->
+      {% if active_project %}
       <div class="nav-section" style="color:#94a3b8;margin-top:18px;">Modules</div>
 
-      <!-- Daily Report — coming soon -->
-      <div class="sidebar-link" style="cursor:default;opacity:0.55;">
+      <!-- Daily Report -->
+      {% if active_project.feature_enabled('daily_report') %}
+      <a href="#" class="sidebar-link" style="margin-top:3px;">
         <i class="fa-solid fa-clipboard-user" style="width:16px;color:#38bdf8;"></i>
         <span>Daily Report</span>
-        <span style="margin-left:auto;font-size:9px;background:rgba(56,189,248,0.15);color:#38bdf8;padding:2px 6px;border-radius:8px;font-weight:700;white-space:nowrap;">SOON</span>
-      </div>
+        <span style="margin-left:auto;font-size:9px;background:rgba(56,189,248,0.15);color:#38bdf8;padding:2px 6px;border-radius:8px;font-weight:700;">SOON</span>
+      </a>
+      {% endif %}
 
       <!-- QA — collapsible -->
+      {% if active_project.feature_enabled('proof_rolling') or active_project.feature_enabled('geo_testing') or active_project.feature_enabled('itp') %}
       <div>
         <button onclick="toggleQANav()" id="qa-nav-btn"
-          class="sidebar-link {% if request.endpoint in ['proof_roll_index','proof_roll_form','view_proof_roll','itp_index','itp_detail','itp_export','progress_tracker'] %}active{% endif %}"
+          class="sidebar-link {% if request.endpoint in ['proof_roll_index','proof_roll_form','view_proof_roll','itp_index','itp_detail','itp_export'] %}active{% endif %}"
           style="width:100%;text-align:left;background:none;border:none;cursor:pointer;margin-top:3px;">
           <i class="fa-solid fa-shield-halved" style="width:16px;color:#34d399;"></i>
           <span>QA</span>
           <i id="qa-nav-arrow" class="fa-solid fa-chevron-down qa-toggle-arrow"
-             style="{% if request.endpoint in ['proof_roll_index','proof_roll_form','view_proof_roll','itp_index','itp_detail','itp_export','progress_tracker'] %}transform:rotate(180deg){% endif %}"></i>
+             style="{% if request.endpoint in ['proof_roll_index','proof_roll_form','view_proof_roll','itp_index','itp_detail','itp_export'] %}transform:rotate(180deg){% endif %}"></i>
         </button>
-        <div class="qa-submenu {% if request.endpoint in ['proof_roll_index','proof_roll_form','view_proof_roll','itp_index','itp_detail','itp_export','progress_tracker'] %}open{% endif %}" id="qa-nav-sub">
+        <div class="qa-submenu {% if request.endpoint in ['proof_roll_index','proof_roll_form','view_proof_roll','itp_index','itp_detail','itp_export'] %}open{% endif %}" id="qa-nav-sub">
+          {% if active_project.feature_enabled('proof_rolling') %}
           <a href="{{ url_for('proof_roll_index') }}" class="sub-link {% if request.endpoint in ['proof_roll_index','proof_roll_form','view_proof_roll'] %}active{% endif %}">
             <i class="fa-solid fa-file-circle-check" style="width:14px;"></i> Proof Rolling
           </a>
-          <a href="{{ url_for('dashboard') }}" class="sub-link {% if request.endpoint=='test_record' %}active{% endif %}">
-            <i class="fa-solid fa-microscope" style="width:14px;"></i> Geo Testing Records
+          {% endif %}
+          {% if active_project.feature_enabled('geo_testing') %}
+          <a href="#" class="sub-link">
+            <i class="fa-solid fa-microscope" style="width:14px;"></i> Geo Testing
           </a>
+          {% endif %}
+          {% if active_project.feature_enabled('itp') %}
           <a href="{{ url_for('itp_index') }}" class="sub-link {% if request.endpoint in ('itp_index','itp_detail','itp_export') %}active{% endif %}">
             <i class="fa-solid fa-clipboard-list" style="width:14px;"></i> ITPs
           </a>
-          <a href="{{ url_for('progress_tracker') }}" class="sub-link {% if request.endpoint=='progress_tracker' %}active{% endif %}">
-            <i class="fa-solid fa-chart-line" style="width:14px;"></i> Analytics
-          </a>
+          {% endif %}
         </div>
       </div>
+      {% endif %}
 
-      <!-- Daily Site Capture — coming soon -->
-      <div class="sidebar-link" style="cursor:default;opacity:0.55;margin-top:3px;">
-        <i class="fa-solid fa-camera-retro" style="width:16px;color:#a78bfa;"></i>
-        <span>Daily Site Capture</span>
-        <span style="margin-left:auto;font-size:9px;background:rgba(167,139,250,0.15);color:#a78bfa;padding:2px 6px;border-radius:8px;font-weight:700;white-space:nowrap;">SOON</span>
-      </div>
+      <!-- Analytics -->
+      {% if active_project.feature_enabled('progress_tracker') %}
+      <a href="{{ url_for('progress_tracker') }}" class="sidebar-link {% if request.endpoint=='progress_tracker' %}active{% endif %}" style="margin-top:3px;">
+        <i class="fa-solid fa-chart-line" style="width:16px;color:#22d3ee;"></i>
+        <span>Analytics</span>
+      </a>
+      {% endif %}
 
-      <!-- Roster — coming soon -->
-      <div class="sidebar-link" style="cursor:default;opacity:0.55;margin-top:3px;">
-        <i class="fa-solid fa-users" style="width:16px;color:#c084fc;"></i>
-        <span>Roster</span>
-        <span style="margin-left:auto;font-size:9px;background:rgba(192,132,252,0.15);color:#c084fc;padding:2px 6px;border-radius:8px;font-weight:700;white-space:nowrap;">SOON</span>
-      </div>
-
-      <!-- Foundation -->
-      <div class="nav-section" style="color:#fb923c;margin-top:18px;">Site Works</div>
-      <a href="{{ url_for('foundation_index') }}" class="sidebar-link {% if request.endpoint == 'foundation_index' %}active{% endif %}">
+      <!-- Foundation Tracker -->
+      {% if active_project.feature_enabled('foundation') %}
+      <a href="{{ url_for('foundation_index') }}" class="sidebar-link {% if request.endpoint=='foundation_index' %}active{% endif %}" style="margin-top:3px;">
         <i class="fa-solid fa-layer-group" style="width:16px;color:#fb923c;"></i>
         <span>Foundation Tracker</span>
       </a>
+      {% endif %}
+
+      <!-- Daily Site Capture -->
+      {% if active_project.feature_enabled('site_capture') %}
+      <a href="#" class="sidebar-link" style="margin-top:3px;">
+        <i class="fa-solid fa-camera-retro" style="width:16px;color:#a78bfa;"></i>
+        <span>Daily Site Capture</span>
+        <span style="margin-left:auto;font-size:9px;background:rgba(167,139,250,0.15);color:#a78bfa;padding:2px 6px;border-radius:8px;font-weight:700;">SOON</span>
+      </a>
+      {% endif %}
+
+      <!-- Roster -->
+      {% if active_project.feature_enabled('roster') %}
+      <a href="#" class="sidebar-link" style="margin-top:3px;">
+        <i class="fa-solid fa-users" style="width:16px;color:#c084fc;"></i>
+        <span>Roster</span>
+        <span style="margin-left:auto;font-size:9px;background:rgba(192,132,252,0.15);color:#c084fc;padding:2px 6px;border-radius:8px;font-weight:700;">SOON</span>
+      </a>
+      {% endif %}
+
+      <!-- Documents -->
+      {% if active_project.feature_enabled('documents') %}
+      <a href="{{ url_for('documents_list') }}" class="sidebar-link {% if request.endpoint in ['documents_list','document_upload','document_detail'] %}active{% endif %}" style="margin-top:3px;">
+        <i class="fa-solid fa-folder-open" style="width:16px;color:#f59e0b;"></i>
+        <span>Documents</span>
+      </a>
+      {% endif %}
+
+      <!-- Admin tools -->
       {% if current_user.is_authenticated and current_user.role in ['engineer','manager','admin'] %}
-      <a href="{{ url_for('custom_fields') }}" class="sidebar-link {% if request.endpoint=='custom_fields' %}active{% endif %}" style="margin-top:3px;">
+      <div class="nav-section" style="color:#475569;margin-top:18px;">Settings</div>
+      <a href="{{ url_for('custom_fields') }}" class="sidebar-link {% if request.endpoint=='custom_fields' %}active{% endif %}">
         <i class="fa-solid fa-sliders" style="width:16px;color:#94a3b8;"></i>
         <span>Custom Fields</span>
       </a>
       {% endif %}
-      {% if current_user.role == 'admin' %}
-      <a href="{{ url_for('foundation_stage_settings') }}" class="sidebar-link {% if request.endpoint == 'foundation_stage_settings' %}active{% endif %}" style="margin-top:3px;">
-        <i class="fa-solid fa-gear" style="width:16px;color:#fdba74;"></i>
-        <span>Stage Settings</span>
-      </a>
+
+      {% else %}
+      <!-- No active project — show generic nav -->
+      <div class="nav-section" style="color:#94a3b8;margin-top:18px;">Modules</div>
+      <div class="sidebar-link" style="opacity:0.4;cursor:default;">
+        <i class="fa-solid fa-lock" style="width:16px;color:#475569;"></i>
+        <span style="font-size:12px;">Select a project to see modules</span>
+      </div>
       {% endif %}
 
     </nav>
@@ -355,7 +390,7 @@
     </main>
 
     <footer class="px-8 py-4 text-center text-xs text-slate-400 border-t border-slate-100">
-      QA Manager Platform · {% if current_user.is_authenticated and current_user.company %}{{ current_user.company }} · {% endif %}v1.0
+      QA Manager Platform{% if active_project %} · {{ active_project.name }}{% endif %} · v1.0
     </footer>
   </div>
 
