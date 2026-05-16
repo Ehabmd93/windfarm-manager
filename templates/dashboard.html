@@ -211,7 +211,7 @@
                 transition:all .2s;">
         <i class="fa-solid fa-sliders"></i> Configure Setup
       </a>
-      <a href="{{ url_for('map') }}"
+      <a href="{{ url_for('map_view') }}"
          style="display:inline-flex;align-items:center;gap:8px;padding:10px 18px;
                 background:rgba(255,255,255,.08);color:rgba(255,255,255,.8);
                 border:1px solid rgba(255,255,255,.15);border-radius:13px;
@@ -342,7 +342,7 @@
 
     <!-- Documents -->
     {% if proj and proj.feature_enabled('documents') %}
-    <a href="{{ url_for('documents') }}" class="card" style="border-radius:18px;padding:18px;text-decoration:none;display:flex;align-items:center;gap:14px;border:1.5px solid #e2e8f0;opacity:0;animation:fadeInUp .5s ease .4s forwards;transition:all .2s;">
+    <a href="{{ url_for('documents_list') }}" class="card" style="border-radius:18px;padding:18px;text-decoration:none;display:flex;align-items:center;gap:14px;border:1.5px solid #e2e8f0;opacity:0;animation:fadeInUp .5s ease .4s forwards;transition:all .2s;">
       <div style="width:44px;height:44px;border-radius:13px;background:#fef3c7;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
         <i class="fa-solid fa-folder-open" style="color:#d97706;font-size:18px;"></i>
       </div>
@@ -441,7 +441,7 @@
         <div style="display:flex;flex-wrap:wrap;gap:6px;">
           {% for m in proj.members[:8] %}
           <div title="{{ m.user.name }} — {{ m.proj_role|title }}"
-               style="width:30px;height:30px;border-radius:50%;background:{{ m.user.avatar_color or '#4f46e5' }};
+               style="width:30px;height:30px;border-radius:50%;background:{{ (m.user.avatar_color if m.user.avatar_color is defined else None) or '#4f46e5' }};
                       display:flex;align-items:center;justify-content:center;color:white;
                       font-size:11px;font-weight:800;border:2px solid white;
                       box-shadow:0 1px 4px rgba(0,0,0,.15);">
