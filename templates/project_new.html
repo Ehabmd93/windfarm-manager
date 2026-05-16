@@ -59,6 +59,25 @@
 .member-row { display:flex; align-items:center; gap:10px; padding:10px 14px;
   background:#f8fafc; border-radius:10px; border:1px solid #e2e8f0; }
 
+.feat-card {
+  display:flex; flex-direction:column; gap:10px;
+  padding:16px; border-radius:16px;
+  border:2px solid #e2e8f0; background:white; cursor:pointer;
+  transition:all .2s; position:relative; overflow:hidden;
+}
+.feat-card:hover { border-color:#c7d2fe; background:#fafafe; transform:translateY(-1px); box-shadow:0 4px 12px rgba(79,70,229,.1); }
+.feat-card.on { border-color:#4f46e5; background:#f5f3ff; }
+.feat-card.on::after {
+  content:'\f00c'; font-family:'Font Awesome 6 Free'; font-weight:900;
+  position:absolute; top:10px; right:10px; width:20px; height:20px;
+  background:#4f46e5; color:white; border-radius:50%;
+  display:flex; align-items:center; justify-content:center; font-size:9px;
+}
+.access-badge {
+  display:inline-flex; align-items:center; gap:4px;
+  padding:3px 9px; border-radius:20px; font-size:11px; font-weight:700;
+}
+
 .btn-next { display:inline-flex; align-items:center; gap:8px; padding:12px 28px;
   background:linear-gradient(135deg,#4f46e5,#6366f1); color:white;
   border:none; border-radius:12px; font-size:14px; font-weight:700; cursor:pointer;
@@ -199,39 +218,83 @@
     <!-- ══ STEP 2: Team ══ -->
     <div class="wizard-step" id="step-2">
       <div class="card" style="border-radius:20px;padding:28px;">
-        <h2 style="font-size:18px;font-weight:800;color:#0f172a;margin-bottom:4px;">
-          <i class="fa-solid fa-users" style="color:#4f46e5;margin-right:8px;"></i>Project Team
-        </h2>
-        <p style="color:#94a3b8;font-size:13px;margin-bottom:20px;">Select team members and their roles.</p>
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px;">
+          <div>
+            <h2 style="font-size:18px;font-weight:800;color:#0f172a;margin-bottom:4px;">
+              <i class="fa-solid fa-users" style="color:#4f46e5;margin-right:8px;"></i>Project Team
+            </h2>
+            <p style="color:#94a3b8;font-size:13px;margin:0;">Add team members with their email and access level.</p>
+          </div>
+          <button type="button" onclick="showAddMemberForm()"
+                  style="display:flex;align-items:center;gap:6px;padding:9px 16px;background:linear-gradient(135deg,#4f46e5,#6366f1);color:white;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;box-shadow:0 2px 8px rgba(79,70,229,.3);">
+            <i class="fa-solid fa-user-plus"></i> Add Member
+          </button>
+        </div>
 
-        <div id="member-list" style="display:flex;flex-direction:column;gap:8px;">
-          {% for user in all_users %}
-          <div class="member-row" id="mrow-{{ user.id }}">
-            <input type="checkbox" id="chk-{{ user.id }}" onchange="toggleMember({{ user.id }})"
-                   style="width:16px;height:16px;accent-color:#4f46e5;cursor:pointer;"
-                   {% if user.id == current_user.id %}checked disabled{% endif %}/>
-            <div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#4f46e5,#6366f1);
-                        display:flex;align-items:center;justify-content:center;color:white;font-size:12px;font-weight:700;flex-shrink:0;">
-              {{ user.name[0].upper() }}
+        <!-- Add member inline form -->
+        <div id="add-member-form" style="display:none;background:#f5f3ff;border:2px solid #c7d2fe;border-radius:14px;padding:18px;margin-bottom:16px;">
+          <p style="font-size:12px;font-weight:800;color:#4f46e5;margin-bottom:12px;text-transform:uppercase;letter-spacing:.05em;">
+            <i class="fa-solid fa-user-plus mr-1"></i> New Team Member
+          </p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+            <div>
+              <label class="form-label">Full Name</label>
+              <input id="nm-name" class="form-input" placeholder="e.g. Ehab Habiba"/>
             </div>
-            <div style="flex:1;">
-              <div style="font-size:13px;font-weight:700;color:#0f172a;">{{ user.name }}</div>
-              <div style="font-size:11px;color:#94a3b8;">{{ user.email }} · {{ user.role|title }}</div>
-            </div>
-            <div id="role-wrap-{{ user.id }}" style="{% if user.id != current_user.id %}display:none;{% endif %}">
-              <input type="hidden" name="member_ids[]" value="{{ user.id }}"
-                     {% if user.id != current_user.id %}disabled{% endif %} id="uid-{{ user.id }}"/>
-              <select name="member_roles[]" class="form-input form-select"
-                      style="padding:6px 30px 6px 10px;font-size:12px;width:110px;"
-                      {% if user.id != current_user.id %}disabled{% endif %} id="role-{{ user.id }}">
-                <option value="lead"   {% if user.id == current_user.id %}selected{% endif %}>Lead</option>
-                <option value="member">Member</option>
-                <option value="viewer">Viewer</option>
-              </select>
+            <div>
+              <label class="form-label">Email <span style="color:#ef4444;">*</span></label>
+              <input id="nm-email" class="form-input" type="email" placeholder="e.g. ehab@gmail.com"/>
             </div>
           </div>
-          {% endfor %}
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+            <div>
+              <label class="form-label">Job Position / Title</label>
+              <input id="nm-position" class="form-input" placeholder="e.g. QA Engineer, Site Manager"/>
+            </div>
+            <div>
+              <label class="form-label">Access Level <span style="color:#ef4444;">*</span></label>
+              <select id="nm-access" class="form-input form-select">
+                {% for key, label, icon, color, desc in access_levels %}
+                <option value="{{ key }}" data-color="{{ color }}" data-icon="{{ icon }}" data-desc="{{ desc }}">{{ label }}</option>
+                {% endfor %}
+              </select>
+              <p id="nm-access-desc" style="font-size:11px;color:#6366f1;margin-top:4px;font-style:italic;"></p>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;justify-content:flex-end;">
+            <button type="button" onclick="hideAddMemberForm()"
+                    style="padding:8px 16px;background:#f1f5f9;color:#64748b;border:1.5px solid #e2e8f0;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;">Cancel</button>
+            <button type="button" onclick="addMemberToList()"
+                    style="padding:8px 18px;background:#4f46e5;color:white;border:none;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;">
+              <i class="fa-solid fa-check mr-1"></i> Add to Team
+            </button>
+          </div>
         </div>
+
+        <!-- Member list -->
+        <div id="member-list" style="display:flex;flex-direction:column;gap:8px;">
+          <!-- Creator row (always present) -->
+          <div class="member-row" style="border-color:#c7d2fe;background:#f5f3ff;">
+            <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#4f46e5,#6366f1);
+                        display:flex;align-items:center;justify-content:center;color:white;font-size:14px;font-weight:700;flex-shrink:0;">
+              {{ current_user.name[0].upper() }}
+            </div>
+            <div style="flex:1;">
+              <div style="font-size:13px;font-weight:700;color:#0f172a;">{{ current_user.name }} <span style="font-size:11px;color:#94a3b8;font-weight:400;">(you)</span></div>
+              <div style="font-size:11px;color:#94a3b8;">{{ current_user.email }}{% if current_user.position %} · {{ current_user.position }}{% endif %}</div>
+            </div>
+            <span class="access-badge" style="background:#fef3c7;color:#d97706;">
+              <i class="fa-solid fa-crown" style="font-size:9px;"></i> Owner
+            </span>
+          </div>
+        </div>
+
+        <p id="team-empty-hint" style="font-size:12px;color:#94a3b8;text-align:center;margin-top:14px;display:none;">
+          <i class="fa-solid fa-circle-info mr-1"></i> Only you so far — use "Add Member" to invite teammates.
+        </p>
+
+        <!-- Hidden field carrying member JSON -->
+        <input type="hidden" name="members_json" id="members-json" value="[]"/>
       </div>
 
       <div style="display:flex;justify-content:space-between;margin-top:16px;">
@@ -250,52 +313,67 @@
         <h2 style="font-size:18px;font-weight:800;color:#0f172a;margin-bottom:4px;">
           <i class="fa-solid fa-sliders" style="color:#4f46e5;margin-right:8px;"></i>Project Features
         </h2>
-        <p style="color:#94a3b8;font-size:13px;margin-bottom:20px;">
-          Choose which tools are available in this project. You can change these anytime.
+        <p style="color:#94a3b8;font-size:13px;margin-bottom:6px;">
+          Choose which modules to activate. You can change these anytime in Project Settings.
         </p>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:20px;">
+          <button type="button" onclick="selectAllFeatures(true)"
+                  style="font-size:11px;font-weight:700;color:#4f46e5;background:#f0f0ff;border:1px solid #c7d2fe;border-radius:6px;padding:4px 10px;cursor:pointer;">
+            <i class="fa-solid fa-check-double mr-1"></i>Select All
+          </button>
+          <button type="button" onclick="selectAllFeatures(false)"
+                  style="font-size:11px;font-weight:600;color:#64748b;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:4px 10px;cursor:pointer;">
+            Clear All
+          </button>
+          <span id="feat-count" style="font-size:11px;color:#94a3b8;margin-left:4px;">0 selected</span>
+        </div>
 
-        <div style="display:flex;flex-direction:column;gap:10px;">
+        {% set feat_descs = {
+          'proof_rolling':    'Record, review and sign off proof roll test passes',
+          'geo_testing':      'DCP, compaction and geo test records with auto-charting',
+          'itp':              'Inspection Test Plans, hold points and client sign-offs',
+          'foundation':       'Track foundation construction stages step by step',
+          'progress_tracker': 'Live project analytics, charts and completion dashboards',
+          'documents':        'Upload, version and share project documents',
+          'daily_report':     'Log daily site activities, progress and workforce summary',
+          'site_capture':     'Photo and video documentation of daily site conditions',
+          'roster':           'Workforce scheduling, crew management and attendance',
+        } %}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
           {% for key, label, icon, color in ALL_FEATURES %}
           {% set default_on = key in ('proof_rolling','geo_testing','itp','foundation','progress_tracker') %}
-          <div class="feat-toggle {% if default_on %}on{% endif %}" id="ft-{{ key }}">
-            <div style="display:flex;align-items:center;gap:12px;">
-              <div style="width:38px;height:38px;border-radius:12px;background:{{ color }}18;display:flex;align-items:center;justify-content:center;">
-                <i class="fa-solid {{ icon }}" style="color:{{ color }};font-size:16px;"></i>
+          <div class="feat-card {% if default_on %}on{% endif %}" id="ft-{{ key }}"
+               onclick="toggleFeat('{{ key }}')" style="min-height:110px;">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div style="width:44px;height:44px;border-radius:14px;background:{{ color }}20;
+                          display:flex;align-items:center;justify-content:center;flex-shrink:0;
+                          border:1.5px solid {{ color }}40;">
+                <i class="fa-solid {{ icon }}" style="color:{{ color }};font-size:18px;"></i>
               </div>
               <div>
-                <div style="font-size:13px;font-weight:700;color:#0f172a;">{{ label }}</div>
-                <div style="font-size:11px;color:#94a3b8;">
-                  {% if key == 'proof_rolling' %}Record and manage proof roll tests
-                  {% elif key == 'geo_testing' %}DCP, compaction and geo test records
-                  {% elif key == 'itp' %}Inspection Test Plans and sign-offs
-                  {% elif key == 'foundation' %}Foundation stage tracking
-                  {% elif key == 'progress_tracker' %}Project analytics and progress charts
-                  {% elif key == 'daily_report' %}Daily site activity reports
-                  {% elif key == 'site_capture' %}Photos and videos of site conditions
-                  {% elif key == 'roster' %}Workforce scheduling and attendance
-                  {% endif %}
-                </div>
+                <div style="font-size:13px;font-weight:800;color:#0f172a;">{{ label }}</div>
+                <div style="font-size:11px;color:#94a3b8;margin-top:2px;">{{ feat_descs.get(key, '') }}</div>
               </div>
             </div>
-            <div>
-              <input type="hidden" name="feat_{{ key }}" value="0" id="fval-{{ key }}"/>
-              <div class="toggle-track {% if default_on %}on{% endif %}" id="tt-{{ key }}"
-                   onclick="toggleFeat('{{ key }}')">
-                <div class="toggle-thumb"></div>
-              </div>
-            </div>
+            <input type="hidden" name="feat_{{ key }}" value="{% if default_on %}1{% else %}0{% endif %}" id="fval-{{ key }}"/>
           </div>
           {% endfor %}
         </div>
       </div>
 
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;flex-wrap:wrap;gap:10px;">
         <button type="button" class="btn-back" onclick="goStep(2)">
           <i class="fa-solid fa-arrow-left"></i> Back
         </button>
-        <button type="submit" class="btn-next" id="create-btn">
-          <i class="fa-solid fa-rocket"></i> Create Project
-        </button>
+        <div style="display:flex;gap:10px;align-items:center;">
+          <button type="submit" name="skip_features" value="1"
+                  style="display:inline-flex;align-items:center;gap:6px;padding:11px 20px;background:#f8fafc;color:#64748b;border:1.5px solid #e2e8f0;border-radius:12px;font-size:13px;font-weight:600;cursor:pointer;">
+            <i class="fa-solid fa-clock"></i> Skip — set up later
+          </button>
+          <button type="submit" class="btn-next" id="create-btn">
+            <i class="fa-solid fa-rocket"></i> Create Project
+          </button>
+        </div>
       </div>
     </div>
 
@@ -306,81 +384,197 @@
 {% block scripts %}
 <script>
 let currentStep = 1;
+let teamMembers  = [];  // [{name,email,position,access}]
 
-// ── Step navigation ───────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────
+// Step navigation
+// ─────────────────────────────────────────────────────────────────────
 function goStep(n) {
   if (n > currentStep && !validateStep(currentStep)) return;
-
   document.getElementById(`step-${currentStep}`).classList.remove('active');
   document.getElementById(`step-${n}`).classList.add('active');
-
-  // Update pills
   for (let i = 1; i <= 3; i++) {
     const pill = document.getElementById(`pill-${i}`);
     pill.classList.remove('done','current','pending');
-    if (i < n)      pill.classList.add('done');
-    else if (i===n) pill.classList.add('current');
-    else            pill.classList.add('pending');
+    if (i < n)       pill.classList.add('done');
+    else if (i === n) pill.classList.add('current');
+    else              pill.classList.add('pending');
   }
-
   currentStep = n;
   window.scrollTo({top:0, behavior:'smooth'});
 }
 
 function validateStep(n) {
   if (n === 1) {
-    const name = document.querySelector('[name=name]').value.trim();
-    if (!name) {
-      document.querySelector('[name=name]').focus();
-      document.querySelector('[name=name]').style.borderColor = '#ef4444';
-      setTimeout(() => document.querySelector('[name=name]').style.borderColor = '', 2000);
+    const inp = document.querySelector('[name=name]');
+    if (!inp.value.trim()) {
+      inp.focus(); inp.style.borderColor = '#ef4444';
+      setTimeout(() => inp.style.borderColor = '', 2000);
       return false;
     }
   }
   return true;
 }
 
-// ── Colour picker ─────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────
+// Colour picker
+// ─────────────────────────────────────────────────────────────────────
 function pickColor(col, el) {
   document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('picked'));
   el.classList.add('picked');
   document.getElementById('color-val').value = col;
 }
 
-// ── Team member toggles ───────────────────────────────────────────────
-function toggleMember(uid) {
-  const chk  = document.getElementById(`chk-${uid}`);
-  const wrap = document.getElementById(`role-wrap-${uid}`);
-  const uidInput = document.getElementById(`uid-${uid}`);
-  const roleInput = document.getElementById(`role-${uid}`);
-  const checked = chk.checked;
-  wrap.style.display = checked ? 'block' : 'none';
-  if (uidInput)  uidInput.disabled  = !checked;
-  if (roleInput) roleInput.disabled = !checked;
+// ─────────────────────────────────────────────────────────────────────
+// Access level descriptions
+// ─────────────────────────────────────────────────────────────────────
+const ACCESS_META = {
+  {% for key, label, icon, color, desc in access_levels %}
+  '{{ key }}': { label:'{{ label }}', icon:'{{ icon }}', color:'{{ color }}', desc:'{{ desc }}' },
+  {% endfor %}
+};
+
+function updateAccessDesc() {
+  const sel  = document.getElementById('nm-access');
+  const desc = document.getElementById('nm-access-desc');
+  const meta = ACCESS_META[sel.value];
+  desc.textContent = meta ? meta.desc : '';
+}
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('nm-access').addEventListener('change', updateAccessDesc);
+  updateAccessDesc();
+  updateFeatCount();
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// Team members
+// ─────────────────────────────────────────────────────────────────────
+function showAddMemberForm() {
+  document.getElementById('add-member-form').style.display = 'block';
+  document.getElementById('nm-email').focus();
+}
+function hideAddMemberForm() {
+  document.getElementById('add-member-form').style.display = 'none';
+  ['nm-name','nm-email','nm-position'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('nm-access').selectedIndex = 2; // default engineer
+  updateAccessDesc();
 }
 
-// ── Feature toggles ───────────────────────────────────────────────────
+function addMemberToList() {
+  const email    = document.getElementById('nm-email').value.trim().toLowerCase();
+  const name     = document.getElementById('nm-name').value.trim();
+  const position = document.getElementById('nm-position').value.trim();
+  const access   = document.getElementById('nm-access').value;
+
+  if (!email) {
+    const inp = document.getElementById('nm-email');
+    inp.style.borderColor = '#ef4444'; inp.focus();
+    setTimeout(() => inp.style.borderColor = '', 2000);
+    return;
+  }
+  if (teamMembers.find(m => m.email === email)) {
+    alert('This email has already been added.'); return;
+  }
+
+  teamMembers.push({name, email, position, access});
+  document.getElementById('members-json').value = JSON.stringify(teamMembers);
+  renderMemberList();
+  hideAddMemberForm();
+}
+
+function removeMember(email) {
+  teamMembers = teamMembers.filter(m => m.email !== email);
+  document.getElementById('members-json').value = JSON.stringify(teamMembers);
+  renderMemberList();
+}
+
+const ACCESS_BADGE_STYLE = {
+  owner:    'background:#fef3c7;color:#d97706',
+  admin:    'background:#fee2e2;color:#dc2626',
+  lead:     'background:#ede9fe;color:#7c3aed',
+  engineer: 'background:#dcfce7;color:#16a34a',
+  viewer:   'background:#f1f5f9;color:#64748b',
+  client:   'background:#e0f2fe;color:#0369a1',
+};
+
+function renderMemberList() {
+  const list  = document.getElementById('member-list');
+  const hint  = document.getElementById('team-empty-hint');
+  // keep only the first row (creator)
+  const rows  = list.querySelectorAll('.member-row');
+  rows.forEach((r, i) => { if (i > 0) r.remove(); });
+
+  teamMembers.forEach(m => {
+    const meta    = ACCESS_META[m.access] || {};
+    const initials = (m.name || m.email)[0].toUpperCase();
+    const badgeSt = ACCESS_BADGE_STYLE[m.access] || ACCESS_BADGE_STYLE.viewer;
+    const row = document.createElement('div');
+    row.className = 'member-row';
+    row.innerHTML = `
+      <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#0891b2,#22d3ee);
+                  display:flex;align-items:center;justify-content:center;color:white;font-size:14px;font-weight:700;flex-shrink:0;">
+        ${initials}
+      </div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:700;color:#0f172a;">${m.name || '<span style="color:#94a3b8;font-style:italic;">Name not set</span>'}</div>
+        <div style="font-size:11px;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+          ${m.email}${m.position ? ' · ' + m.position : ''}
+        </div>
+      </div>
+      <span class="access-badge" style="${badgeSt};">
+        <i class="fa-solid ${meta.icon || 'fa-user'}" style="font-size:9px;"></i> ${meta.label || m.access}
+      </span>
+      <button type="button" onclick="removeMember('${m.email}')"
+              style="width:28px;height:28px;border-radius:8px;border:1px solid #fecaca;background:#fff5f5;
+                     color:#ef4444;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <i class="fa-solid fa-xmark"></i>
+      </button>`;
+    list.appendChild(row);
+  });
+
+  hint.style.display = teamMembers.length === 0 ? 'block' : 'none';
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Feature cards
+// ─────────────────────────────────────────────────────────────────────
 function toggleFeat(key) {
-  const track = document.getElementById(`tt-${key}`);
-  const val   = document.getElementById(`fval-${key}`);
-  const card  = document.getElementById(`ft-${key}`);
-  const on    = track.classList.toggle('on');
-  val.value   = on ? '1' : '0';
-  card.classList.toggle('on', on);
+  const card = document.getElementById(`ft-${key}`);
+  const val  = document.getElementById(`fval-${key}`);
+  const on   = card.classList.toggle('on');
+  val.value  = on ? '1' : '0';
+  updateFeatCount();
 }
 
-// Init feature values (for pre-checked ones)
-document.querySelectorAll('.toggle-track.on').forEach(t => {
-  const key = t.id.replace('tt-','');
+function selectAllFeatures(on) {
+  document.querySelectorAll('.feat-card').forEach(card => {
+    const key = card.id.replace('ft-','');
+    card.classList.toggle('on', on);
+    const val = document.getElementById(`fval-${key}`);
+    if (val) val.value = on ? '1' : '0';
+  });
+  updateFeatCount();
+}
+
+function updateFeatCount() {
+  const n = document.querySelectorAll('.feat-card.on').length;
+  const el = document.getElementById('feat-count');
+  if (el) el.textContent = `${n} module${n !== 1 ? 's' : ''} selected`;
+}
+
+// Init feature values for pre-selected cards
+document.querySelectorAll('.feat-card.on').forEach(card => {
+  const key = card.id.replace('ft-','');
   const val = document.getElementById(`fval-${key}`);
   if (val) val.value = '1';
 });
 
-// Submit spinner
+// ─────────────────────────────────────────────────────────────────────
+// Submit
+// ─────────────────────────────────────────────────────────────────────
 document.getElementById('wiz-form').addEventListener('submit', () => {
   const btn = document.getElementById('create-btn');
-  btn.disabled = true;
-  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Creating…';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Creating…'; }
 });
 </script>
 {% endblock %}

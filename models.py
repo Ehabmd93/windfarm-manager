@@ -10,22 +10,34 @@ db = SQLAlchemy()
 # ─────────────────────────────────────────────
 class User(UserMixin, db.Model):
     __tablename__ = 'users'
-    id         = db.Column(db.Integer, primary_key=True)
-    name       = db.Column(db.String(100), nullable=False)
-    email      = db.Column(db.String(150), unique=True, nullable=False)
-    password   = db.Column(db.String(256), nullable=False)
-    role       = db.Column(db.String(30), nullable=False)  # engineer | supervisor | manager | client
-    company    = db.Column(db.String(100), default='CBOP')
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    id           = db.Column(db.Integer, primary_key=True)
+    name         = db.Column(db.String(100), nullable=False)
+    email        = db.Column(db.String(150), unique=True, nullable=False)
+    password     = db.Column(db.String(256), nullable=False)
+    role         = db.Column(db.String(30), nullable=False, default='engineer')
+    position     = db.Column(db.String(100), default='')   # job title e.g. "QA Engineer"
+    company      = db.Column(db.String(100), default='')
+    avatar_color = db.Column(db.String(20),  default='#4f46e5')
+    created_at   = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     def can_enter_data(self):
-        return self.role == 'engineer'
+        return self.role in ('engineer', 'admin')
 
     def can_view_only(self):
         return self.role in ('supervisor', 'manager', 'client')
 
     def is_manager_or_above(self):
-        return self.role in ('manager', 'supervisor')
+        return self.role in ('manager', 'supervisor', 'admin')
+
+
+# Access levels available when adding someone to a project
+PROJECT_ACCESS_LEVELS = [
+    ('admin',    'Admin',          'fa-shield-halved',       '#ef4444', 'Manage team, settings & all data'),
+    ('lead',     'Lead',           'fa-hard-hat',            '#4f46e5', 'Enter & approve all data, manage setup'),
+    ('engineer', 'Engineer',       'fa-screwdriver-wrench',  '#22c55e', 'Enter field data and test records'),
+    ('viewer',   'Viewer',         'fa-eye',                 '#64748b', 'View and export — no editing'),
+    ('client',   'Client',         'fa-handshake',           '#0891b2', 'View approved reports and sign-offs only'),
+]
 
 # ─────────────────────────────────────────────
 # PROJECTS  (multi-project support)

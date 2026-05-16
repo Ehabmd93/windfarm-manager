@@ -5,12 +5,12 @@ from flask import (Flask, render_template, request, redirect,
                    url_for, flash, jsonify, abort, send_from_directory, make_response)
 from flask_login import (LoginManager, login_user, logout_user,
                          login_required, current_user)
-from werkzeug.security import check_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 import json as _json
 from models import (db, User, WTG, Area, QATest, TestRecord,
                     Project, ProjectMember, ProjectFeature,
-                    PROJECT_TYPES, PROJECT_STATUSES, ALL_FEATURES,
+                    PROJECT_TYPES, PROJECT_STATUSES, ALL_FEATURES, PROJECT_ACCESS_LEVELS,
                     WTGGroup, WorkPackage, ELEMENT_TYPES,
                     Activity, ACTIVITY_TYPES,
                     ProofRollRecord, ProofRollSignatory,
@@ -187,9 +187,9 @@ def switch_project(pid):
 def new_project():
     if current_user.role not in ('engineer', 'manager', 'admin'):
         abort(403)
-    all_users = User.query.order_by(User.name).all()
 
     if request.method == 'POST':
+        import secrets, string
         # ── Basic info ──
         start_raw = request.form.get('start_date', '').strip()
         end_raw   = request.form.get('end_date',   '').strip()
@@ -210,17 +210,54 @@ def new_project():
         db.session.add(proj)
         db.session.flush()
 
-        # ── Members ──
-        member_ids  = request.form.getlist('member_ids[]')
-        member_roles = request.form.getlist('member_roles[]')
+        # ── Members (JSON list from wizard) ──
+        members_json = request.form.get('members_json', '[]')
+        try:
+            members_data = json.loads(members_json)
+        except Exception:
+            members_data = []
+
+        new_credentials = []  # track newly created accounts
         added_ids = set()
-        for uid, role in zip(member_ids, member_roles):
-            if uid and uid not in added_ids:
-                db.session.add(ProjectMember(project_id=proj.id, user_id=int(uid), proj_role=role))
-                added_ids.add(uid)
-        # Always add creator as lead
-        if str(current_user.id) not in added_ids:
-            db.session.add(ProjectMember(project_id=proj.id, user_id=current_user.id, proj_role='lead'))
+
+        # Always add creator as owner
+        db.session.add(ProjectMember(project_id=proj.id, user_id=current_user.id, proj_role='owner'))
+        added_ids.add(current_user.id)
+
+        for m in members_data:
+            email    = (m.get('email') or '').strip().lower()
+            name     = (m.get('name')  or '').strip()
+            position = (m.get('position') or '').strip()
+            access   = (m.get('access') or 'viewer').strip()
+            if not email:
+                continue
+            user = User.query.filter_by(email=email).first()
+            if not user:
+                # Create new account with temp password
+                alphabet = string.ascii_letters + string.digits
+                temp_pw  = ''.join(secrets.choice(alphabet) for _ in range(10))
+                # Map project access → system role
+                sys_role = 'engineer' if access in ('admin','lead','engineer') else \
+                           'client'   if access == 'client' else 'supervisor'
+                user = User(
+                    name=name or email.split('@')[0].title(),
+                    email=email,
+                    password=generate_password_hash(temp_pw),
+                    role=sys_role,
+                    position=position,
+                    company=proj.client_name or '',
+                )
+                db.session.add(user)
+                db.session.flush()
+                new_credentials.append({'name': user.name, 'email': email, 'password': temp_pw})
+            else:
+                # Update position if provided and currently blank
+                if position and not user.position:
+                    user.position = position
+
+            if user.id not in added_ids:
+                db.session.add(ProjectMember(project_id=proj.id, user_id=user.id, proj_role=access))
+                added_ids.add(user.id)
 
         # ── Features ──
         for key, *_ in ALL_FEATURES:
@@ -230,10 +267,14 @@ def new_project():
         db.session.commit()
         from flask import session as fsession
         fsession['active_project_id'] = proj.id
-        flash(f'Project "{proj.name}" created successfully!', 'success')
-        return redirect(url_for('dashboard'))
 
-    return render_template('project_new.html', all_users=all_users)
+        if new_credentials:
+            cred_lines = ' | '.join([f"{c['name']} → {c['email']} / {c['password']}" for c in new_credentials])
+            flash(f'New accounts created — share these credentials: {cred_lines}', 'success')
+        flash(f'Project "{proj.name}" created successfully!', 'success')
+        return redirect(url_for('project_setup', pid=proj.id))
+
+    return render_template('project_new.html', access_levels=PROJECT_ACCESS_LEVELS)
 
 
 @app.route('/projects/<int:pid>/settings', methods=['GET', 'POST'])
@@ -2534,11 +2575,27 @@ def api_get_fields(scope):
 def health():
     return {'status': 'ok', 'app': 'windfarm-manager'}, 200
 
+# ─── Safe column migrations ───────────────────────────────────────────────────
+def run_migrations():
+    with app.app_context():
+        with db.engine.connect() as conn:
+            cols_to_add = [
+                ("users", "position",     "VARCHAR(100) DEFAULT ''"),
+                ("users", "avatar_color", "VARCHAR(20)  DEFAULT '#4f46e5'"),
+            ]
+            for table, col, typedef in cols_to_add:
+                try:
+                    conn.execute(db.text(f"ALTER TABLE {table} ADD COLUMN {col} {typedef}"))
+                    conn.commit()
+                except Exception:
+                    conn.rollback()  # column already exists — ignore
+
 # ─── Startup: create tables, dirs, seed ──────────────────────────────────────
 def startup():
     create_dirs()
     with app.app_context():
         db.create_all()
+    run_migrations()
     seed(app)
     with app.app_context():
         db.session.remove()   # clean up any sessions left open by seed

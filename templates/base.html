@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>{% block title %}King Rocks Wind Farm – QA Manager{% endblock %}</title>
+  <title>{% block title %}QA Manager{% endblock %}</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -323,7 +323,7 @@
         </button>
         <div>
           <h1 class="text-base md:text-lg font-bold text-slate-800 leading-tight">{% block page_title %}Dashboard{% endblock %}</h1>
-          <p class="text-xs text-slate-500 hidden sm:block">King Rocks Wind Farm · CBOP · {% block page_sub %}{% endblock %}</p>
+          <p class="text-xs text-slate-500 hidden sm:block">{% block page_sub %}{% endblock %}</p>
         </div>
       </div>
       <div class="flex items-center gap-2 md:gap-3">
@@ -355,7 +355,7 @@
     </main>
 
     <footer class="px-8 py-4 text-center text-xs text-slate-400 border-t border-slate-100">
-      King Rocks Wind Farm QA Manager · CBOP · OPER-FRM-057 · Uncontrolled When Printed
+      QA Manager Platform · {% if current_user.is_authenticated and current_user.company %}{{ current_user.company }} · {% endif %}v1.0
     </footer>
   </div>
 
