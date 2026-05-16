@@ -39,14 +39,14 @@
 .sect-hdr p  { font-size:12px; color:#94a3b8; margin:0; }
 
 /* ── Brain card (Project Setup) ─────────────────────────────── */
-.brain-card {
+.core-card {
   background:linear-gradient(135deg,#1e1b4b 0%,#312e81 50%,#1e1b4b 100%);
   border-radius:20px; padding:28px; position:relative; overflow:hidden;
   border:1px solid rgba(165,180,252,.2);
   box-shadow:0 8px 40px rgba(79,70,229,.2);
   animation:fadeInUp .5s ease .1s both;
 }
-.brain-card::before {
+.core-card::before {
   content:''; position:absolute; top:-80px; right:-60px;
   width:260px; height:260px;
   background:radial-gradient(circle,rgba(99,102,241,.18) 0%,transparent 70%);
@@ -162,15 +162,15 @@
 
 <!-- ══ THE BRAIN — PROJECT SETUP ══════════════════════════════════ -->
 {% if proj %}
-<div class="brain-card mb-6">
+<div class="core-card mb-6">
   <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:16px;position:relative;z-index:1;">
     <div style="flex:1;min-width:220px;">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
         <div style="width:36px;height:36px;border-radius:11px;background:rgba(165,180,252,.15);display:flex;align-items:center;justify-content:center;">
-          <i class="fa-solid fa-brain" style="color:#a5b4fc;font-size:16px;"></i>
+          <i class="fa-solid fa-diagram-project" style="color:#a5b4fc;font-size:16px;"></i>
         </div>
         <div>
-          <div style="color:#a5b4fc;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;">Project Brain</div>
+          <div style="color:#a5b4fc;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;">Project Core</div>
           <div style="color:white;font-size:16px;font-weight:900;">Project Setup</div>
         </div>
       </div>
@@ -522,7 +522,7 @@
 {% if proj %}
 <div style="text-align:center;padding:48px 24px;background:#f8fafc;border-radius:20px;border:2px dashed #e2e8f0;opacity:0;animation:fadeInUp .5s ease .5s forwards;">
   <div style="width:64px;height:64px;border-radius:20px;background:#ede9fe;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
-    <i class="fa-solid fa-brain" style="color:#7c3aed;font-size:26px;"></i>
+    <i class="fa-solid fa-diagram-project" style="color:#7c3aed;font-size:26px;"></i>
   </div>
   <h3 style="font-size:16px;font-weight:800;color:#0f172a;margin-bottom:8px;">Start with Project Setup</h3>
   <p style="font-size:13px;color:#94a3b8;margin-bottom:20px;max-width:340px;margin-left:auto;margin-right:auto;">
