@@ -114,6 +114,23 @@
 
     #map-wrap.identify-cursor #map{cursor:crosshair!important;}
     #map-wrap.identify-cursor .leaflet-container{cursor:crosshair!important;}
+
+    /* ── Draw toolbar (Paint style) ── */
+    #draw-toolbar{
+      position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:799;
+      background:white;border-radius:24px;padding:8px 14px;
+      display:none;align-items:center;gap:8px;
+      box-shadow:0 4px 24px rgba(0,0,0,.18);border:1px solid #fed7aa;
+      white-space:nowrap;
+    }
+    #draw-toolbar.show{display:flex;}
+    .color-swatch{
+      width:18px;height:18px;border-radius:50%;border:2.5px solid white;
+      cursor:pointer;transition:transform .15s,box-shadow .15s;
+      flex-shrink:0;padding:0;outline:none;
+    }
+    .color-swatch:hover{transform:scale(1.25);}
+    .color-swatch.active{box-shadow:0 0 0 2px white,0 0 0 4px #0f172a;transform:scale(1.15);}
   </style>
 </head>
 <body>
@@ -190,9 +207,9 @@
 
     {% if current_user.can_enter_data() %}
     <div style="padding:0 14px 14px;">
-      <button onclick="startDrawing()" id="draw-btn"
-        style="width:100%;padding:9px;background:#0f2240;color:#7dd3fc;border:1px solid #1e3a5f;border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;">
-        <i class="fa-solid fa-draw-polygon" style="margin-right:5px;"></i>Draw Custom Zone
+      <button onclick="enterDrawMode()" id="draw-btn"
+        style="width:100%;padding:9px;background:#431407;color:#fdba74;border:1px solid #7c2d12;border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;">
+        <i class="fa-solid fa-paintbrush" style="margin-right:5px;"></i>Draw Zones
       </button>
     </div>
     {% endif %}
@@ -389,6 +406,45 @@
   </div>
   <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
 
+  <!-- ══ DRAW TOOLBAR (Windows Paint style) — always in DOM ══ -->
+  <div id="draw-toolbar">
+    <span style="font-size:11px;font-weight:800;color:#f97316;margin-right:2px;">
+      <i class="fa-solid fa-paintbrush" style="margin-right:4px;"></i>Draw
+    </span>
+    <div class="tool-sep"></div>
+    <button class="tool-btn active" id="dtool-polygon" onclick="setDrawTool('polygon')" title="Draw a custom area (click to add points, double-click to finish)">
+      <i class="fa-solid fa-draw-polygon"></i> Area
+    </button>
+    <button class="tool-btn" id="dtool-rectangle" onclick="setDrawTool('rectangle')" title="Click and drag to draw a rectangle zone">
+      <i class="fa-regular fa-square"></i> Box
+    </button>
+    <button class="tool-btn" id="dtool-circle" onclick="setDrawTool('circle')" title="Click and drag to draw a radius circle">
+      <i class="fa-regular fa-circle"></i> Circle
+    </button>
+    <button class="tool-btn" id="dtool-polyline" onclick="setDrawTool('polyline')" title="Click to draw a path or track line">
+      <i class="fa-solid fa-minus"></i> Path
+    </button>
+    <div class="tool-sep"></div>
+    <button class="color-swatch active" data-color="#4f46e5" data-name="Indigo"   style="background:#4f46e5;" onclick="setDrawColor('#4f46e5','Indigo')"></button>
+    <button class="color-swatch"        data-color="#ef4444" data-name="Red"      style="background:#ef4444;" onclick="setDrawColor('#ef4444','Red')"></button>
+    <button class="color-swatch"        data-color="#22c55e" data-name="Green"    style="background:#22c55e;" onclick="setDrawColor('#22c55e','Green')"></button>
+    <button class="color-swatch"        data-color="#f59e0b" data-name="Amber"    style="background:#f59e0b;" onclick="setDrawColor('#f59e0b','Amber')"></button>
+    <button class="color-swatch"        data-color="#06b6d4" data-name="Cyan"     style="background:#06b6d4;" onclick="setDrawColor('#06b6d4','Cyan')"></button>
+    <button class="color-swatch"        data-color="#a855f7" data-name="Purple"   style="background:#a855f7;" onclick="setDrawColor('#a855f7','Purple')"></button>
+    <div class="tool-sep"></div>
+    <div id="draw-color-preview" style="width:22px;height:22px;border-radius:50%;background:#4f46e5;border:2.5px solid white;box-shadow:0 1px 6px rgba(0,0,0,.3);flex-shrink:0;" title="Active colour"></div>
+    <div class="tool-sep"></div>
+    <button onclick="undoLastShape()"
+      style="display:flex;align-items:center;gap:5px;padding:7px 12px;background:#f1f5f9;color:#64748b;border:1.5px solid #e2e8f0;border-radius:14px;font-size:12px;font-weight:600;cursor:pointer;"
+      title="Remove last drawn shape (Ctrl+Z)">
+      <i class="fa-solid fa-rotate-left"></i> Undo
+    </button>
+    <button onclick="exitDrawMode()"
+      style="display:flex;align-items:center;gap:5px;padding:7px 14px;background:#f1f5f9;color:#64748b;border:1.5px solid #e2e8f0;border-radius:14px;font-size:12px;font-weight:600;cursor:pointer;">
+      <i class="fa-solid fa-xmark"></i> Exit
+    </button>
+  </div>
+
   <!-- Identify prompt banner — ALWAYS in DOM, JS controls visibility -->
 
   <!-- Variant A: no elements yet → primary "Start Identifying" CTA -->
@@ -480,9 +536,14 @@
         {% for wtg in wtgs %}<option value="{{ wtg.id }}">{{ wtg.name }}</option>{% endfor %}
       </select>
     </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+      <span style="font-size:10px;font-weight:700;color:#64748b;">Zone colour:</span>
+      <div id="modal-color-dot" style="width:20px;height:20px;border-radius:50%;background:#4f46e5;border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,.25);"></div>
+      <span id="modal-color-name" style="font-size:10px;color:#94a3b8;">Indigo</span>
+    </div>
     <div style="display:flex;gap:9px;">
       <button onclick="cancelDraw()" style="flex:1;padding:10px;background:#f1f5f9;border:none;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;color:#64748b;">Cancel</button>
-      <button onclick="saveZone()" style="flex:2;padding:10px;background:linear-gradient(135deg,#4f46e5,#6366f1);border:none;border-radius:10px;font-size:12px;font-weight:800;cursor:pointer;color:white;">
+      <button onclick="saveZone()" id="save-zone-btn" style="flex:2;padding:10px;background:linear-gradient(135deg,#4f46e5,#6366f1);border:none;border-radius:10px;font-size:12px;font-weight:800;cursor:pointer;color:white;">
         <i class="fa-solid fa-floppy-disk" style="margin-right:5px;"></i>Save Zone
       </button>
     </div>
@@ -492,8 +553,8 @@
 <!-- ══ SUCCESS MODAL (after save) ══ -->
 <div id="success-modal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.7);z-index:9500;align-items:center;justify-content:center;">
   <div style="background:white;border-radius:24px;padding:36px;width:min(400px,90vw);text-align:center;box-shadow:0 24px 64px rgba(0,0,0,.3);">
-    <div style="width:64px;height:64px;border-radius:20px;background:linear-gradient(135deg,#22c55e,#16a34a);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
-      <i class="fa-solid fa-check" style="color:white;font-size:26px;"></i>
+    <div id="success-icon" style="width:64px;height:64px;border-radius:20px;background:linear-gradient(135deg,#22c55e,#16a34a);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
+      <i id="success-icon-i" class="fa-solid fa-check" style="color:white;font-size:26px;"></i>
     </div>
     <h2 style="font-size:20px;font-weight:900;color:#0f172a;margin-bottom:8px;" id="success-title">Elements saved!</h2>
     <p style="font-size:13px;color:#64748b;margin-bottom:24px;line-height:1.6;" id="success-msg">Your elements have been added to the project.</p>
@@ -818,17 +879,68 @@ async function saveToProject(){
     });
     const data=await res.json();
     if(data.ok){
+      // Remove all placed pins + text labels from the map
+      identifiedElements.forEach(el=>{try{map.removeLayer(el.marker);}catch(ex){}});
+      identifiedElements=[];
+      textLabels.forEach(m=>{try{map.removeLayer(m);}catch(ex){}});
+      textLabels=[];
+      renderIdentList();
+
       exitIdentify(true);
+
       const modal=document.getElementById('success-modal');
-      document.getElementById('success-title').textContent=`${data.created} element${data.created!==1?'s':''} saved!`;
-      document.getElementById('success-msg').textContent=
-        `${data.created} element${data.created!==1?'s':''} added to your project.`+
-        (data.skipped?` (${data.skipped} skipped — already existed)`:'');
+      const iconEl=document.getElementById('success-icon');
+      const iconI=document.getElementById('success-icon-i');
+
+      if(data.created===0 && data.skipped>0){
+        // All elements already exist — show warning style
+        if(iconEl) iconEl.style.background='linear-gradient(135deg,#f59e0b,#d97706)';
+        if(iconI)  iconI.className='fa-solid fa-triangle-exclamation';
+        document.getElementById('success-title').textContent='Already in your project!';
+        document.getElementById('success-msg').textContent=
+          `${data.skipped} element${data.skipped!==1?'s':''} already exist — no duplicates created. Use different names to add new ones.`;
+      } else {
+        if(iconEl) iconEl.style.background='linear-gradient(135deg,#22c55e,#16a34a)';
+        if(iconI)  iconI.className='fa-solid fa-check';
+        document.getElementById('success-title').textContent=`${data.created} element${data.created!==1?'s':''} saved!`;
+        document.getElementById('success-msg').textContent=
+          `${data.created} element${data.created!==1?'s':''} added to your project.`+
+          (data.skipped?` (${data.skipped} skipped — already existed)`:'');
+      }
       modal.style.display='flex';
     }
   }catch(e){flash('Save failed — please try again','#ef4444');}
   finally{if(btn){btn.disabled=false;btn.innerHTML='<i class="fa-solid fa-floppy-disk" style="margin-right:6px;"></i>Save Elements to Project';}}
 }
+
+// ── Keyboard shortcuts ─────────────────────────────────────────────────────────
+document.addEventListener('keydown',e=>{
+  // Escape — dismiss popups / exit active mode
+  if(e.key==='Escape'){
+    if(document.getElementById('pin-popup').style.display!=='none'){cancelPin();return;}
+    if(document.getElementById('text-popup').style.display!=='none'){cancelTextLabel();return;}
+    if(identifyMode){exitIdentify(false);return;}
+    if(drawMode){exitDrawMode();return;}
+    return;
+  }
+  // Ctrl+Z in draw mode — undo last shape
+  if((e.ctrlKey||e.metaKey)&&e.key==='z'&&drawMode){e.preventDefault();undoLastShape();return;}
+  // Identify mode shortcuts (only when not typing in an input)
+  if(!identifyMode) return;
+  if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.tagName==='SELECT') return;
+  if(e.key==='Delete'||e.key==='Backspace'){
+    e.preventDefault();
+    if(identifiedElements.length>0){
+      const last=identifiedElements[identifiedElements.length-1];
+      const name=last.name;
+      removeIdentified(name,null);
+      flash(`Deleted "${name}"`,'#ef4444');
+    }
+  }
+  if(e.key==='1') setTool('pin');
+  if(e.key==='2') setTool('text');
+  if(e.key==='3') setTool('delete');
+});
 
 // ── KML Upload ─────────────────────────────────────────────────────────────────
 const UPLOAD_STAGES = [
@@ -1006,26 +1118,125 @@ function renderPanel(status,photos,elId){
 }
 function toggleArea(t){const el=document.getElementById(`tests-${t}`),ch=document.getElementById(`ch-${t}`),o=el.style.display!=='none';el.style.display=o?'none':'block';if(ch)ch.style.transform=o?'':'rotate(180deg)';}
 
-// ── Draw tools ─────────────────────────────────────────────────────────────────
-const drawnItems=new L.FeatureGroup().addTo(map);let pendingDrawLayer=null;
-function startDrawing(){
+// ── Draw tools (Windows Paint style) ──────────────────────────────────────────
+const drawnItems=new L.FeatureGroup().addTo(map);
+let pendingDrawLayer=null;
+let drawMode=false;
+let activeDrawTool='polygon';
+let activeDrawColor='#4f46e5';
+let activeDrawColorName='Indigo';
+let currentDrawer=null;
+const drawnShapes=[];  // stack for undo
+
+// Persistent shape-completion listener
+map.on(L.Draw.Event.CREATED,e=>{
+  pendingDrawLayer=e.layer;
+  drawnItems.addLayer(pendingDrawLayer);
+  drawnShapes.push(pendingDrawLayer);
+  // Sync draw modal to current colour
+  const dot=document.getElementById('modal-color-dot');
+  const nameEl=document.getElementById('modal-color-name');
+  const saveBtn=document.getElementById('save-zone-btn');
+  if(dot)    dot.style.background=activeDrawColor;
+  if(nameEl) nameEl.textContent=activeDrawColorName;
+  if(saveBtn) saveBtn.style.background=`linear-gradient(135deg,${activeDrawColor},${activeDrawColor}dd)`;
+  // Clear previous label and open modal
+  document.getElementById('draw-label').value='';
+  document.getElementById('draw-modal').style.display='flex';
+  document.getElementById('draw-label').focus();
+  currentDrawer=null;
+});
+
+function enterDrawMode(){
   if(identifyMode){flash('Exit identify mode first','#f59e0b');return;}
-  document.getElementById('draw-btn').textContent='✏️ Drawing…';
-  const drawer=new L.Draw.Polygon(map,{shapeOptions:{color:'#4f46e5',fillOpacity:.12,weight:2}});
-  drawer.enable();
-  map.once(L.Draw.Event.CREATED,e=>{pendingDrawLayer=e.layer;drawnItems.addLayer(pendingDrawLayer);document.getElementById('draw-modal').style.display='flex';document.getElementById('draw-btn').innerHTML='<i class="fa-solid fa-draw-polygon" style="margin-right:5px;"></i>Draw Custom Zone';});
+  drawMode=true;
+  document.getElementById('draw-toolbar').classList.add('show');
+  document.getElementById('sidebar-sub').textContent='Drawing Zones';
+  setDrawTool('polygon');
 }
-function cancelDraw(){if(pendingDrawLayer){drawnItems.removeLayer(pendingDrawLayer);pendingDrawLayer=null;}document.getElementById('draw-modal').style.display='none';}
+
+function exitDrawMode(){
+  drawMode=false;
+  if(currentDrawer){try{currentDrawer.disable();}catch(ex){}currentDrawer=null;}
+  document.getElementById('draw-toolbar').classList.remove('show');
+  document.getElementById('draw-modal').style.display='none';
+  document.getElementById('sidebar-sub').textContent='Project Map';
+}
+
+function setDrawTool(tool){
+  activeDrawTool=tool;
+  if(currentDrawer){try{currentDrawer.disable();}catch(ex){}currentDrawer=null;}
+  // Update button active states
+  ['polygon','rectangle','circle','polyline'].forEach(t=>{
+    const b=document.getElementById(`dtool-${t}`);
+    if(b) b.classList.toggle('active',t===tool);
+  });
+  // Create and enable the right Leaflet.Draw tool
+  const shapeOpts={color:activeDrawColor,fillOpacity:.15,weight:2.5,opacity:.95};
+  if(tool==='polygon')   currentDrawer=new L.Draw.Polygon(map,{shapeOptions:shapeOpts,allowIntersection:false});
+  if(tool==='rectangle') currentDrawer=new L.Draw.Rectangle(map,{shapeOptions:shapeOpts});
+  if(tool==='circle')    currentDrawer=new L.Draw.Circle(map,{shapeOptions:{...shapeOpts,fillOpacity:.12}});
+  if(tool==='polyline')  currentDrawer=new L.Draw.Polyline(map,{shapeOptions:{color:activeDrawColor,weight:3.5,opacity:.95}});
+  if(currentDrawer) currentDrawer.enable();
+}
+
+function setDrawColor(color,name){
+  activeDrawColor=color;
+  activeDrawColorName=name||color;
+  document.querySelectorAll('.color-swatch').forEach(s=>s.classList.remove('active'));
+  const active=document.querySelector(`.color-swatch[data-color="${color}"]`);
+  if(active) active.classList.add('active');
+  const preview=document.getElementById('draw-color-preview');
+  if(preview) preview.style.background=color;
+  // Restart the drawer with new colour if in draw mode
+  if(drawMode) setDrawTool(activeDrawTool);
+}
+
+function undoLastShape(){
+  if(drawnShapes.length===0){flash('Nothing to undo','#94a3b8');return;}
+  const last=drawnShapes.pop();
+  drawnItems.removeLayer(last);
+  flash('Shape removed','#64748b');
+  if(drawMode) setDrawTool(activeDrawTool);  // re-arm the tool
+}
+
+// Legacy alias kept for any old button references
+function startDrawing(){ enterDrawMode(); }
+
+function cancelDraw(){
+  if(pendingDrawLayer){drawnItems.removeLayer(pendingDrawLayer);drawnShapes.pop();pendingDrawLayer=null;}
+  document.getElementById('draw-modal').style.display='none';
+  if(drawMode) setDrawTool(activeDrawTool);  // re-arm for next shape
+}
+
 async function saveZone(){
   if(!pendingDrawLayer)return;
-  const label=document.getElementById('draw-label').value.trim(),elId=document.getElementById('draw-el').value;
+  const label=document.getElementById('draw-label').value.trim();
+  const elId=document.getElementById('draw-el').value;
   if(!label){document.getElementById('draw-label').focus();return;}
-  await fetch('/api/zones',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label,wtg_id:elId,area_type:'custom',geojson:JSON.stringify(pendingDrawLayer.toGeoJSON())})});
-  pendingDrawLayer.setStyle({color:'#4f46e5',fillOpacity:.1,weight:2});pendingDrawLayer.bindTooltip(`<b>${label}</b>`,{sticky:true});
-  pendingDrawLayer=null;document.getElementById('draw-modal').style.display='none';flash(`Zone "${label}" saved`,'#22c55e');
+  const col=activeDrawColor;
+  await fetch('/api/zones',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({label,wtg_id:elId,area_type:'custom',color:col,geojson:JSON.stringify(pendingDrawLayer.toGeoJSON())})});
+  pendingDrawLayer.setStyle({color:col,fillOpacity:.12,weight:2.5});
+  pendingDrawLayer.bindTooltip(`<b>${label}</b>`,{sticky:true,className:'wtg-tooltip'});
+  pendingDrawLayer=null;
+  document.getElementById('draw-modal').style.display='none';
+  flash(`Zone "${label}" saved`,'#22c55e');
+  if(drawMode) setDrawTool(activeDrawTool);  // ready for next shape
 }
+
 async function loadSavedZones(){
-  try{const res=await fetch('/api/zones'),zones=await res.json();zones.forEach(z=>{if(!z.geojson)return;const gj=typeof z.geojson==='string'?JSON.parse(z.geojson):z.geojson;L.geoJSON(gj,{style:{color:'#4f46e5',fillOpacity:.1,weight:2}}).bindTooltip(`<b>${z.label}</b>`,{sticky:true}).addTo(drawnItems);});}catch(e){}
+  try{
+    const res=await fetch('/api/zones'),zones=await res.json();
+    zones.forEach(z=>{
+      if(!z.geojson)return;
+      const gj=typeof z.geojson==='string'?JSON.parse(z.geojson):z.geojson;
+      const col=z.color||'#4f46e5';
+      L.geoJSON(gj,{style:{color:col,fillOpacity:.1,weight:2}})
+        .bindTooltip(`<b>${z.label}</b>`,{sticky:true,className:'wtg-tooltip'})
+        .addTo(drawnItems);
+    });
+  }catch(e){}
 }
 
 // ── Utils ──────────────────────────────────────────────────────────────────────
