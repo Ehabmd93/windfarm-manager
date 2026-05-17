@@ -228,7 +228,7 @@
                 transition:all .2s;">
         <i class="fa-solid fa-sliders"></i> Configure Setup
       </a>
-      <a href="{{ url_for('map_view') }}"
+      <a href="{{ url_for('project_map', pid=proj.id) }}"
          style="display:inline-flex;align-items:center;gap:8px;padding:10px 18px;
                 background:rgba(255,255,255,.08);color:rgba(255,255,255,.8);
                 border:1px solid rgba(255,255,255,.15);border-radius:13px;
@@ -561,8 +561,7 @@
         First thing first — set up your project
       </h2>
       <p style="color:rgba(165,180,252,.8);font-size:14px;max-width:460px;margin:0 auto 28px;line-height:1.65;">
-        Before QA tracking, reporting, analytics, or anything else can work —
-        your project needs its structure. That's where you start.
+        Set up your project structure once — everything else builds from it automatically.
       </p>
 
       <a href="{{ url_for('project_setup', pid=proj.id) }}"

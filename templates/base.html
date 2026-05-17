@@ -192,10 +192,13 @@
         <i class="fa-solid fa-house" style="width:16px;color:#60a5fa;"></i>
         <span>Home</span>
       </a>
-      <a href="{{ url_for('map_view') }}" class="sidebar-link {% if request.endpoint=='map_view' %}active{% endif %}" style="margin-top:3px;">
+      {% if active_project %}
+      <a href="{{ url_for('project_map', pid=active_project.id) }}"
+         class="sidebar-link {% if request.endpoint=='project_map' %}active{% endif %}" style="margin-top:3px;">
         <i class="fa-solid fa-map" style="width:16px;color:#34d399;"></i>
         <span>Map</span>
       </a>
+      {% endif %}
       <a href="{{ url_for('dashboard') }}#el-grid" class="sidebar-link" style="margin-top:3px;">
         <i class="fa-solid fa-tower-broadcast" style="width:16px;color:#60a5fa;"></i>
         <span>All Elements</span>

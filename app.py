@@ -9,7 +9,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 import json as _json
 from models import (db, User, WTG, Area, QATest, TestRecord,
-                    Project, ProjectMember, ProjectFeature,
+                    Project, ProjectMember, ProjectFeature, ProjectMapFile,
                     PROJECT_TYPES, PROJECT_STATUSES, ALL_FEATURES, PROJECT_ACCESS_LEVELS,
                     WTGGroup, WorkPackage, ELEMENT_TYPES,
                     Activity, ACTIVITY_TYPES,
@@ -24,6 +24,7 @@ from models import (db, User, WTG, Area, QATest, TestRecord,
                     DOCUMENT_CATEGORIES, DOCUMENT_LINK_TYPES, DOCUMENT_LINK_DICT)
 from itp_definitions import ITP_DEFINITIONS, CLIENTS
 from seed import seed
+import kml_parser
 from kml_parser import get_geojson
 from email_utils import email_client_invitation, email_client_signed
 import r2_storage
@@ -1581,20 +1582,101 @@ def api_dashboard():
 @app.route('/map')
 @login_required
 def map_view():
-    wtgs = WTG.query.order_by(WTG.name).all()
-    return render_template('map.html', wtgs=wtgs)
+    """Legacy /map route — redirect to active project's map or projects list."""
+    pid = request.args.get('pid', type=int)
+    if not pid:
+        # Try to use the session active project
+        from flask import session as flask_session
+        pid = flask_session.get('active_project_id')
+    if pid:
+        return redirect(url_for('project_map', pid=pid))
+    return redirect(url_for('projects'))
 
+
+@app.route('/projects/<int:pid>/map')
+@login_required
+def project_map(pid):
+    proj     = Project.query.get_or_404(pid)
+    wtgs     = WTG.query.filter_by(project_id=pid).order_by(WTG.name).all()
+    map_file = ProjectMapFile.query.filter_by(project_id=pid).first()
+    return render_template('map.html', proj=proj, wtgs=wtgs, map_file=map_file)
+
+
+@app.route('/projects/<int:pid>/map/upload', methods=['POST'])
+@login_required
+def project_map_upload(pid):
+    """Accept a KML or KMZ file upload, parse it, store GeoJSON in DB."""
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+    f = request.files['file']
+    if not f or not f.filename:
+        return jsonify({'error': 'Empty file'}), 400
+
+    ext = os.path.splitext(f.filename)[1].lower()
+    if ext not in ('.kml', '.kmz'):
+        return jsonify({'error': 'Only KML and KMZ files are supported'}), 400
+
+    try:
+        file_bytes = f.read()
+        layers = kml_parser.parse_bytes(file_bytes, f.filename)
+    except Exception as e:
+        return jsonify({'error': f'Parse error: {str(e)}'}), 500
+
+    if not layers:
+        return jsonify({'error': 'No layers found in this file. Check it contains placemarks.'}), 400
+
+    map_file = ProjectMapFile.query.filter_by(project_id=pid).first()
+    if not map_file:
+        map_file = ProjectMapFile(project_id=pid)
+        db.session.add(map_file)
+
+    map_file.filename    = secure_filename(f.filename)
+    map_file.geojson_data = json.dumps(layers)
+    map_file.layer_names  = json.dumps(list(layers.keys()))
+    map_file.uploaded_by  = current_user.id
+    map_file.uploaded_at  = datetime.now(timezone.utc)
+    db.session.commit()
+
+    return jsonify({
+        'ok': True,
+        'layers': list(layers.keys()),
+        'counts': {k: len(v['features']) for k, v in layers.items()},
+    })
+
+
+@app.route('/projects/<int:pid>/map/delete', methods=['POST'])
+@login_required
+def project_map_delete(pid):
+    map_file = ProjectMapFile.query.filter_by(project_id=pid).first()
+    if map_file:
+        db.session.delete(map_file)
+        db.session.commit()
+    return jsonify({'ok': True})
+
+
+@app.route('/api/projects/<int:pid>/map/geojson')
+@login_required
+def api_project_map_geojson(pid):
+    """Return the project's uploaded map as GeoJSON."""
+    map_file = ProjectMapFile.query.filter_by(project_id=pid).first()
+    if not map_file or not map_file.geojson_data:
+        return jsonify({})
+    try:
+        return jsonify(json.loads(map_file.geojson_data))
+    except Exception:
+        return jsonify({})
+
+
+# ── Legacy KML API (KRWF only, kept for backward compat) ─────────────────────
 @app.route('/api/kml/geojson')
 @login_required
 def api_kml_geojson():
-    """Serve parsed KML as GeoJSON layers."""
     data = get_geojson(use_cache=True)
     return jsonify(data)
 
 @app.route('/api/kml/refresh')
 @login_required
 def api_kml_refresh():
-    """Force re-parse KML (clears cache)."""
     cache = os.path.join(BASE_DIR, 'static', 'kml_cache.json')
     if os.path.exists(cache):
         os.remove(cache)

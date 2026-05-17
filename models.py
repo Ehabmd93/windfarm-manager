@@ -128,6 +128,18 @@ class ProjectFeature(db.Model):
     enabled     = db.Column(db.Boolean, default=True)
 
 
+class ProjectMapFile(db.Model):
+    """One KML/KMZ map file uploaded per project."""
+    __tablename__ = 'project_map_files'
+    id           = db.Column(db.Integer, primary_key=True)
+    project_id   = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=False, unique=True)
+    filename     = db.Column(db.String(300))
+    geojson_data = db.Column(db.Text)   # full parsed GeoJSON as JSON string
+    layer_names  = db.Column(db.Text)   # JSON list of layer names found in file
+    uploaded_by  = db.Column(db.Integer, db.ForeignKey('users.id'))
+    uploaded_at  = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+
 # ─────────────────────────────────────────────
 # ELEMENT GROUPS  (engineer-defined groupings)
 # ─────────────────────────────────────────────
