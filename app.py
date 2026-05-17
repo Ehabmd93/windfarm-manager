@@ -1654,6 +1654,35 @@ def project_map_delete(pid):
     return jsonify({'ok': True})
 
 
+@app.route('/projects/<int:pid>/map/populate', methods=['POST'])
+@login_required
+def project_map_populate(pid):
+    """Create WTG elements from map pins placed in identify mode."""
+    data     = request.get_json(force=True) or {}
+    elements = data.get('elements', [])
+    created  = 0
+    skipped  = 0
+    for el in elements:
+        name = (el.get('name') or '').strip()
+        if not name:
+            continue
+        existing = WTG.query.filter_by(project_id=pid, name=name).first()
+        if existing:
+            skipped += 1
+            continue
+        wtg = WTG(
+            name         = name,
+            project_id   = pid,
+            element_type = el.get('type', 'wtg'),
+            northing     = el.get('lat'),
+            easting      = el.get('lon'),
+        )
+        db.session.add(wtg)
+        created += 1
+    db.session.commit()
+    return jsonify({'ok': True, 'created': created, 'skipped': skipped})
+
+
 @app.route('/api/projects/<int:pid>/map/geojson')
 @login_required
 def api_project_map_geojson(pid):
