@@ -304,12 +304,50 @@
         <div style="font-size:11px;color:#94a3b8;">Supports .kml and .kmz</div>
       </div>
       <input id="kml-input-main" type="file" accept=".kml,.kmz" style="display:none;" onchange="uploadKML(this)"/>
-      <div id="upload-progress" style="display:none;margin-top:10px;">
-        <div style="background:#f1f5f9;border-radius:6px;height:5px;overflow:hidden;">
-          <div id="upload-bar" style="height:100%;background:#4f46e5;width:0%;transition:width .3s;border-radius:6px;"></div>
+
+      <!-- Staged upload progress -->
+      <div id="upload-progress" style="display:none;margin-top:16px;">
+        <!-- Stage pills -->
+        <div style="display:flex;justify-content:space-between;margin-bottom:10px;">
+          <div class="stage-pill" id="stage-1" style="flex:1;margin-right:4px;">
+            <div class="stage-dot"></div><span>Upload</span>
+          </div>
+          <div class="stage-pill" id="stage-2" style="flex:1;margin:0 4px;">
+            <div class="stage-dot"></div><span>Parse</span>
+          </div>
+          <div class="stage-pill" id="stage-3" style="flex:1;margin:0 4px;">
+            <div class="stage-dot"></div><span>Process</span>
+          </div>
+          <div class="stage-pill" id="stage-4" style="flex:1;margin-left:4px;">
+            <div class="stage-dot"></div><span>Ready</span>
+          </div>
         </div>
-        <div id="upload-msg" style="font-size:11px;color:#64748b;margin-top:6px;text-align:center;">Uploading…</div>
+        <!-- Bar + percentage -->
+        <div style="position:relative;background:#f1f5f9;border-radius:8px;height:10px;overflow:hidden;">
+          <div id="upload-bar" style="height:100%;background:linear-gradient(90deg,#4f46e5,#6366f1);width:0%;
+               transition:width .5s ease;border-radius:8px;position:relative;overflow:hidden;">
+            <!-- shimmer -->
+            <div style="position:absolute;inset:0;background:linear-gradient(90deg,transparent 0%,rgba(255,255,255,.4) 50%,transparent 100%);
+                 animation:shimmer 1.4s infinite;"></div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;">
+          <div id="upload-msg" style="font-size:12px;color:#4f46e5;font-weight:700;">Uploading…</div>
+          <div id="upload-pct" style="font-size:12px;color:#64748b;font-weight:700;">0%</div>
+        </div>
       </div>
+
+      <style>
+        @keyframes shimmer{0%{transform:translateX(-100%)}100%{transform:translateX(200%)}}
+        .stage-pill{display:flex;align-items:center;gap:4px;padding:4px 8px;border-radius:20px;
+                    background:#f1f5f9;font-size:10px;font-weight:700;color:#94a3b8;transition:all .3s;}
+        .stage-pill.active{background:#ede9fe;color:#4f46e5;}
+        .stage-pill.done{background:#dcfce7;color:#16a34a;}
+        .stage-dot{width:6px;height:6px;border-radius:50%;background:#cbd5e1;flex-shrink:0;transition:background .3s;}
+        .stage-pill.active .stage-dot{background:#4f46e5;animation:pulseDot 1s ease-in-out infinite;}
+        .stage-pill.done .stage-dot{background:#16a34a;}
+        @keyframes pulseDot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(1.4)}}
+      </style>
       <div style="margin-top:16px;padding-top:14px;border-top:1px solid #f1f5f9;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
         <span style="background:#ede9fe;color:#7c3aed;padding:3px 12px;border-radius:20px;font-size:11px;font-weight:700;">KML</span>
         <span style="background:#ede9fe;color:#7c3aed;padding:3px 12px;border-radius:20px;font-size:11px;font-weight:700;">KMZ</span>
@@ -318,6 +356,38 @@
     </div>
   </div>
   {% endif %}
+
+  <!-- Map loading overlay (shown while layers render after upload) -->
+  <div id="map-loading-overlay" style="display:none;position:absolute;inset:0;z-index:810;
+       background:rgba(15,23,42,.82);backdrop-filter:blur(6px);
+       align-items:center;justify-content:center;flex-direction:column;">
+    <div style="text-align:center;max-width:340px;padding:20px;">
+      <!-- Animated rings -->
+      <div style="position:relative;width:80px;height:80px;margin:0 auto 22px;">
+        <div style="position:absolute;inset:0;border-radius:50%;border:3px solid rgba(99,102,241,.2);"></div>
+        <div style="position:absolute;inset:0;border-radius:50%;border:3px solid transparent;
+             border-top-color:#6366f1;animation:spin 1s linear infinite;"></div>
+        <div style="position:absolute;inset:8px;border-radius:50%;border:3px solid transparent;
+             border-top-color:#a78bfa;animation:spin .7s linear infinite reverse;"></div>
+        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;">
+          <i class="fa-solid fa-map-location-dot" style="color:#a78bfa;font-size:22px;"></i>
+        </div>
+      </div>
+      <div style="color:white;font-size:18px;font-weight:900;margin-bottom:8px;" id="map-load-title">
+        Setting things up for you…
+      </div>
+      <div style="color:rgba(165,180,252,.7);font-size:13px;margin-bottom:20px;" id="map-load-sub">
+        Loading your map layers
+      </div>
+      <!-- progress bar -->
+      <div style="background:rgba(255,255,255,.1);border-radius:8px;height:6px;overflow:hidden;width:260px;margin:0 auto;">
+        <div id="map-load-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#6366f1,#a78bfa);
+             border-radius:8px;transition:width .6s ease;"></div>
+      </div>
+      <div id="map-load-pct" style="color:rgba(165,180,252,.5);font-size:11px;margin-top:8px;">0%</div>
+    </div>
+  </div>
+  <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
 
   <!-- Identify prompt banner (shown after map loads, before identify mode) -->
   {% if map_file and not wtgs %}
@@ -745,21 +815,131 @@ async function saveToProject(){
 }
 
 // ── KML Upload ─────────────────────────────────────────────────────────────────
+const UPLOAD_STAGES = [
+  { id:'stage-1', pct:15,  msg:'Uploading your file…'      },
+  { id:'stage-2', pct:45,  msg:'Reading KML layers…'        },
+  { id:'stage-3', pct:75,  msg:'Processing geometry…'       },
+  { id:'stage-4', pct:92,  msg:'Preparing your map…'        },
+];
+
+function setUploadStage(stageIdx, pct, msg){
+  const bar=document.getElementById('upload-bar');
+  const msgEl=document.getElementById('upload-msg');
+  const pctEl=document.getElementById('upload-pct');
+  if(bar)  bar.style.width = pct+'%';
+  if(msgEl)msgEl.textContent = msg;
+  if(pctEl)pctEl.textContent = pct+'%';
+  UPLOAD_STAGES.forEach((s,i)=>{
+    const el=document.getElementById(s.id);if(!el)return;
+    el.classList.remove('active','done');
+    if(i < stageIdx)  el.classList.add('done');
+    if(i === stageIdx)el.classList.add('active');
+  });
+}
+
+function delay(ms){return new Promise(r=>setTimeout(r,ms));}
+
 async function uploadKML(input){
   const file=input.files[0];if(!file)return;
   const ext=file.name.split('.').pop().toLowerCase();
   if(!['kml','kmz'].includes(ext)){flash('Only KML and KMZ files are supported','#ef4444');return;}
-  const prog=document.getElementById('upload-progress'),bar=document.getElementById('upload-bar'),msg=document.getElementById('upload-msg'),st=document.getElementById('upload-status');
-  if(prog)prog.style.display='block';if(bar)bar.style.width='40%';if(msg)msg.textContent='Parsing file…';if(st)st.textContent='Uploading…';
+
+  // Show progress panel
+  const prog=document.getElementById('upload-progress');
+  if(prog)prog.style.display='block';
+  setUploadStage(0,5,'Reading your file…');
+  await delay(300);
+  setUploadStage(0,15,'Uploading your file…');
+
   const fd=new FormData();fd.append('file',file);
+
+  // Animate stage 1→2 while upload is in-flight
+  const stageTimer = setInterval(async()=>{
+    const bar=document.getElementById('upload-bar');
+    if(!bar)return;
+    const cur=parseInt(bar.style.width)||0;
+    if(cur<44){ setUploadStage(cur<25?0:1, Math.min(cur+3,44), cur<25?'Uploading your file…':'Reading KML layers…'); }
+  },200);
+
   try{
-    const res=await fetch(`/projects/${PROJECT_ID}/map/upload`,{method:'POST',body:fd});
-    const data=await res.json();
-    if(!res.ok||data.error){flash(data.error||'Upload failed','#ef4444');return;}
-    if(bar)bar.style.width='100%';
-    flash(`Map loaded — ${data.layers.length} layers imported`,'#22c55e');
-    setTimeout(()=>location.reload(),1000);
-  }catch(e){flash('Upload failed','#ef4444');}
+    const res  = await fetch(`/projects/${PROJECT_ID}/map/upload`,{method:'POST',body:fd});
+    clearInterval(stageTimer);
+    const data = await res.json();
+
+    if(!res.ok||data.error){
+      setUploadStage(0,0,'');
+      if(prog)prog.style.display='none';
+      flash(data.error||'Upload failed','#ef4444');
+      return;
+    }
+
+    // Animate to completion
+    setUploadStage(2,75,'Processing geometry…');
+    await delay(400);
+    setUploadStage(3,92,'Preparing your map…');
+    await delay(350);
+    setUploadStage(3,100,'Done! Loading map…');
+
+    const layerCount=data.layers.length;
+    await delay(300);
+
+    // ── Transition: hide upload panel, show map loading overlay ──────────────
+    const uploadPanel=document.getElementById('upload-panel');
+    if(uploadPanel){
+      uploadPanel.style.transition='opacity .4s';
+      uploadPanel.style.opacity='0';
+      await delay(400);
+      uploadPanel.style.display='none';
+    }
+
+    const overlay=document.getElementById('map-loading-overlay');
+    if(overlay){
+      overlay.style.display='flex';
+      setMapLoadPct(10,'Setting things up for you…',`Loading ${layerCount} layer${layerCount!==1?'s':''} from your file`);
+    }
+
+    // Animate map load bar while Leaflet renders
+    let fakeP=10;
+    const mapTimer=setInterval(()=>{
+      fakeP=Math.min(fakeP+4,88);
+      setMapLoadPct(fakeP,
+        fakeP<40?'Setting things up for you…':fakeP<70?'Placing your layers on the map…':'Almost ready…',
+        `Loading ${layerCount} layer${layerCount!==1?'s':''} from your file`
+      );
+    },200);
+
+    // Actually load the map
+    await loadProjectMap();
+    clearInterval(mapTimer);
+    setMapLoadPct(100,'Your map is ready!','');
+    await delay(700);
+
+    // Hide overlay, show identify prompt
+    if(overlay){ overlay.style.transition='opacity .5s'; overlay.style.opacity='0'; await delay(500); overlay.style.display='none'; overlay.style.opacity='1'; }
+
+    // Show identify prompt if no elements yet
+    const ip=document.getElementById('identify-prompt');
+    if(ip)ip.style.display='flex';
+
+    flash(`Map loaded — ${layerCount} layers imported`,'#22c55e');
+
+  }catch(e){
+    clearInterval(stageTimer);
+    flash('Upload failed — please try again','#ef4444');
+    const prog2=document.getElementById('upload-progress');
+    if(prog2)prog2.style.display='none';
+  }
+}
+
+function setMapLoadPct(pct,title,sub){
+  const bar=document.getElementById('map-load-bar');
+  const t=document.getElementById('map-load-title');
+  const s=document.getElementById('map-load-sub');
+  const p=document.getElementById('map-load-pct');
+  if(bar)bar.style.width=pct+'%';
+  if(t&&title)t.textContent=title;
+  if(s&&sub!==undefined)s.textContent=sub;
+  if(p)p.textContent=pct+'%';
 }
 function handleDrop(e){
   e.preventDefault();document.getElementById('drop-zone').classList.remove('drag');
