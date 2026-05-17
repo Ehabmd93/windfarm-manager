@@ -389,9 +389,10 @@
   </div>
   <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
 
-  <!-- Identify prompt banner (shown after map loads, before identify mode) -->
-  {% if map_file and not wtgs %}
-  <div id="identify-prompt">
+  <!-- Identify prompt banner — ALWAYS in DOM, JS controls visibility -->
+
+  <!-- Variant A: no elements yet → primary "Start Identifying" CTA -->
+  <div id="identify-prompt" style="display:none;">
     <div style="width:44px;height:44px;border-radius:14px;background:linear-gradient(135deg,#4f46e5,#6366f1);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
       <i class="fa-solid fa-location-dot" style="color:white;font-size:18px;"></i>
     </div>
@@ -408,20 +409,22 @@
       Skip for now
     </button>
   </div>
-  {% elif map_file %}
-  <!-- Has elements — show subtle identify more link -->
-  <div id="identify-prompt" style="bottom:14px;">
+
+  <!-- Variant B: has elements → secondary "Add more" prompt -->
+  <div id="identify-prompt-more" style="display:none;position:absolute;bottom:14px;left:50%;transform:translateX(-50%);z-index:800;
+       background:white;border-radius:20px;padding:12px 22px;
+       box-shadow:0 8px 32px rgba(0,0,0,.2);border:1.5px solid #c7d2fe;
+       align-items:center;gap:14px;white-space:nowrap;max-width:90vw;">
     <div style="font-size:12px;color:#64748b;">Want to add more elements?</div>
     <button onclick="enterIdentifyMode()"
       style="padding:8px 16px;background:#4f46e5;color:white;border:none;border-radius:12px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">
       <i class="fa-solid fa-location-dot" style="margin-right:5px;"></i>Identify Elements
     </button>
-    <button onclick="document.getElementById('identify-prompt').style.display='none'"
+    <button onclick="document.getElementById('identify-prompt-more').style.display='none'"
       style="padding:8px 14px;background:white;color:#64748b;border:1.5px solid #e2e8f0;border-radius:12px;font-size:12px;font-weight:600;cursor:pointer;">
       Dismiss
     </button>
   </div>
-  {% endif %}
 </div>
 </div>
 
@@ -610,6 +613,7 @@ let textLabels=[];
 function enterIdentifyMode(){
   identifyMode=true;
   document.getElementById('identify-prompt').style.display='none';
+  document.getElementById('identify-prompt-more').style.display='none';
   document.getElementById('identify-toolbar').classList.add('show');
   document.getElementById('el-list-section').style.display='none';
   document.getElementById('ident-list-section').style.display='block';
@@ -631,6 +635,18 @@ function exitIdentify(skipPrompt){
   document.getElementById('pin-popup').style.display='none';
   document.getElementById('text-popup').style.display='none';
   map.off('click',onMapIdentifyClick);
+}
+
+// Show the right identify prompt based on whether elements exist
+function showIdentifyPrompt(){
+  if(identifyMode) return;  // already in identify mode, don't clobber
+  if(EL_LIST.length === 0){
+    // No elements → show primary "Start Identifying" banner
+    document.getElementById('identify-prompt').style.display='flex';
+  } else {
+    // Has elements → show subtle "Want to add more?" banner
+    document.getElementById('identify-prompt-more').style.display='flex';
+  }
 }
 
 function setTool(tool){
@@ -1019,7 +1035,14 @@ function flash(msg,bg){const el=document.createElement('div');el.className='flas
 
 // ── Boot ───────────────────────────────────────────────────────────────────────
 window.addEventListener('load',()=>{
-  setTimeout(()=>{map.invalidateSize();if(HAS_MAP){loadProjectMap();loadSavedZones();}},100);
+  setTimeout(async ()=>{
+    map.invalidateSize();
+    if(HAS_MAP){
+      await loadProjectMap();
+      showIdentifyPrompt();   // show the right banner once layers are drawn
+      loadSavedZones();
+    }
+  },100);
 });
 </script>
 </body>
