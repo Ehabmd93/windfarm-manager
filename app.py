@@ -1661,30 +1661,38 @@ def project_map_delete(pid):
 @app.route('/projects/<int:pid>/map/populate', methods=['POST'])
 @login_required
 def project_map_populate(pid):
-    """Create WTG elements from map pins placed in identify mode."""
+    """Create or update WTG elements from map pins placed in identify mode.
+    If an element with the same name already exists we update its map
+    coordinates (upsert) instead of silently skipping it.
+    """
     data     = request.get_json(force=True) or {}
     elements = data.get('elements', [])
     created  = 0
-    skipped  = 0
+    updated  = 0
     for el in elements:
         name = (el.get('name') or '').strip()
         if not name:
             continue
         existing = WTG.query.filter_by(project_id=pid, name=name).first()
         if existing:
-            skipped += 1
-            continue
-        wtg = WTG(
-            name         = name,
-            project_id   = pid,
-            element_type = el.get('type', 'wtg'),
-            northing     = el.get('lat'),
-            easting      = el.get('lon'),
-        )
-        db.session.add(wtg)
-        created += 1
+            # Update map position and type so re-identifying refreshes coordinates
+            if el.get('lat') is not None:
+                existing.northing     = el.get('lat')
+                existing.easting      = el.get('lon')
+                existing.element_type = el.get('type', existing.element_type or 'wtg')
+            updated += 1
+        else:
+            wtg = WTG(
+                name         = name,
+                project_id   = pid,
+                element_type = el.get('type', 'wtg'),
+                northing     = el.get('lat'),
+                easting      = el.get('lon'),
+            )
+            db.session.add(wtg)
+            created += 1
     db.session.commit()
-    return jsonify({'ok': True, 'created': created, 'skipped': skipped})
+    return jsonify({'ok': True, 'created': created, 'updated': updated, 'skipped': 0})
 
 
 @app.route('/api/projects/<int:pid>/map/geojson')

@@ -248,8 +248,11 @@
       <i class="fa-solid fa-trash-can"></i> Delete
     </button>
     <div class="tool-sep"></div>
-    <button onclick="saveToProject()"
-      style="display:flex;align-items:center;gap:6px;padding:7px 16px;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;border:none;border-radius:14px;font-size:12px;font-weight:800;cursor:pointer;box-shadow:0 2px 10px rgba(34,197,94,.35);">
+    <span id="identify-hint" style="font-size:11px;color:#a5b4fc;font-style:italic;white-space:nowrap;">
+      <i class="fa-solid fa-hand-pointer" style="margin-right:3px;"></i>Click the map to place a pin
+    </span>
+    <button id="toolbar-save-btn" onclick="saveToProject()" disabled
+      style="display:flex;align-items:center;gap:6px;padding:7px 16px;background:#e2e8f0;color:#94a3b8;border:none;border-radius:14px;font-size:12px;font-weight:800;cursor:not-allowed;transition:all .2s;">
       <i class="fa-solid fa-floppy-disk"></i>
       Save <span id="toolbar-count">(0)</span>
     </button>
@@ -755,9 +758,13 @@ function onMapIdentifyClick(e){
 }
 
 function suggestName(){
-  // Count WTG-type elements and suggest next
-  const wtgCount=identifiedElements.filter(e=>e.type==='wtg').length;
-  const n=wtgCount+1;
+  // Skip names already in the project (EL_LIST) or already placed this session
+  const taken=new Set([
+    ...EL_LIST.map(e=>e.name.toLowerCase()),
+    ...identifiedElements.map(e=>e.name.toLowerCase()),
+  ]);
+  let n=1;
+  while(taken.has(`wtg${String(n).padStart(2,'0')}`)) n++;
   return `WTG${String(n).padStart(2,'0')}`;
 }
 
@@ -838,9 +845,19 @@ function renderIdentList(){
   const rows=document.getElementById('ident-rows');
   const countLbl=document.getElementById('ident-count-label');
   const toolbarCount=document.getElementById('toolbar-count');
+  const saveBtn=document.getElementById('toolbar-save-btn');
+  const hint=document.getElementById('identify-hint');
   const n=identifiedElements.length;
   countLbl.textContent=`Identified — ${n} element${n!==1?'s':''}`;
   toolbarCount.textContent=`(${n})`;
+  // Enable/disable save button + show/hide hint
+  if(n>0){
+    if(saveBtn){saveBtn.disabled=false;saveBtn.style.cssText='display:flex;align-items:center;gap:6px;padding:7px 16px;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;border:none;border-radius:14px;font-size:12px;font-weight:800;cursor:pointer;box-shadow:0 2px 10px rgba(34,197,94,.35);transition:all .2s;';}
+    if(hint) hint.style.display='none';
+  } else {
+    if(saveBtn){saveBtn.disabled=true;saveBtn.style.cssText='display:flex;align-items:center;gap:6px;padding:7px 16px;background:#e2e8f0;color:#94a3b8;border:none;border-radius:14px;font-size:12px;font-weight:800;cursor:not-allowed;transition:all .2s;';}
+    if(hint) hint.style.display='inline';
+  }
   rows.innerHTML='';
   identifiedElements.forEach(el=>{
     const col=typeColor(el.type);
@@ -892,20 +909,28 @@ async function saveToProject(){
       const iconEl=document.getElementById('success-icon');
       const iconI=document.getElementById('success-icon-i');
 
-      if(data.created===0 && data.skipped>0){
-        // All elements already exist — show warning style
-        if(iconEl) iconEl.style.background='linear-gradient(135deg,#f59e0b,#d97706)';
-        if(iconI)  iconI.className='fa-solid fa-triangle-exclamation';
-        document.getElementById('success-title').textContent='Already in your project!';
-        document.getElementById('success-msg').textContent=
-          `${data.skipped} element${data.skipped!==1?'s':''} already exist — no duplicates created. Use different names to add new ones.`;
-      } else {
+      const created=data.created||0, updated=data.updated||0;
+      if(created>0 && updated>0){
+        // Mix: some new + some existing updated
         if(iconEl) iconEl.style.background='linear-gradient(135deg,#22c55e,#16a34a)';
         if(iconI)  iconI.className='fa-solid fa-check';
-        document.getElementById('success-title').textContent=`${data.created} element${data.created!==1?'s':''} saved!`;
+        document.getElementById('success-title').textContent=`${created+updated} elements saved!`;
         document.getElementById('success-msg').textContent=
-          `${data.created} element${data.created!==1?'s':''} added to your project.`+
-          (data.skipped?` (${data.skipped} skipped — already existed)`:'');
+          `${created} new element${created!==1?'s':''} added, ${updated} existing updated with new map positions.`;
+      } else if(updated>0){
+        // All were existing → positions updated
+        if(iconEl) iconEl.style.background='linear-gradient(135deg,#3b82f6,#1d4ed8)';
+        if(iconI)  iconI.className='fa-solid fa-rotate';
+        document.getElementById('success-title').textContent=`${updated} element${updated!==1?'s':''} updated!`;
+        document.getElementById('success-msg').textContent=
+          `${updated} element${updated!==1?'s':''} already existed — their map positions have been updated.`;
+      } else {
+        // All new
+        if(iconEl) iconEl.style.background='linear-gradient(135deg,#22c55e,#16a34a)';
+        if(iconI)  iconI.className='fa-solid fa-check';
+        document.getElementById('success-title').textContent=`${created} element${created!==1?'s':''} saved!`;
+        document.getElementById('success-msg').textContent=
+          `${created} element${created!==1?'s':''} added to your project.`;
       }
       modal.style.display='flex';
     }
