@@ -873,6 +873,8 @@ def project_setup(pid):
     if current_user.role not in ('engineer', 'manager', 'admin'):
         abort(403)
     proj          = Project.query.get_or_404(pid)
+    from flask import session as fsession
+    fsession['active_project_id'] = pid   # switch active project when visiting setup
     elements      = WTG.query.filter_by(project_id=pid).order_by(WTG.name).all()
     groups        = WTGGroup.query.filter_by(project_id=pid).order_by(WTGGroup.sort_order, WTGGroup.name).all()
     work_packages = WorkPackage.query.filter_by(project_id=pid).order_by(WorkPackage.sort_order, WorkPackage.name).all()
@@ -1597,6 +1599,8 @@ def map_view():
 @login_required
 def project_map(pid):
     proj     = Project.query.get_or_404(pid)
+    from flask import session as fsession
+    fsession['active_project_id'] = pid   # switch active project when visiting map
     wtgs     = WTG.query.filter_by(project_id=pid).order_by(WTG.name).all()
     map_file = ProjectMapFile.query.filter_by(project_id=pid).first()
     return render_template('map.html', proj=proj, wtgs=wtgs, map_file=map_file)
