@@ -694,7 +694,8 @@ async function loadWeather() {
     const d = await res.json();
     if (d.error) return;
 
-    const [ico, cond]  = WX_CODES[d.code] ?? ['🌡️','Unknown'];
+    const ico  = d.icon || '🌡️';
+    const cond = d.cond || 'Unknown';
     const windDir      = WX_DIRS[Math.round((d.wind_dir % 360) / 45) % 8];
     const locLabel     = [d.city, d.admin].filter(Boolean).join(', ');
 

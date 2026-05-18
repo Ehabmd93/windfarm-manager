@@ -1696,13 +1696,33 @@ def project_map_populate(pid):
     return jsonify({'ok': True, 'created': created, 'updated': updated, 'skipped': 0})
 
 
-# ── Weather API (server-side proxy + 30-min cache) ────────────────────────────
-_wx_cache = {}   # { cache_key: (data_dict, datetime) }
+# ── Weather API — uses wttr.in (handles AU postcodes + small towns) ────────────
+_wx_cache = {}   # { cache_key: (data_dict, timestamp) }
+
+# wttr.in weather codes → (emoji, label)
+_WTTR = {
+    113:('☀️','Sunny'),      116:('⛅','Partly cloudy'), 119:('☁️','Cloudy'),
+    122:('☁️','Overcast'),   143:('🌫️','Mist'),         176:('🌦️','Patchy rain'),
+    179:('🌨️','Patchy snow'),185:('🌦️','Drizzle'),      200:('⛈️','Thundery'),
+    227:('❄️','Blowing snow'),230:('❄️','Blizzard'),     248:('🌫️','Fog'),
+    260:('🌫️','Freezing fog'),263:('🌦️','Light drizzle'),266:('🌦️','Drizzle'),
+    281:('🌧️','Freezing drizzle'),284:('🌧️','Heavy drizzle'),
+    293:('🌦️','Light rain'), 296:('🌦️','Light rain'),   299:('🌧️','Moderate rain'),
+    302:('🌧️','Moderate rain'),305:('🌧️','Heavy rain'),  308:('🌧️','Heavy rain'),
+    311:('🌧️','Sleet'),      314:('🌧️','Moderate sleet'),317:('🌨️','Light sleet'),
+    320:('🌨️','Moderate sleet'),323:('🌨️','Light snow'),326:('🌨️','Light snow'),
+    329:('❄️','Moderate snow'),332:('❄️','Moderate snow'),335:('❄️','Heavy snow'),
+    338:('❄️','Heavy snow'),  350:('🌧️','Ice pellets'),  353:('🌦️','Light showers'),
+    356:('🌧️','Showers'),    359:('🌧️','Heavy showers'), 362:('🌧️','Sleet showers'),
+    365:('🌧️','Sleet showers'),368:('🌨️','Snow showers'),371:('❄️','Snow showers'),
+    374:('🌧️','Ice showers'), 377:('🌧️','Ice showers'),  386:('⛈️','Thunderstorm'),
+    389:('⛈️','Thunderstorm'),392:('⛈️','Snow thunderstorm'),395:('⛈️','Blizzard storm'),
+}
 
 @app.route('/api/weather')
 @login_required
 def api_weather():
-    """Geocode a location/postcode and return current weather from Open-Meteo."""
+    """Fetch live weather via wttr.in — handles AU postcodes and small towns."""
     loc = request.args.get('loc', '').strip()
     pc  = request.args.get('pc',  '').strip()
     if not loc and not pc:
@@ -1715,55 +1735,47 @@ def api_weather():
         if (now_ts - ts).total_seconds() < 1800:
             return jsonify(data)
 
-    def _get(url, timeout=6):
+    # Build candidate query strings — wttr.in is smart about AU places & postcodes
+    candidates = []
+    if loc: candidates.append(loc)
+    if pc:  candidates.append(pc)
+    if loc and pc: candidates.insert(0, f"{loc} {pc}")  # combined most specific
+
+    for q in candidates:
+        url = f'https://wttr.in/{urllib.parse.quote(q)}?format=j1'
+        req = urllib.request.Request(url, headers={
+            'User-Agent': 'WindfarmManager/1.0',
+            'Accept':     'application/json',
+        })
         try:
-            with urllib.request.urlopen(url, timeout=timeout) as r:
-                return json.loads(r.read())
+            with urllib.request.urlopen(req, timeout=8) as r:
+                w = json.loads(r.read())
+
+            c    = w['current_condition'][0]
+            area = w.get('nearest_area', [{}])[0]
+            city = (area.get('areaName',  [{}])[0].get('value') or
+                    area.get('region',    [{}])[0].get('value') or q)
+            rgn  =  area.get('region',   [{}])[0].get('value', '')
+
+            code        = int(c.get('weatherCode', 113))
+            ico, label  = _WTTR.get(code, ('🌡️', c['weatherDesc'][0]['value']))
+
+            data = {
+                'temp':       int(c['temp_C']),
+                'icon':       ico,
+                'cond':       label,
+                'wind_speed': int(c['windspeedKmph']),
+                'wind_dir':   int(c.get('winddirDegree', 0)),
+                'city':       city,
+                'admin':      rgn,
+            }
+            _wx_cache[cache_key] = (data, now_ts)
+            return jsonify(data)
+
         except Exception:
-            return {}
+            continue   # try next candidate
 
-    def _geocode(q):
-        url = ('https://geocoding-api.open-meteo.com/v1/search'
-               f'?name={urllib.parse.quote(q)}&count=1&language=en&format=json')
-        return _get(url).get('results') or []
-
-    # Try: location name → postcode + "Australia" → postcode alone
-    geo = None
-    for q in [loc, f"{pc} Australia" if pc else None, pc]:
-        if not q:
-            continue
-        results = _geocode(q)
-        if results:
-            geo = results[0]
-            break
-
-    if not geo:
-        return jsonify({'error': 'location not found'}), 404
-
-    lat, lon = geo['latitude'], geo['longitude']
-    city     = geo.get('name', loc or pc)
-    admin    = geo.get('admin1', '')
-
-    wx = _get(
-        f'https://api.open-meteo.com/v1/forecast'
-        f'?latitude={lat}&longitude={lon}'
-        f'&current=temperature_2m,weather_code,wind_speed_10m,wind_direction_10m'
-        f'&wind_speed_unit=kmh&timezone=auto'
-    )
-    c = wx.get('current')
-    if not c:
-        return jsonify({'error': 'weather fetch failed'}), 500
-
-    data = {
-        'temp':       round(c['temperature_2m']),
-        'code':       c['weather_code'],
-        'wind_speed': round(c['wind_speed_10m']),
-        'wind_dir':   c['wind_direction_10m'],
-        'city':       city,
-        'admin':      admin,
-    }
-    _wx_cache[cache_key] = (data, now_ts)
-    return jsonify(data)
+    return jsonify({'error': 'weather unavailable'}), 503
 
 
 @app.route('/api/projects/<int:pid>/map/geojson')
