@@ -150,22 +150,31 @@
       </p>
 
       {% if proj %}
-      <!-- ── Weather widget — always rendered, JS fills in data ── -->
+      {% set _has_loc = (proj.location or proj.postcode) %}
+      <!-- ── Weather widget — server-rendered initial state, JS upgrades it ── -->
       <div id="weather-widget" style="margin-top:11px;">
         <div class="wx-card">
-          <span id="wx-icon" style="font-size:26px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.3));">🌡️</span>
+          <span id="wx-icon" style="font-size:26px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.3));">{% if _has_loc %}🌡️{% else %}📍{% endif %}</span>
           <div>
             <div style="display:flex;align-items:baseline;gap:7px;">
-              <span id="wx-temp" class="wx-skeleton" style="color:white;font-size:22px;font-weight:900;letter-spacing:-.5px;">--°</span>
-              <span id="wx-cond" class="wx-skeleton" style="color:#94a3b8;font-size:11px;font-weight:700;">Loading…</span>
+              <span id="wx-temp" {% if _has_loc %}class="wx-skeleton"{% endif %} style="color:white;font-size:22px;font-weight:900;letter-spacing:-.5px;">{% if _has_loc %}--°{% endif %}</span>
+              <span id="wx-cond" {% if _has_loc %}class="wx-skeleton"{% endif %} style="color:#94a3b8;font-size:11px;font-weight:700;">{% if _has_loc %}Loading…{% else %}Set project location{% endif %}</span>
             </div>
             <div style="font-size:10px;margin-top:3px;display:flex;align-items:center;gap:6px;">
+              {% if _has_loc %}
               <span>
                 <i class="fa-solid fa-wind" style="color:#7dd3fc;font-size:9px;margin-right:3px;"></i>
                 <span id="wx-wind" class="wx-skeleton" style="color:#7dd3fc;">--</span>
               </span>
               <span style="color:#334155;">·</span>
-              <span id="wx-loc" class="wx-skeleton" style="color:#475569;">fetching…</span>
+              <span id="wx-loc" class="wx-skeleton" style="color:#475569;">{{ proj.location or proj.postcode }}</span>
+              {% else %}
+              <a href="{{ url_for('project_settings', pid=proj.id) }}" id="wx-loc"
+                 style="color:#7dd3fc;text-decoration:none;font-weight:700;">
+                Open Project Settings →
+              </a>
+              <span id="wx-wind" style="display:none;"></span>
+              {% endif %}
             </div>
           </div>
         </div>
