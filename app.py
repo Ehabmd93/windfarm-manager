@@ -1,4 +1,5 @@
 import os, json, base64, uuid, unicodedata, re
+import urllib.request, urllib.parse
 from urllib.parse import quote as _urlquote
 from datetime import datetime, date, timezone
 from flask import (Flask, render_template, request, redirect,
@@ -1693,6 +1694,76 @@ def project_map_populate(pid):
             created += 1
     db.session.commit()
     return jsonify({'ok': True, 'created': created, 'updated': updated, 'skipped': 0})
+
+
+# ── Weather API (server-side proxy + 30-min cache) ────────────────────────────
+_wx_cache = {}   # { cache_key: (data_dict, datetime) }
+
+@app.route('/api/weather')
+@login_required
+def api_weather():
+    """Geocode a location/postcode and return current weather from Open-Meteo."""
+    loc = request.args.get('loc', '').strip()
+    pc  = request.args.get('pc',  '').strip()
+    if not loc and not pc:
+        return jsonify({'error': 'no location'}), 400
+
+    cache_key = f"{loc}|{pc}"
+    now_ts = datetime.now(timezone.utc)
+    if cache_key in _wx_cache:
+        data, ts = _wx_cache[cache_key]
+        if (now_ts - ts).total_seconds() < 1800:
+            return jsonify(data)
+
+    def _get(url, timeout=6):
+        try:
+            with urllib.request.urlopen(url, timeout=timeout) as r:
+                return json.loads(r.read())
+        except Exception:
+            return {}
+
+    def _geocode(q):
+        url = ('https://geocoding-api.open-meteo.com/v1/search'
+               f'?name={urllib.parse.quote(q)}&count=1&language=en&format=json')
+        return _get(url).get('results') or []
+
+    # Try: location name → postcode + "Australia" → postcode alone
+    geo = None
+    for q in [loc, f"{pc} Australia" if pc else None, pc]:
+        if not q:
+            continue
+        results = _geocode(q)
+        if results:
+            geo = results[0]
+            break
+
+    if not geo:
+        return jsonify({'error': 'location not found'}), 404
+
+    lat, lon = geo['latitude'], geo['longitude']
+    city     = geo.get('name', loc or pc)
+    admin    = geo.get('admin1', '')
+
+    wx = _get(
+        f'https://api.open-meteo.com/v1/forecast'
+        f'?latitude={lat}&longitude={lon}'
+        f'&current=temperature_2m,weather_code,wind_speed_10m,wind_direction_10m'
+        f'&wind_speed_unit=kmh&timezone=auto'
+    )
+    c = wx.get('current')
+    if not c:
+        return jsonify({'error': 'weather fetch failed'}), 500
+
+    data = {
+        'temp':       round(c['temperature_2m']),
+        'code':       c['weather_code'],
+        'wind_speed': round(c['wind_speed_10m']),
+        'wind_dir':   c['wind_direction_10m'],
+        'city':       city,
+        'admin':      admin,
+    }
+    _wx_cache[cache_key] = (data, now_ts)
+    return jsonify(data)
 
 
 @app.route('/api/projects/<int:pid>/map/geojson')
