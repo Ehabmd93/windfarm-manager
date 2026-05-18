@@ -669,86 +669,83 @@ const hr = new Date().getHours();
 const g  = document.getElementById('greeting-text');
 if (g) g.textContent = hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening';
 
-// ── Weather widget — fully client-side (Open-Meteo + Nominatim, no server proxy)
+// ── Weather widget ─────────────────────────────────────────────────────────────
 const PROJ_LOC = {{ (proj.location or '')|tojson if proj else '""' }};
 const PROJ_PC  = {{ (proj.postcode  or '')|tojson if proj else '""' }};
 const WX_DIRS  = ['N','NE','E','SE','S','SW','W','NW'];
 const WMO = {
-  0:['☀️','Clear'],  1:['🌤️','Mainly clear'], 2:['⛅','Partly cloudy'], 3:['☁️','Overcast'],
-  45:['🌫️','Fog'],  48:['🌫️','Icy fog'],
-  51:['🌦️','Drizzle'], 53:['🌦️','Drizzle'], 55:['🌧️','Heavy drizzle'],
-  61:['🌧️','Light rain'], 63:['🌧️','Rain'], 65:['🌧️','Heavy rain'],
-  71:['🌨️','Snow'],  73:['🌨️','Snow'],  75:['❄️','Heavy snow'],
-  80:['🌦️','Showers'], 81:['🌧️','Showers'], 82:['⛈️','Heavy showers'],
-  95:['⛈️','Storm'], 96:['⛈️','Storm'],  99:['⛈️','Storm'],
+  0:'☀️ Clear', 1:'🌤️ Mainly clear', 2:'⛅ Partly cloudy', 3:'☁️ Overcast',
+  45:'🌫️ Fog', 48:'🌫️ Icy fog',
+  51:'🌦️ Drizzle', 53:'🌦️ Drizzle', 55:'🌧️ Heavy drizzle',
+  61:'🌧️ Light rain', 63:'🌧️ Rain', 65:'🌧️ Heavy rain',
+  71:'🌨️ Snow', 73:'🌨️ Snow', 75:'❄️ Heavy snow',
+  80:'🌦️ Showers', 81:'🌧️ Showers', 82:'⛈️ Heavy showers',
+  95:'⛈️ Storm', 96:'⛈️ Storm', 99:'⛈️ Storm',
 };
 
 function wxDone() {
   document.querySelectorAll('.wx-skeleton').forEach(el => el.classList.remove('wx-skeleton'));
 }
-function wxShow(temp, icon, cond, wspd, wdir, city) {
-  const dir = WX_DIRS[Math.round((wdir % 360) / 45) % 8];
+function wxShow(temp, code, wspd, wdir, city) {
+  const parts = (WMO[code] || '🌡️ Unknown').split(' ');
+  const icon  = parts[0], cond = parts.slice(1).join(' ');
+  const dir   = WX_DIRS[Math.round((wdir % 360) / 45) % 8];
   document.getElementById('wx-icon').textContent = icon;
   document.getElementById('wx-temp').textContent = temp + '°';
   document.getElementById('wx-cond').textContent = cond;
-  document.getElementById('wx-wind').textContent = wspd ? dir + ' ' + wspd + ' km/h' : '';
+  document.getElementById('wx-wind').textContent = dir + ' ' + wspd + ' km/h';
   document.getElementById('wx-loc').textContent  = city;
   wxDone();
 }
-function wxFail(msg) {
+function wxPrompt(msg) {
   document.getElementById('wx-icon').textContent = '📍';
   document.getElementById('wx-temp').textContent = '';
   document.getElementById('wx-cond').textContent = msg;
   document.getElementById('wx-wind').textContent = '';
-  document.getElementById('wx-loc').textContent  = '';
+  document.getElementById('wx-loc').textContent  = 'Project Settings → Info';
   wxDone();
 }
 
 async function loadWeather() {
+  const loc = (PROJ_LOC||'').trim();
+  const pc  = (PROJ_PC ||'').trim();
+
+  // No location set — show prompt immediately, no network calls, no hanging
+  if (!loc && !pc) {
+    wxPrompt('Set project location');
+    return;
+  }
+
+  // Hard 5-second abort for all fetches
+  const ctrl  = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 5000);
+
   try {
-    let lat, lon, city = '';
-    const loc = (PROJ_LOC||'').trim(), pc = (PROJ_PC||'').trim();
-
-    if (loc || pc) {
-      // Geocode project suburb/postcode → coordinates (Nominatim, AU only)
-      const q   = [loc, pc].filter(Boolean).join(' ');
-      const geo = await fetch(
-        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&countrycodes=au&format=json&limit=1`,
-        { headers: { 'Accept-Language': 'en' } }
-      ).then(r => r.json());
-      if (!geo.length) throw new Error('geocode-fail');
-      lat  = parseFloat(geo[0].lat);
-      lon  = parseFloat(geo[0].lon);
-      city = geo[0].display_name.split(',')[0].trim();
-    } else {
-      // No project location → ask browser for GPS coordinates
-      const pos = await new Promise((ok, fail) =>
-        navigator.geolocation.getCurrentPosition(ok, fail, { timeout: 8000, maximumAge: 300000 })
-      );
-      lat = pos.coords.latitude;
-      lon = pos.coords.longitude;
-      // Reverse-geocode to get city name
-      try {
-        const rev = await fetch(
-          `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=10`,
-          { headers: { 'Accept-Language': 'en' } }
-        ).then(r => r.json());
-        city = rev.address?.city || rev.address?.town || rev.address?.suburb || rev.address?.county || '';
-      } catch(e) {}
-    }
-
-    // Fetch weather from Open-Meteo — free, no API key, CORS-safe, works worldwide
-    const wx = await fetch(
-      `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}&current_weather=true&wind_speed_unit=kmh`
+    // Step 1 — geocode suburb/postcode → lat,lon via Nominatim (OpenStreetMap)
+    const q   = [loc, pc].filter(Boolean).join(' ');
+    const geo = await fetch(
+      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&countrycodes=au&format=json&limit=1`,
+      { signal: ctrl.signal, headers: {'Accept-Language':'en'} }
     ).then(r => r.json());
 
-    const cw           = wx.current_weather;
-    const [icon, cond] = WMO[cw.weathercode] || ['🌡️', 'Unknown'];
-    wxShow(Math.round(cw.temperature), icon, cond, Math.round(cw.windspeed), cw.winddirection, city);
+    if (!geo.length) { clearTimeout(timer); wxPrompt('Location not found'); return; }
+    const lat  = parseFloat(geo[0].lat);
+    const lon  = parseFloat(geo[0].lon);
+    const city = geo[0].display_name.split(',')[0].trim();
+
+    // Step 2 — fetch live weather from Open-Meteo (free, no key, CORS-safe)
+    const wx = await fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}&current_weather=true&wind_speed_unit=kmh`,
+      { signal: ctrl.signal }
+    ).then(r => r.json());
+
+    clearTimeout(timer);
+    const cw = wx.current_weather;
+    wxShow(Math.round(cw.temperature), cw.weathercode, Math.round(cw.windspeed), cw.winddirection, city);
 
   } catch(e) {
-    const hasLoc = (PROJ_LOC||'').trim() || (PROJ_PC||'').trim();
-    wxFail(hasLoc ? 'Weather unavailable' : 'Allow location or add in Settings');
+    clearTimeout(timer);
+    wxPrompt('Set project location');
   }
 }
 
