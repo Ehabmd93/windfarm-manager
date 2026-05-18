@@ -94,12 +94,14 @@
 
 /* ── Weather widget ─────────────────────────────────────────── */
 #weather-widget { display:none; margin-top:11px; }
+@keyframes wx-pulse { 0%,100%{opacity:.4} 50%{opacity:.8} }
 .wx-card {
   display:inline-flex; align-items:center; gap:13px;
   background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.11);
   border-radius:18px; padding:10px 18px; backdrop-filter:blur(4px);
   cursor:default; user-select:none;
 }
+.wx-skeleton { animation:wx-pulse 1.4s ease-in-out infinite; }
 
 /* ── WTG / Element cards ────────────────────────────────────── */
 .el-card {
@@ -148,22 +150,22 @@
         {% if current_user.position %}&nbsp;·&nbsp; {{ current_user.position }}{% endif %}
       </p>
 
-      <!-- ── Weather widget (shown after data loads) ── -->
+      <!-- ── Weather widget ── always visible when location is set ── -->
       <div id="weather-widget">
         <div class="wx-card">
           <span id="wx-icon" style="font-size:26px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.3));">🌡️</span>
           <div>
             <div style="display:flex;align-items:baseline;gap:7px;">
-              <span id="wx-temp" style="color:white;font-size:22px;font-weight:900;letter-spacing:-.5px;">--°</span>
-              <span id="wx-cond" style="color:#94a3b8;font-size:11px;font-weight:700;">Loading…</span>
+              <span id="wx-temp" class="wx-skeleton" style="color:white;font-size:22px;font-weight:900;letter-spacing:-.5px;">--°</span>
+              <span id="wx-cond" class="wx-skeleton" style="color:#94a3b8;font-size:11px;font-weight:700;">Loading…</span>
             </div>
             <div style="font-size:10px;margin-top:3px;display:flex;align-items:center;gap:6px;">
               <span>
                 <i class="fa-solid fa-wind" style="color:#7dd3fc;font-size:9px;margin-right:3px;"></i>
-                <span id="wx-wind" style="color:#7dd3fc;">-- km/h</span>
+                <span id="wx-wind" class="wx-skeleton" style="color:#7dd3fc;">-- km/h</span>
               </span>
               <span style="color:#334155;">·</span>
-              <span id="wx-loc" style="color:#475569;">--</span>
+              <span id="wx-loc" class="wx-skeleton" style="color:#475569;">fetching…</span>
             </div>
           </div>
         </div>
@@ -669,44 +671,45 @@ if (g) g.textContent = hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : '
 // ── Weather widget ─────────────────────────────────────────────────────────────
 const PROJ_LOC = {{ (proj.location or '')|tojson if proj else '""' }};
 const PROJ_PC  = {{ (proj.postcode  or '')|tojson if proj else '""' }};
+const WX_DIRS  = ['N','NE','E','SE','S','SW','W','NW'];
 
-const WX_CODES = {
-  0:['☀️','Clear sky'],
-  1:['🌤️','Mainly clear'],2:['⛅','Partly cloudy'],3:['☁️','Overcast'],
-  45:['🌫️','Fog'],48:['🌫️','Icy fog'],
-  51:['🌦️','Light drizzle'],53:['🌦️','Drizzle'],55:['🌧️','Heavy drizzle'],
-  61:['🌧️','Light rain'],63:['🌧️','Rain'],65:['🌧️','Heavy rain'],
-  71:['🌨️','Light snow'],73:['🌨️','Snow'],75:['❄️','Heavy snow'],
-  80:['🌦️','Showers'],81:['🌧️','Rain showers'],82:['⛈️','Heavy showers'],
-  95:['⛈️','Thunderstorm'],96:['⛈️','Hail storm'],99:['⛈️','Heavy hail'],
-};
-const WX_DIRS = ['N','NE','E','SE','S','SW','W','NW'];
+function wxReady() {
+  // Remove skeleton pulse from all wx elements
+  document.querySelectorAll('.wx-skeleton').forEach(el => el.classList.remove('wx-skeleton'));
+}
 
 async function loadWeather() {
   const loc = (PROJ_LOC||'').trim();
   const pc  = (PROJ_PC ||'').trim();
   if (!loc && !pc) return;
 
+  // Show widget immediately with loading skeleton
+  document.getElementById('weather-widget').style.display = 'block';
+
   try {
-    // Call our own backend — it handles geocoding, caching, fallbacks
     const res = await fetch(`/api/weather?loc=${encodeURIComponent(loc)}&pc=${encodeURIComponent(pc)}`);
-    if (!res.ok) return;
+    if (!res.ok) throw new Error('http ' + res.status);
     const d = await res.json();
-    if (d.error) return;
+    if (d.error) throw new Error(d.error);
 
-    const ico  = d.icon || '🌡️';
-    const cond = d.cond || 'Unknown';
-    const windDir      = WX_DIRS[Math.round((d.wind_dir % 360) / 45) % 8];
-    const locLabel     = [d.city, d.admin].filter(Boolean).join(', ');
+    const windDir  = WX_DIRS[Math.round(((d.wind_dir||0) % 360) / 45) % 8];
+    const locLabel = [d.city, d.admin].filter(Boolean).join(', ') || loc || pc;
 
-    document.getElementById('wx-icon').textContent = ico;
+    document.getElementById('wx-icon').textContent = d.icon || '🌡️';
     document.getElementById('wx-temp').textContent = `${d.temp}°`;
-    document.getElementById('wx-cond').textContent = cond;
+    document.getElementById('wx-cond').textContent = d.cond || '';
     document.getElementById('wx-wind').textContent = `${windDir} ${d.wind_speed} km/h`;
     document.getElementById('wx-loc').textContent  = locLabel;
-    document.getElementById('weather-widget').style.display = 'block';
+    wxReady();
+
   } catch(e) {
-    // silently hide on any error
+    // Data unavailable — show a neutral fallback instead of hiding
+    document.getElementById('wx-icon').textContent = '🌡️';
+    document.getElementById('wx-temp').textContent = '--°';
+    document.getElementById('wx-cond').textContent = 'Unavailable';
+    document.getElementById('wx-wind').textContent = '';
+    document.getElementById('wx-loc').textContent  = loc || pc;
+    wxReady();
   }
 }
 
