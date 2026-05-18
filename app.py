@@ -1778,6 +1778,61 @@ def api_weather():
     return jsonify({'error': 'weather unavailable'}), 503
 
 
+# ── Suburb / Postcode autocomplete — Australian locations ─────────────────────
+_suburb_cache = {}
+
+_STATE_ABBR = {
+    'New South Wales': 'NSW', 'Victoria': 'VIC', 'Queensland': 'QLD',
+    'South Australia': 'SA', 'Western Australia': 'WA', 'Tasmania': 'TAS',
+    'Australian Capital Territory': 'ACT', 'Northern Territory': 'NT',
+}
+
+@app.route('/api/suburb-search')
+@login_required
+def api_suburb_search():
+    """Return AU suburb+postcode suggestions for autocomplete."""
+    q = request.args.get('q', '').strip()
+    if len(q) < 2:
+        return jsonify([])
+    ql = q.lower()
+    now_ts = datetime.now(timezone.utc)
+    if ql in _suburb_cache:
+        data, ts = _suburb_cache[ql]
+        if (now_ts - ts).total_seconds() < 3600:
+            return jsonify(data)
+    url = (f'https://nominatim.openstreetmap.org/search'
+           f'?q={urllib.parse.quote(q)}&countrycodes=au'
+           f'&format=json&addressdetails=1&limit=10')
+    req = urllib.request.Request(url, headers={'User-Agent': 'WindfarmManager/1.0'})
+    try:
+        with urllib.request.urlopen(req, timeout=6) as r:
+            results = json.loads(r.read())
+        seen, out = set(), []
+        for item in results:
+            addr    = item.get('address', {})
+            suburb  = (addr.get('suburb') or addr.get('city') or addr.get('town')
+                       or addr.get('village') or addr.get('county') or '').strip()
+            state   = addr.get('state', '')
+            pc      = addr.get('postcode', '').strip()
+            if not suburb or not pc:
+                continue
+            key = f"{suburb.lower()}|{pc}"
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append({
+                'suburb':   suburb,
+                'state':    _STATE_ABBR.get(state, state[:3].upper() if state else ''),
+                'postcode': pc,
+            })
+            if len(out) >= 6:
+                break
+        _suburb_cache[ql] = (out, now_ts)
+        return jsonify(out)
+    except Exception:
+        return jsonify([])
+
+
 @app.route('/api/projects/<int:pid>/map/geojson')
 @login_required
 def api_project_map_geojson(pid):

@@ -154,15 +154,31 @@
             </div>
           </div>
 
-          <div style="display:grid;grid-template-columns:1fr auto;gap:12px;">
-            <div>
-              <label class="form-label">Location</label>
-              <input name="location" class="form-input" placeholder="e.g. South Australia"/>
+          <!-- ── Smart Location + Postcode autocomplete ── -->
+          <div style="position:relative;" id="loc-wrap">
+            <label class="form-label">
+              <i class="fa-solid fa-location-dot" style="color:#4f46e5;font-size:10px;margin-right:4px;"></i>
+              Location &amp; Postcode
+            </label>
+            <div style="display:flex;align-items:stretch;gap:8px;">
+              <input id="loc-ac" class="form-input" style="flex:1;"
+                     placeholder="Type suburb or postcode… e.g. Kondinin, Perth, 6000"
+                     autocomplete="off"/>
+              <div id="loc-badge"
+                   style="display:none;background:#dbeafe;color:#1d4ed8;border:1.5px solid #bfdbfe;
+                          border-radius:10px;padding:0 14px;font-size:14px;font-weight:900;
+                          align-items:center;justify-content:center;white-space:nowrap;min-width:68px;"></div>
             </div>
-            <div>
-              <label class="form-label">Postcode</label>
-              <input name="postcode" class="form-input" placeholder="5000" style="width:100px;"/>
-            </div>
+            <div id="loc-drop"
+                 style="display:none;position:absolute;top:calc(100% - 4px);left:0;right:0;
+                        background:white;border:1.5px solid #c7d2fe;border-radius:12px;
+                        box-shadow:0 8px 28px rgba(79,70,229,.14);z-index:9999;overflow:hidden;"></div>
+            <input type="hidden" name="location" id="loc-val"/>
+            <input type="hidden" name="postcode" id="pc-val"/>
+            <p style="font-size:11px;color:#94a3b8;margin-top:4px;">
+              <i class="fa-solid fa-circle-info" style="margin-right:3px;"></i>
+              Start typing to search — select from the list to set suburb &amp; postcode
+            </p>
           </div>
 
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
@@ -624,6 +640,61 @@ document.querySelectorAll('.feat-card.on').forEach(card => {
   const val = document.getElementById(`fval-${key}`);
   if (val) val.value = '1';
 });
+
+// ─────────────────────────────────────────────────────────────────────
+// Suburb / Postcode autocomplete
+// ─────────────────────────────────────────────────────────────────────
+(function() {
+  const inp    = document.getElementById('loc-ac');
+  const locVal = document.getElementById('loc-val');
+  const pcVal  = document.getElementById('pc-val');
+  const drop   = document.getElementById('loc-drop');
+  const badge  = document.getElementById('loc-badge');
+  let debounce, results = [];
+
+  inp.addEventListener('input', () => {
+    clearTimeout(debounce);
+    const q = inp.value.trim();
+    locVal.value = q;   // raw fallback
+    pcVal.value  = '';
+    badge.style.display = 'none';
+    if (q.length < 2) { drop.style.display = 'none'; return; }
+    debounce = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/suburb-search?q=${encodeURIComponent(q)}`);
+        results   = await res.json();
+        if (!results.length) { drop.style.display = 'none'; return; }
+        drop.innerHTML = results.map((s, i) => `
+          <div onmousedown="event.preventDefault()" onclick="__pickSub(${i})"
+               style="padding:11px 16px;cursor:pointer;display:flex;align-items:center;
+                      justify-content:space-between;gap:10px;border-bottom:1px solid #f1f5f9;
+                      transition:background .1s;" onmouseover="this.style.background='#f5f3ff'"
+               onmouseout="this.style.background=''">
+            <div>
+              <span style="font-size:13px;font-weight:700;color:#0f172a;">${s.suburb}</span>
+              ${s.state ? `<span style="font-size:11px;color:#94a3b8;margin-left:5px;">${s.state}</span>` : ''}
+            </div>
+            <span style="background:#dbeafe;color:#1d4ed8;border-radius:7px;
+                         padding:3px 10px;font-size:12px;font-weight:800;flex-shrink:0;">${s.postcode}</span>
+          </div>`).join('');
+        drop.style.display = 'block';
+      } catch(e) {}
+    }, 280);
+  });
+
+  inp.addEventListener('blur',  () => { setTimeout(() => { drop.style.display = 'none'; }, 180); });
+  inp.addEventListener('focus', () => { if (drop.innerHTML) drop.style.display = 'block'; });
+
+  window.__pickSub = function(i) {
+    const s      = results[i];
+    inp.value    = s.suburb + (s.state ? ', ' + s.state : '');
+    locVal.value = s.suburb;
+    pcVal.value  = s.postcode;
+    badge.textContent   = s.postcode;
+    badge.style.display = 'flex';
+    drop.style.display  = 'none';
+  };
+})();
 
 // ─────────────────────────────────────────────────────────────────────
 // Submit
