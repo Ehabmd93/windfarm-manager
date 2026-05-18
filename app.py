@@ -1722,24 +1722,48 @@ _WTTR = {
 @app.route('/api/weather')
 @login_required
 def api_weather():
-    """Fetch live weather via wttr.in — handles AU postcodes and small towns."""
+    """Fetch live weather via wttr.in.
+    Accepts: loc=suburb, pc=postcode, lat=latitude, lon=longitude (any combo).
+    """
     loc = request.args.get('loc', '').strip()
     pc  = request.args.get('pc',  '').strip()
-    if not loc and not pc:
+    lat = request.args.get('lat', '').strip()
+    lon = request.args.get('lon', '').strip()
+
+    if not loc and not pc and not (lat and lon):
         return jsonify({'error': 'no location'}), 400
 
-    cache_key = f"{loc}|{pc}"
+    cache_key = f"{loc}|{pc}|{lat}|{lon}"
     now_ts = datetime.now(timezone.utc)
     if cache_key in _wx_cache:
         data, ts = _wx_cache[cache_key]
         if (now_ts - ts).total_seconds() < 1800:
             return jsonify(data)
 
-    # Build candidate query strings — wttr.in is smart about AU places & postcodes
+    # Build candidate query strings — most specific first
     candidates = []
-    if loc: candidates.append(loc)
-    if pc:  candidates.append(pc)
-    if loc and pc: candidates.insert(0, f"{loc} {pc}")  # combined most specific
+    if loc and pc: candidates.append(f"{loc} {pc}")
+    if loc:        candidates.append(loc)
+    if pc:         candidates.append(pc)
+    if lat and lon: candidates.append(f"{lat},{lon}")   # wttr.in supports lat,lon directly
+
+    def _parse(w, fallback_q):
+        c    = w['current_condition'][0]
+        area = w.get('nearest_area', [{}])[0]
+        city = (area.get('areaName', [{}])[0].get('value') or
+                area.get('region',  [{}])[0].get('value') or fallback_q)
+        rgn  =  area.get('region',  [{}])[0].get('value', '')
+        code        = int(c.get('weatherCode', 113))
+        ico, label  = _WTTR.get(code, ('🌡️', c['weatherDesc'][0]['value']))
+        return {
+            'temp':       int(c['temp_C']),
+            'icon':       ico,
+            'cond':       label,
+            'wind_speed': int(c['windspeedKmph']),
+            'wind_dir':   int(c.get('winddirDegree', 0)),
+            'city':       city,
+            'admin':      rgn,
+        }
 
     for q in candidates:
         url = f'https://wttr.in/{urllib.parse.quote(q)}?format=j1'
@@ -1750,30 +1774,11 @@ def api_weather():
         try:
             with urllib.request.urlopen(req, timeout=8) as r:
                 w = json.loads(r.read())
-
-            c    = w['current_condition'][0]
-            area = w.get('nearest_area', [{}])[0]
-            city = (area.get('areaName',  [{}])[0].get('value') or
-                    area.get('region',    [{}])[0].get('value') or q)
-            rgn  =  area.get('region',   [{}])[0].get('value', '')
-
-            code        = int(c.get('weatherCode', 113))
-            ico, label  = _WTTR.get(code, ('🌡️', c['weatherDesc'][0]['value']))
-
-            data = {
-                'temp':       int(c['temp_C']),
-                'icon':       ico,
-                'cond':       label,
-                'wind_speed': int(c['windspeedKmph']),
-                'wind_dir':   int(c.get('winddirDegree', 0)),
-                'city':       city,
-                'admin':      rgn,
-            }
+            data = _parse(w, q)
             _wx_cache[cache_key] = (data, now_ts)
             return jsonify(data)
-
         except Exception:
-            continue   # try next candidate
+            continue
 
     return jsonify({'error': 'weather unavailable'}), 503
 

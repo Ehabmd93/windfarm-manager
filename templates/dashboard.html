@@ -668,54 +668,85 @@ const hr = new Date().getHours();
 const g  = document.getElementById('greeting-text');
 if (g) g.textContent = hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening';
 
-// ── Weather widget ─────────────────────────────────────────────────────────────
+// ── Weather widget — always visible, geolocation fallback ─────────────────────
 const PROJ_LOC = {{ (proj.location or '')|tojson if proj else '""' }};
 const PROJ_PC  = {{ (proj.postcode  or '')|tojson if proj else '""' }};
 const WX_DIRS  = ['N','NE','E','SE','S','SW','W','NW'];
 
+// Show the widget immediately — skeleton pulses until data or error
+document.getElementById('weather-widget').style.display = 'block';
+
 function wxReady() {
-  // Remove skeleton pulse from all wx elements
   document.querySelectorAll('.wx-skeleton').forEach(el => el.classList.remove('wx-skeleton'));
+}
+
+function wxRender(d) {
+  const windDir  = WX_DIRS[Math.round(((d.wind_dir||0) % 360) / 45) % 8];
+  const locLabel = [d.city, d.admin].filter(Boolean).join(', ') || PROJ_LOC || PROJ_PC || 'Your location';
+  document.getElementById('wx-icon').textContent = d.icon || '🌡️';
+  document.getElementById('wx-temp').textContent = `${d.temp}°`;
+  document.getElementById('wx-cond').textContent = d.cond || '';
+  document.getElementById('wx-wind').textContent = `${windDir} ${d.wind_speed} km/h`;
+  document.getElementById('wx-loc').textContent  = locLabel;
+  wxReady();
+}
+
+function wxError(msg) {
+  document.getElementById('wx-icon').textContent = '📍';
+  document.getElementById('wx-temp').textContent = '';
+  document.getElementById('wx-cond').textContent = msg;
+  document.getElementById('wx-wind').textContent = '';
+  document.getElementById('wx-loc').textContent  = '';
+  wxReady();
+}
+
+async function fetchWeatherUrl(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('http ' + res.status);
+  const d = await res.json();
+  if (d.error) throw new Error(d.error);
+  return d;
 }
 
 async function loadWeather() {
   const loc = (PROJ_LOC||'').trim();
   const pc  = (PROJ_PC ||'').trim();
-  if (!loc && !pc) return;
 
-  // Show widget immediately with loading skeleton
-  document.getElementById('weather-widget').style.display = 'block';
-
-  try {
-    const res = await fetch(`/api/weather?loc=${encodeURIComponent(loc)}&pc=${encodeURIComponent(pc)}`);
-    if (!res.ok) throw new Error('http ' + res.status);
-    const d = await res.json();
-    if (d.error) throw new Error(d.error);
-
-    const windDir  = WX_DIRS[Math.round(((d.wind_dir||0) % 360) / 45) % 8];
-    const locLabel = [d.city, d.admin].filter(Boolean).join(', ') || loc || pc;
-
-    document.getElementById('wx-icon').textContent = d.icon || '🌡️';
-    document.getElementById('wx-temp').textContent = `${d.temp}°`;
-    document.getElementById('wx-cond').textContent = d.cond || '';
-    document.getElementById('wx-wind').textContent = `${windDir} ${d.wind_speed} km/h`;
-    document.getElementById('wx-loc').textContent  = locLabel;
-    wxReady();
-
-  } catch(e) {
-    // Data unavailable — show a neutral fallback instead of hiding
-    document.getElementById('wx-icon').textContent = '🌡️';
-    document.getElementById('wx-temp').textContent = '--°';
-    document.getElementById('wx-cond').textContent = 'Unavailable';
-    document.getElementById('wx-wind').textContent = '';
-    document.getElementById('wx-loc').textContent  = loc || pc;
-    wxReady();
+  if (loc || pc) {
+    // ── Project has location set — use it directly ──
+    try {
+      const d = await fetchWeatherUrl(
+        `/api/weather?loc=${encodeURIComponent(loc)}&pc=${encodeURIComponent(pc)}`
+      );
+      wxRender(d);
+    } catch(e) {
+      wxError('Weather unavailable');
+    }
+    return;
   }
+
+  // ── No project location — fall back to browser geolocation ──
+  if (!navigator.geolocation) {
+    wxError('Set location in Settings');
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    async (pos) => {
+      try {
+        const d = await fetchWeatherUrl(
+          `/api/weather?lat=${pos.coords.latitude.toFixed(4)}&lon=${pos.coords.longitude.toFixed(4)}`
+        );
+        wxRender(d);
+      } catch(e) {
+        wxError('Weather unavailable');
+      }
+    },
+    () => wxError('Set location in Settings')   // user denied geolocation
+  );
 }
 
-if (PROJ_LOC || PROJ_PC) {
-  loadWeather();
-  setInterval(loadWeather, 30 * 60 * 1000);
-}
+loadWeather();
+setInterval(loadWeather, 30 * 60 * 1000);
 </script>
 {% endblock %}
