@@ -669,27 +669,26 @@ const hr = new Date().getHours();
 const g  = document.getElementById('greeting-text');
 if (g) g.textContent = hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening';
 
-// ── Weather widget ─────────────────────────────────────────────────────────────
+// ── Weather widget — bulletproof, max 3s to first paint ───────────────────────
 const PROJ_LOC = {{ (proj.location or '')|tojson if proj else '""' }};
 const PROJ_PC  = {{ (proj.postcode  or '')|tojson if proj else '""' }};
 const WX_DIRS  = ['N','NE','E','SE','S','SW','W','NW'];
 const WMO = {
-  0:'☀️ Clear', 1:'🌤️ Mainly clear', 2:'⛅ Partly cloudy', 3:'☁️ Overcast',
-  45:'🌫️ Fog', 48:'🌫️ Icy fog',
-  51:'🌦️ Drizzle', 53:'🌦️ Drizzle', 55:'🌧️ Heavy drizzle',
-  61:'🌧️ Light rain', 63:'🌧️ Rain', 65:'🌧️ Heavy rain',
-  71:'🌨️ Snow', 73:'🌨️ Snow', 75:'❄️ Heavy snow',
-  80:'🌦️ Showers', 81:'🌧️ Showers', 82:'⛈️ Heavy showers',
-  95:'⛈️ Storm', 96:'⛈️ Storm', 99:'⛈️ Storm',
+  0:['☀️','Clear'], 1:['🌤️','Mainly clear'], 2:['⛅','Partly cloudy'], 3:['☁️','Overcast'],
+  45:['🌫️','Fog'], 48:['🌫️','Icy fog'],
+  51:['🌦️','Drizzle'], 53:['🌦️','Drizzle'], 55:['🌧️','Heavy drizzle'],
+  61:['🌧️','Light rain'], 63:['🌧️','Rain'], 65:['🌧️','Heavy rain'],
+  71:['🌨️','Snow'], 73:['🌨️','Snow'], 75:['❄️','Heavy snow'],
+  80:['🌦️','Showers'], 81:['🌧️','Showers'], 82:['⛈️','Heavy showers'],
+  95:['⛈️','Storm'], 96:['⛈️','Storm'], 99:['⛈️','Storm'],
 };
 
 function wxDone() {
   document.querySelectorAll('.wx-skeleton').forEach(el => el.classList.remove('wx-skeleton'));
 }
 function wxShow(temp, code, wspd, wdir, city) {
-  const parts = (WMO[code] || '🌡️ Unknown').split(' ');
-  const icon  = parts[0], cond = parts.slice(1).join(' ');
-  const dir   = WX_DIRS[Math.round((wdir % 360) / 45) % 8];
+  const [icon, cond] = WMO[code] || ['🌡️','Unknown'];
+  const dir = WX_DIRS[Math.round((wdir % 360) / 45) % 8];
   document.getElementById('wx-icon').textContent = icon;
   document.getElementById('wx-temp').textContent = temp + '°';
   document.getElementById('wx-cond').textContent = cond;
@@ -697,55 +696,70 @@ function wxShow(temp, code, wspd, wdir, city) {
   document.getElementById('wx-loc').textContent  = city;
   wxDone();
 }
-function wxPrompt(msg) {
+function wxPrompt(msg, sub) {
   document.getElementById('wx-icon').textContent = '📍';
   document.getElementById('wx-temp').textContent = '';
   document.getElementById('wx-cond').textContent = msg;
   document.getElementById('wx-wind').textContent = '';
-  document.getElementById('wx-loc').textContent  = 'Project Settings → Info';
+  document.getElementById('wx-loc').textContent  = sub || '';
   wxDone();
 }
 
-async function loadWeather() {
-  const loc = (PROJ_LOC||'').trim();
-  const pc  = (PROJ_PC ||'').trim();
-
-  // No location set — show prompt immediately, no network calls, no hanging
-  if (!loc && !pc) {
-    wxPrompt('Set project location');
-    return;
+// ── HARD SAFETY NET — widget will NEVER stay loading past 3 seconds ──
+const __wxSafety = setTimeout(() => {
+  if (document.querySelector('.wx-skeleton')) {
+    wxPrompt('Set project location', 'Project Settings → Info');
   }
+}, 3000);
 
-  // Hard 5-second abort for all fetches
-  const ctrl  = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 5000);
+function fetchTimeout(url, ms, opts) {
+  const ctrl = new AbortController();
+  setTimeout(() => ctrl.abort(), ms);
+  return fetch(url, Object.assign({ signal: ctrl.signal }, opts || {})).then(r => r.json());
+}
 
+async function loadWeather() {
   try {
-    // Step 1 — geocode suburb/postcode → lat,lon via Nominatim (OpenStreetMap)
-    const q   = [loc, pc].filter(Boolean).join(' ');
-    const geo = await fetch(
-      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&countrycodes=au&format=json&limit=1`,
-      { signal: ctrl.signal, headers: {'Accept-Language':'en'} }
-    ).then(r => r.json());
+    let lat, lon, city = '';
+    const loc = (PROJ_LOC||'').trim();
+    const pc  = (PROJ_PC ||'').trim();
 
-    if (!geo.length) { clearTimeout(timer); wxPrompt('Location not found'); return; }
-    const lat  = parseFloat(geo[0].lat);
-    const lon  = parseFloat(geo[0].lon);
-    const city = geo[0].display_name.split(',')[0].trim();
+    if (loc || pc) {
+      // Project has location → geocode via Nominatim
+      const q   = [loc, pc].filter(Boolean).join(' ');
+      const geo = await fetchTimeout(
+        'https://nominatim.openstreetmap.org/search?q=' + encodeURIComponent(q) +
+        '&countrycodes=au&format=json&limit=1',
+        2500, { headers: {'Accept-Language':'en'} }
+      );
+      if (!geo.length) throw new Error('not-found');
+      lat  = parseFloat(geo[0].lat);
+      lon  = parseFloat(geo[0].lon);
+      city = geo[0].display_name.split(',')[0].trim();
+    } else {
+      // No project location → IP-based geolocation (NO browser permission needed)
+      const ip = await fetchTimeout('https://get.geojs.io/v1/ip/geo.json', 2000);
+      lat  = parseFloat(ip.latitude);
+      lon  = parseFloat(ip.longitude);
+      city = ip.city || ip.region || ip.country || '';
+    }
 
-    // Step 2 — fetch live weather from Open-Meteo (free, no key, CORS-safe)
-    const wx = await fetch(
-      `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}&current_weather=true&wind_speed_unit=kmh`,
-      { signal: ctrl.signal }
-    ).then(r => r.json());
+    // Live weather from Open-Meteo (free, no key, CORS-safe)
+    const wx = await fetchTimeout(
+      'https://api.open-meteo.com/v1/forecast?latitude=' + lat.toFixed(4) +
+      '&longitude=' + lon.toFixed(4) + '&current_weather=true&wind_speed_unit=kmh',
+      2500
+    );
 
-    clearTimeout(timer);
+    clearTimeout(__wxSafety);
     const cw = wx.current_weather;
     wxShow(Math.round(cw.temperature), cw.weathercode, Math.round(cw.windspeed), cw.winddirection, city);
 
   } catch(e) {
-    clearTimeout(timer);
-    wxPrompt('Set project location');
+    clearTimeout(__wxSafety);
+    const hasLoc = (PROJ_LOC||'').trim() || (PROJ_PC||'').trim();
+    wxPrompt(hasLoc ? 'Weather unavailable' : 'Set project location',
+             hasLoc ? '' : 'Project Settings → Info');
   }
 }
 
