@@ -93,7 +93,6 @@
 }
 
 /* ── Weather widget ─────────────────────────────────────────── */
-#weather-widget { display:none; margin-top:11px; }
 @keyframes wx-pulse { 0%,100%{opacity:.4} 50%{opacity:.8} }
 .wx-card {
   display:inline-flex; align-items:center; gap:13px;
@@ -150,8 +149,9 @@
         {% if current_user.position %}&nbsp;·&nbsp; {{ current_user.position }}{% endif %}
       </p>
 
-      <!-- ── Weather widget ── always visible when location is set ── -->
-      <div id="weather-widget">
+      {% if proj %}
+      <!-- ── Weather widget — always rendered, JS fills in data ── -->
+      <div id="weather-widget" style="margin-top:11px;">
         <div class="wx-card">
           <span id="wx-icon" style="font-size:26px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.3));">🌡️</span>
           <div>
@@ -162,7 +162,7 @@
             <div style="font-size:10px;margin-top:3px;display:flex;align-items:center;gap:6px;">
               <span>
                 <i class="fa-solid fa-wind" style="color:#7dd3fc;font-size:9px;margin-right:3px;"></i>
-                <span id="wx-wind" class="wx-skeleton" style="color:#7dd3fc;">-- km/h</span>
+                <span id="wx-wind" class="wx-skeleton" style="color:#7dd3fc;">--</span>
               </span>
               <span style="color:#334155;">·</span>
               <span id="wx-loc" class="wx-skeleton" style="color:#475569;">fetching…</span>
@@ -170,6 +170,7 @@
           </div>
         </div>
       </div>
+      {% endif %}
     </div>
     <div style="display:flex;align-items:center;gap:0;flex-wrap:wrap;">
       {% if proj and element_count == 0 %}
@@ -668,13 +669,10 @@ const hr = new Date().getHours();
 const g  = document.getElementById('greeting-text');
 if (g) g.textContent = hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening';
 
-// ── Weather widget — always visible, geolocation fallback ─────────────────────
+// ── Weather widget — geolocation fallback when no project location ─────────────
 const PROJ_LOC = {{ (proj.location or '')|tojson if proj else '""' }};
 const PROJ_PC  = {{ (proj.postcode  or '')|tojson if proj else '""' }};
 const WX_DIRS  = ['N','NE','E','SE','S','SW','W','NW'];
-
-// Show the widget immediately — skeleton pulses until data or error
-document.getElementById('weather-widget').style.display = 'block';
 
 function wxReady() {
   document.querySelectorAll('.wx-skeleton').forEach(el => el.classList.remove('wx-skeleton'));
