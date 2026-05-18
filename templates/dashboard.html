@@ -669,79 +669,87 @@ const hr = new Date().getHours();
 const g  = document.getElementById('greeting-text');
 if (g) g.textContent = hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening';
 
-// ── Weather widget — geolocation fallback when no project location ─────────────
+// ── Weather widget — fully client-side (Open-Meteo + Nominatim, no server proxy)
 const PROJ_LOC = {{ (proj.location or '')|tojson if proj else '""' }};
 const PROJ_PC  = {{ (proj.postcode  or '')|tojson if proj else '""' }};
 const WX_DIRS  = ['N','NE','E','SE','S','SW','W','NW'];
+const WMO = {
+  0:['☀️','Clear'],  1:['🌤️','Mainly clear'], 2:['⛅','Partly cloudy'], 3:['☁️','Overcast'],
+  45:['🌫️','Fog'],  48:['🌫️','Icy fog'],
+  51:['🌦️','Drizzle'], 53:['🌦️','Drizzle'], 55:['🌧️','Heavy drizzle'],
+  61:['🌧️','Light rain'], 63:['🌧️','Rain'], 65:['🌧️','Heavy rain'],
+  71:['🌨️','Snow'],  73:['🌨️','Snow'],  75:['❄️','Heavy snow'],
+  80:['🌦️','Showers'], 81:['🌧️','Showers'], 82:['⛈️','Heavy showers'],
+  95:['⛈️','Storm'], 96:['⛈️','Storm'],  99:['⛈️','Storm'],
+};
 
-function wxReady() {
+function wxDone() {
   document.querySelectorAll('.wx-skeleton').forEach(el => el.classList.remove('wx-skeleton'));
 }
-
-function wxRender(d) {
-  const windDir  = WX_DIRS[Math.round(((d.wind_dir||0) % 360) / 45) % 8];
-  const locLabel = [d.city, d.admin].filter(Boolean).join(', ') || PROJ_LOC || PROJ_PC || 'Your location';
-  document.getElementById('wx-icon').textContent = d.icon || '🌡️';
-  document.getElementById('wx-temp').textContent = `${d.temp}°`;
-  document.getElementById('wx-cond').textContent = d.cond || '';
-  document.getElementById('wx-wind').textContent = `${windDir} ${d.wind_speed} km/h`;
-  document.getElementById('wx-loc').textContent  = locLabel;
-  wxReady();
+function wxShow(temp, icon, cond, wspd, wdir, city) {
+  const dir = WX_DIRS[Math.round((wdir % 360) / 45) % 8];
+  document.getElementById('wx-icon').textContent = icon;
+  document.getElementById('wx-temp').textContent = temp + '°';
+  document.getElementById('wx-cond').textContent = cond;
+  document.getElementById('wx-wind').textContent = wspd ? dir + ' ' + wspd + ' km/h' : '';
+  document.getElementById('wx-loc').textContent  = city;
+  wxDone();
 }
-
-function wxError(msg) {
+function wxFail(msg) {
   document.getElementById('wx-icon').textContent = '📍';
   document.getElementById('wx-temp').textContent = '';
   document.getElementById('wx-cond').textContent = msg;
   document.getElementById('wx-wind').textContent = '';
   document.getElementById('wx-loc').textContent  = '';
-  wxReady();
-}
-
-async function fetchWeatherUrl(url) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error('http ' + res.status);
-  const d = await res.json();
-  if (d.error) throw new Error(d.error);
-  return d;
+  wxDone();
 }
 
 async function loadWeather() {
-  const loc = (PROJ_LOC||'').trim();
-  const pc  = (PROJ_PC ||'').trim();
+  try {
+    let lat, lon, city = '';
+    const loc = (PROJ_LOC||'').trim(), pc = (PROJ_PC||'').trim();
 
-  if (loc || pc) {
-    // ── Project has location set — use it directly ──
-    try {
-      const d = await fetchWeatherUrl(
-        `/api/weather?loc=${encodeURIComponent(loc)}&pc=${encodeURIComponent(pc)}`
+    if (loc || pc) {
+      // Geocode project suburb/postcode → coordinates (Nominatim, AU only)
+      const q   = [loc, pc].filter(Boolean).join(' ');
+      const geo = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&countrycodes=au&format=json&limit=1`,
+        { headers: { 'Accept-Language': 'en' } }
+      ).then(r => r.json());
+      if (!geo.length) throw new Error('geocode-fail');
+      lat  = parseFloat(geo[0].lat);
+      lon  = parseFloat(geo[0].lon);
+      city = geo[0].display_name.split(',')[0].trim();
+    } else {
+      // No project location → ask browser for GPS coordinates
+      const pos = await new Promise((ok, fail) =>
+        navigator.geolocation.getCurrentPosition(ok, fail, { timeout: 8000, maximumAge: 300000 })
       );
-      wxRender(d);
-    } catch(e) {
-      wxError('Weather unavailable');
-    }
-    return;
-  }
-
-  // ── No project location — fall back to browser geolocation ──
-  if (!navigator.geolocation) {
-    wxError('Set location in Settings');
-    return;
-  }
-
-  navigator.geolocation.getCurrentPosition(
-    async (pos) => {
+      lat = pos.coords.latitude;
+      lon = pos.coords.longitude;
+      // Reverse-geocode to get city name
       try {
-        const d = await fetchWeatherUrl(
-          `/api/weather?lat=${pos.coords.latitude.toFixed(4)}&lon=${pos.coords.longitude.toFixed(4)}`
-        );
-        wxRender(d);
-      } catch(e) {
-        wxError('Weather unavailable');
-      }
-    },
-    () => wxError('Set location in Settings')   // user denied geolocation
-  );
+        const rev = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=10`,
+          { headers: { 'Accept-Language': 'en' } }
+        ).then(r => r.json());
+        city = rev.address?.city || rev.address?.town || rev.address?.suburb || rev.address?.county || '';
+      } catch(e) {}
+    }
+
+    // Fetch weather from Open-Meteo — free, no API key, CORS-safe, works worldwide
+    const wx = await fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}&current_weather=true&wind_speed_unit=kmh`
+    ).then(r => r.json());
+
+    const cw           = wx.current_weather;
+    const [icon, cond] = WMO[cw.weathercode] || ['🌡️', 'Unknown'];
+    wxShow(Math.round(cw.temperature), icon, cond, Math.round(cw.windspeed), cw.winddirection, city);
+
+  } catch(e) {
+    const hasLoc = (PROJ_LOC||'').trim() || (PROJ_PC||'').trim();
+    wxFail(hasLoc ? 'Weather unavailable' : 'Allow location or add in Settings');
+  }
 }
 
 loadWeather();
