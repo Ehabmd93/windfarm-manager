@@ -509,13 +509,8 @@ td.sig-cell { padding:2pt; }
       {% set row = item['rows'][ci] if ci < item['rows']|length else {} %}
 
       <td class="crit-text">
-        {% if item['criteria'][ci] %}
-        {% set txt = item['criteria'][ci] %}
-        {% if txt.startswith('•') or txt.startswith('-') or txt.startswith('o') %}
-          {{ txt }}
-        {% else %}
-          {{ txt }}
-        {% endif %}
+        {% if item['criteria'][0] %}
+        <span style="font-size:6pt;font-weight:800;color:#64748b;margin-right:3pt;">{{ item['no'] }}.1</span>{{ item['criteria'][0] }}
         {% endif %}
         {% if s and s.documents %}<div class="doc-note">📎 {{ s.documents|length }} attachment(s)</div>{% endif %}
       </td>
@@ -587,7 +582,7 @@ td.sig-cell { padding:2pt; }
     <tr>
       {# no item-no or activity cells — rowspan covers them #}
       <td class="crit-text">
-        {{ item['criteria'][ci] }}
+        <span style="font-size:6pt;font-weight:800;color:#64748b;margin-right:3pt;">{{ item['no'] }}.{{ ci + 1 }}</span>{{ item['criteria'][ci] }}
         {% if s and s.documents %}<div class="doc-note">📎 {{ s.documents|length }} attachment(s)</div>{% endif %}
       </td>
       <td style="text-align:center;vertical-align:middle;">

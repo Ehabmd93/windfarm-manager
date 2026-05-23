@@ -874,6 +874,21 @@ class Notification(db.Model):
 
 
 # ═══════════════════════════════════════════════
+# ITP CLIENT SIGNATORIES (multiple per record)
+# ═══════════════════════════════════════════════
+class ITPClientInvite(db.Model):
+    __tablename__ = 'itp_client_invites'
+    id         = db.Column(db.Integer, primary_key=True)
+    record_id  = db.Column(db.Integer, db.ForeignKey('itp_records.id'), nullable=False)
+    name       = db.Column(db.String(100), nullable=False)
+    company    = db.Column(db.String(100), default='')
+    email      = db.Column(db.String(150), default='')
+    token      = db.Column(db.String(100), unique=True, nullable=False)
+    invited_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    record     = db.relationship('ITPRecord', backref='client_invites', lazy=True)
+
+
+# ═══════════════════════════════════════════════
 class ProgressWidget(db.Model):
     """User-configured chart/table widgets on the Progress Tracker page."""
     __tablename__ = 'progress_widgets'

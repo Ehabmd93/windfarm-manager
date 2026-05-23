@@ -349,7 +349,7 @@
       <i class="fa-solid fa-circle-check" style="color:#22c55e;font-size:16px;"></i>
       <div>
         <p style="font-size:13px;font-weight:700;color:#166534;margin:0;">All items reviewed</p>
-        <p style="font-size:11px;color:#4ade80;margin:0;">You can now draw your signature and submit below</p>
+        <p style="font-size:11px;color:#4ade80;margin:0;">Your review progress is saved automatically</p>
       </div>
     </div>
   </div>
@@ -654,94 +654,6 @@
     {% endfor %}
   </div>
 
-  <!-- ─── SIGNATURE SECTION ────────────────────────────────────────────── -->
-  {% if record.status not in ('complete', 'client_commented') %}
-  <div style="background:white;border-radius:18px;border:2px solid #bfdbfe;overflow:hidden;margin-bottom:24px;">
-    <div style="background:linear-gradient(135deg,#1d4ed8,#2563eb);color:white;
-                padding:14px 18px;display:flex;align-items:center;gap:10px;">
-      <i class="fa-solid fa-pen-nib" style="font-size:14px;"></i>
-      <span style="font-size:13px;font-weight:700;">
-        Sign &amp; Submit — {{ record.client_name }}
-      </span>
-    </div>
-    <div style="padding:22px;">
-
-      <!-- LOCKED state -->
-      <div id="sig-locked"
-           style="display:{% if ns.pending > 0 or ns.total_signed == 0 %}flex{% else %}none{% endif %};
-                  flex-direction:column;align-items:center;justify-content:center;
-                  padding:28px;text-align:center;
-                  background:#f8fafc;border:2px dashed #e2e8f0;border-radius:14px;">
-        <i class="fa-solid fa-lock" style="font-size:36px;color:#cbd5e1;display:block;margin-bottom:12px;"></i>
-        <p style="font-size:14px;font-weight:700;color:#475569;margin:0 0 6px;">Signature Locked</p>
-        <p style="font-size:13px;color:#94a3b8;margin:0;" id="locked-msg">
-          {% if ns.total_signed == 0 %}
-            There are no engineer-signed items to review yet.
-          {% else %}
-            Review all {{ ns.pending }} remaining item{{ 's' if ns.pending != 1 else '' }} to unlock your signature.
-          {% endif %}
-        </p>
-      </div>
-
-      <!-- ACTIVE state -->
-      <div id="sig-active"
-           style="display:{% if ns.pending == 0 and ns.total_signed > 0 %}block{% else %}none{% endif %};">
-
-        <!-- Context message -->
-        <div id="sig-context" style="margin-bottom:18px;padding:12px 16px;border-radius:12px;
-          {% if ns.concerns > 0 %}background:#fffbeb;border:1.5px solid #fde68a;
-          {% else %}background:#f0fdf4;border:1.5px solid #bbf7d0;{% endif %}">
-          {% if ns.concerns > 0 %}
-          <p style="font-size:13px;color:#92400e;margin:0;line-height:1.6;">
-            <i class="fa-solid fa-triangle-exclamation" style="margin-right:6px;"></i>
-            You have raised <strong>{{ ns.concerns }} concern{{ 's' if ns.concerns != 1 else '' }}</strong>.
-            By signing, you submit your review with these concerns.
-            The inspection team will be notified to address them.
-          </p>
-          {% else %}
-          <p style="font-size:13px;color:#166534;margin:0;line-height:1.6;">
-            <i class="fa-solid fa-check-circle" style="margin-right:6px;"></i>
-            All items accepted. By signing below you confirm acceptance of this ITP.
-          </p>
-          {% endif %}
-        </div>
-
-        <form method="POST" id="client-sign-form">
-          <input type="hidden" name="action" value="client_sign"/>
-          <label style="display:block;font-size:11px;font-weight:700;color:#64748b;
-                        text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">
-            Draw Your Signature <span style="color:#ef4444;">*</span>
-          </label>
-          <div class="sig-pad-wrap" style="margin-bottom:16px;">
-            <canvas id="client-sig-canvas" width="700" height="150"></canvas>
-          </div>
-          <input type="hidden" name="client_signature" id="client-sig-data"/>
-          <div style="display:flex;gap:10px;">
-            <button type="button" onclick="clearClientSig()"
-                    style="padding:11px 20px;border:1.5px solid #e2e8f0;color:#64748b;border-radius:10px;
-                           font-size:13px;font-weight:700;background:white;cursor:pointer;">
-              <i class="fa-solid fa-eraser" style="margin-right:6px;"></i>Clear
-            </button>
-            <button type="submit" id="submit-btn" onclick="return captureClientSig()"
-                    style="flex:1;padding:14px;border-radius:10px;font-size:14px;font-weight:800;
-                           border:none;cursor:pointer;color:white;
-                           {% if ns.concerns > 0 %}background:linear-gradient(135deg,#d97706,#f59e0b);
-                           box-shadow:0 4px 14px rgba(245,158,11,.35);
-                           {% else %}background:linear-gradient(135deg,#14532d,#16a34a);
-                           box-shadow:0 4px 14px rgba(22,163,74,.35);{% endif %}">
-              {% if ns.concerns > 0 %}
-              <i class="fa-solid fa-triangle-exclamation" style="margin-right:8px;"></i>Submit Review with {{ ns.concerns }} Concern{{ 's' if ns.concerns != 1 else '' }}
-              {% else %}
-              <i class="fa-solid fa-signature" style="margin-right:8px;"></i>Sign &amp; Approve ITP
-              {% endif %}
-            </button>
-          </div>
-        </form>
-      </div>
-
-    </div>
-  </div>
-  {% endif %}
 
 </div><!-- /max-width container -->
 
@@ -751,7 +663,7 @@
 
 <script>
 // ── Constants ──────────────────────────────────────────────────────────────
-const TOKEN     = '{{ record.client_token }}';
+const TOKEN     = '{{ token }}';
 const FINALIZED = {{ 'true' if record.status in ('complete', 'client_commented') else 'false' }};
 
 // ── Activity accordion ─────────────────────────────────────────────────────
@@ -1031,131 +943,20 @@ function setCritState(actNo, ci, state, comment, signature) {
 
 // ── Update progress panel ──────────────────────────────────────────────────
 function updateProgress(data) {
-  // Chips
   document.getElementById('cnt-accepted').textContent = data.accepted;
   document.getElementById('cnt-concern').textContent  = data.concerns;
   document.getElementById('cnt-pending').textContent  = data.pending;
   document.getElementById('lbl-concern').textContent  = `Concern${data.concerns !== 1 ? 's' : ''}`;
   document.getElementById('prog-summary').textContent = `${data.reviewed}/${data.total} reviewed`;
 
-  // Bar + ring
   const pct = data.total > 0 ? Math.round((data.reviewed / data.total) * 100) : 0;
   document.getElementById('prog-bar').style.width = pct + '%';
   document.getElementById('ring-pct').textContent = pct + '%';
   const offset = 157 * (1 - pct / 100);
   document.getElementById('ring-fill').style.strokeDashoffset = offset;
 
-  // All-reviewed banner
   const banner = document.getElementById('all-reviewed-banner');
   if (banner) banner.style.display = data.all_reviewed ? 'flex' : 'none';
-
-  // Signature section
-  if (data.all_reviewed) {
-    unlockSignature(data.concerns);
-  } else {
-    lockSignature(data.pending);
-  }
-}
-
-function lockSignature(pendingCount) {
-  const locked = document.getElementById('sig-locked');
-  const active = document.getElementById('sig-active');
-  const msg    = document.getElementById('locked-msg');
-  if (locked) locked.style.display = 'flex';
-  if (active) active.style.display = 'none';
-  if (msg) msg.textContent =
-    `Review all ${pendingCount} remaining item${pendingCount !== 1 ? 's' : ''} to unlock your signature.`;
-}
-
-function unlockSignature(concernCount) {
-  const locked  = document.getElementById('sig-locked');
-  const active  = document.getElementById('sig-active');
-  const ctx     = document.getElementById('sig-context');
-  const btn     = document.getElementById('submit-btn');
-  if (locked) locked.style.display = 'none';
-  if (active) active.style.display = 'block';
-
-  if (ctx) {
-    if (concernCount > 0) {
-      ctx.style.background = '#fffbeb';
-      ctx.style.borderColor = '#fde68a';
-      ctx.innerHTML = `<p style="font-size:13px;color:#92400e;margin:0;line-height:1.6;">
-        <i class="fa-solid fa-triangle-exclamation" style="margin-right:6px;"></i>
-        You have raised <strong>${concernCount} concern${concernCount !== 1 ? 's' : ''}</strong>.
-        By signing, you submit your review with these concerns.
-        The inspection team will be notified to address them.
-      </p>`;
-    } else {
-      ctx.style.background = '#f0fdf4';
-      ctx.style.borderColor = '#bbf7d0';
-      ctx.innerHTML = `<p style="font-size:13px;color:#166534;margin:0;line-height:1.6;">
-        <i class="fa-solid fa-check-circle" style="margin-right:6px;"></i>
-        All items accepted. By signing below you confirm acceptance of this ITP.
-      </p>`;
-    }
-  }
-
-  if (btn) {
-    if (concernCount > 0) {
-      btn.style.background   = 'linear-gradient(135deg,#d97706,#f59e0b)';
-      btn.style.boxShadow    = '0 4px 14px rgba(245,158,11,.35)';
-      btn.innerHTML = `<i class="fa-solid fa-triangle-exclamation" style="margin-right:8px;"></i>Submit Review with ${concernCount} Concern${concernCount !== 1 ? 's' : ''}`;
-    } else {
-      btn.style.background   = 'linear-gradient(135deg,#14532d,#16a34a)';
-      btn.style.boxShadow    = '0 4px 14px rgba(22,163,74,.35)';
-      btn.innerHTML = `<i class="fa-solid fa-signature" style="margin-right:8px;"></i>Sign &amp; Approve ITP`;
-    }
-  }
-}
-
-// ── Signature canvas ───────────────────────────────────────────────────────
-const ccanvas = document.getElementById('client-sig-canvas');
-if (ccanvas) {
-  const cctx  = ccanvas.getContext('2d');
-  let drawing = false;
-  ccanvas.hasContent = false;
-
-  function gp(e) {
-    const r = ccanvas.getBoundingClientRect();
-    const s = e.touches ? e.touches[0] : e;
-    return {
-      x: (s.clientX - r.left) * (ccanvas.width  / r.width),
-      y: (s.clientY - r.top)  * (ccanvas.height / r.height),
-    };
-  }
-  ccanvas.addEventListener('pointerdown', e => {
-    drawing = true; ccanvas.hasContent = true;
-    const p = gp(e); cctx.beginPath(); cctx.moveTo(p.x, p.y);
-    ccanvas.setPointerCapture(e.pointerId);
-  });
-  ccanvas.addEventListener('pointermove', e => {
-    if (!drawing) return;
-    const p = gp(e);
-    cctx.lineTo(p.x, p.y);
-    cctx.strokeStyle = '#1e293b';
-    cctx.lineWidth   = 2.5;
-    cctx.lineCap     = 'round';
-    cctx.lineJoin    = 'round';
-    cctx.stroke();
-  });
-  ccanvas.addEventListener('pointerup',    () => { drawing = false; });
-  ccanvas.addEventListener('pointerleave', () => { drawing = false; });
-
-  window.clearClientSig = () => {
-    cctx.clearRect(0, 0, ccanvas.width, ccanvas.height);
-    ccanvas.hasContent = false;
-  };
-
-  window.captureClientSig = () => {
-    const pd = cctx.getImageData(0, 0, ccanvas.width, ccanvas.height).data;
-    const hasDrawing = Array.from(pd).some((v, i) => i % 4 === 3 && v > 0);
-    if (!hasDrawing) {
-      alert('Please draw your signature before submitting.');
-      return false;
-    }
-    document.getElementById('client-sig-data').value = ccanvas.toDataURL('image/png');
-    return true;
-  };
 }
 </script>
 </body>

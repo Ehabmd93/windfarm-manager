@@ -23,7 +23,7 @@ from models import (db, User, WTG, Area, QATest, TestRecord,
                     FoundationStage, FoundationStageTemplate, FoundationDocument, FOUNDATION_STAGES,
                     CustomTrackingField, ProgressWidget,
                     Document, DocumentLink, DocumentFolder,
-                    Notification,
+                    Notification, ITPClientInvite,
                     DOCUMENT_CATEGORIES, DOCUMENT_LINK_TYPES, DOCUMENT_LINK_DICT)
 from itp_definitions import ITP_DEFINITIONS, CLIENTS
 from seed import seed
@@ -2197,6 +2197,92 @@ def project_itp_detail(pid, tid, eid):
                            pid=pid, tid=tid, eid=eid)
 
 
+@app.route('/projects/<int:pid>/itp/<int:tid>/element/<int:eid>/save-meta', methods=['POST'])
+@login_required
+def api_project_itp_save_meta(pid, tid, eid):
+    """AJAX — save ITP metadata (lot, engineer name/company). Location is read-only from WTG."""
+    proj   = Project.query.get_or_404(pid)
+    record = ITPRecord.query.filter_by(wtg_id=eid).filter(
+        ITPRecord.project_itp_template_id == tid).first_or_404()
+    data = request.get_json(silent=True) or {}
+    record.lot_number       = (data.get('lot_number') or '').strip()
+    record.engineer_name    = (data.get('engineer_name') or current_user.name).strip()
+    record.engineer_company = (data.get('engineer_company') or 'CBOP').strip()
+    db.session.commit()
+    return jsonify({'ok': True})
+
+
+@app.route('/projects/<int:pid>/itp/<int:tid>/element/<int:eid>/add-invite', methods=['POST'])
+@login_required
+def api_project_itp_add_invite(pid, tid, eid):
+    """AJAX — add a client signatory to this ITP record."""
+    record = ITPRecord.query.filter_by(wtg_id=eid).filter(
+        ITPRecord.project_itp_template_id == tid).first_or_404()
+    data    = request.get_json(silent=True) or {}
+    name    = (data.get('name') or '').strip()
+    company = (data.get('company') or '').strip()
+    email   = (data.get('email') or '').strip()
+    if not name:
+        return jsonify({'error': 'Name is required.'}), 400
+
+    token  = uuid.uuid4().hex
+    invite = ITPClientInvite(
+        record_id = record.id,
+        name      = name,
+        company   = company,
+        email     = email,
+        token     = token,
+    )
+    # Also back-fill the legacy fields so existing flows still work
+    if not record.client_name:
+        record.client_name    = name
+        record.client_company = company
+        record.client_email   = email
+        record.client_token   = token
+        record.client_invited_at = datetime.now(timezone.utc)
+    if record.status in ('draft', 'in_progress'):
+        record.status = 'client_invited'
+    db.session.add(invite)
+    db.session.commit()
+
+    sign_url = url_for('itp_client_sign', token=token, _external=True)
+
+    # Send invitation email if email provided
+    wtg = record.wtg
+    if email:
+        itp_type = record.itp_type
+        if itp_type.startswith('PROJ_'):
+            tmpl = ProjectITPTemplate.query.get(record.project_itp_template_id)
+            defn = tmpl.to_dict() if tmpl else {}
+        else:
+            defn = ITP_DEFINITIONS.get(itp_type, {})
+        proj_name = wtg.project.name if wtg and wtg.project else 'Project'
+        email_client_invitation(
+            record=record, wtg_name=wtg.name if wtg else '',
+            sign_url=sign_url, client_name=name, client_email=email,
+            proj_name=proj_name, itp_name=defn.get('name', ''),
+        )
+
+    return jsonify({
+        'ok':       True,
+        'id':       invite.id,
+        'name':     name,
+        'company':  company,
+        'email':    email,
+        'sign_url': sign_url,
+    })
+
+
+@app.route('/projects/<int:pid>/itp/<int:tid>/element/<int:eid>/remove-invite/<int:inv_id>', methods=['POST'])
+@login_required
+def api_project_itp_remove_invite(pid, tid, eid, inv_id):
+    """AJAX — remove a client invite."""
+    invite = ITPClientInvite.query.get_or_404(inv_id)
+    db.session.delete(invite)
+    db.session.commit()
+    return jsonify({'ok': True})
+
+
 @app.route('/projects/<int:pid>/itp/<int:tid>', methods=['GET', 'POST'])
 @login_required
 def project_itp_template_view(pid, tid):
@@ -2363,11 +2449,15 @@ def itp_detail(wtg_id, itp_type):
 @app.route('/api/itp/client/<token>/item/<item_no>/<int:ci>', methods=['POST'])
 def api_client_review_item(token, item_no, ci):
     """Public API — client per-item review: accept or raise concern."""
-    record = ITPRecord.query.filter_by(client_token=token).first_or_404()
+    invite = ITPClientInvite.query.filter_by(token=token).first()
+    if invite:
+        record = invite.record
+    else:
+        record = ITPRecord.query.filter_by(client_token=token).first_or_404()
 
-    # Allow review while status is client_invited OR client_reviewing
-    if record.status not in ('client_invited', 'client_reviewing'):
-        return jsonify({'error': 'This ITP is no longer in review state.'}), 400
+    # Allow review in any active state (ITP is open for the life of the project)
+    if record.status not in ('client_invited', 'client_reviewing', 'in_progress'):
+        return jsonify({'error': 'This ITP is not in a reviewable state.'}), 400
 
     s = ITPItemStatus.query.filter_by(
         itp_record_id   = record.id,
@@ -2437,7 +2527,13 @@ def api_client_review_item(token, item_no, ci):
 @app.route('/itp/client/<token>', methods=['GET', 'POST'])
 def itp_client_sign(token):
     """Public page for client to review + sign the ITP (KRWF and project-specific)."""
-    record   = ITPRecord.query.filter_by(client_token=token).first_or_404()
+    # Support both new-style ITPClientInvite tokens and legacy record.client_token
+    invite = ITPClientInvite.query.filter_by(token=token).first()
+    if invite:
+        record = invite.record
+    else:
+        record = ITPRecord.query.filter_by(client_token=token).first_or_404()
+        invite = None
     wtg      = record.wtg
     # Resolve ITP definition (supports both KRWF and project-specific)
     if record.itp_type.startswith('PROJ_'):
@@ -2534,6 +2630,7 @@ def itp_client_sign(token):
     return render_template('itp_client_sign.html',
                            record=record, wtg=wtg, defn=defn,
                            statuses=statuses, proj_name=proj_name,
+                           token=token,
                            today=date.today().isoformat())
 
 

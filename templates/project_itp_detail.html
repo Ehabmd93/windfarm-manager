@@ -249,7 +249,9 @@
                 <span class="text-xs text-slate-400">{{ row.get('frequency','') }}</span>
               </div>
               {% endif %}
-              <p class="text-sm text-slate-700 leading-relaxed">{{ crit }}</p>
+              <p class="text-sm text-slate-700 leading-relaxed">
+                <span style="font-size:10px;font-weight:800;color:#94a3b8;margin-right:5px;">{{ item['no'] }}.{{ ci + 1 }}</span>{{ crit }}
+              </p>
 
               {% if s and s.documents %}
               <p class="text-xs text-blue-500 mt-1 cursor-pointer" onclick="toggleDocs('{{ item['no'] }}',{{ ci }})">
@@ -418,8 +420,7 @@
     <div class="panel">
       <div class="panel-hdr"><i class="fa-solid fa-info-circle"></i> ITP Details</div>
       <div class="panel-body">
-        <form method="POST">
-          <input type="hidden" name="action" value="save_meta"/>
+        <form id="itp-meta-form">
           <div class="space-y-3">
             <div>
               <label class="form-label">Engineer Name</label>
@@ -427,7 +428,7 @@
             </div>
             <div>
               <label class="form-label">Company</label>
-              <input type="text" name="engineer_company" class="form-input" value="{{ record.engineer_company or 'TCS' }}"/>
+              <input type="text" name="engineer_company" class="form-input" value="{{ record.engineer_company or 'CBOP' }}"/>
             </div>
             <div>
               <label class="form-label">Lot Number</label>
@@ -435,10 +436,12 @@
             </div>
             <div>
               <label class="form-label">Location / Description</label>
-              <input type="text" name="location" class="form-input" value="{{ record.location or '' }}" placeholder="{{ wtg.name }}"/>
+              <input type="text" name="location" class="form-input"
+                     value="{{ record.location or wtg.name }}" readonly
+                     style="background:#f8fafc;color:#475569;cursor:default;"/>
             </div>
           </div>
-          <button type="submit"
+          <button type="button" id="save-meta-btn" onclick="saveMeta()"
             class="mt-4 w-full py-2 bg-slate-700 text-white rounded-xl text-xs font-bold hover:bg-slate-600 transition">
             <i class="fa-solid fa-floppy-disk mr-1"></i>Save Details
           </button>
@@ -479,67 +482,58 @@
       </div>
     </div>
 
-    <!-- Invite Client -->
-    <div class="panel">
-      {% if record.status == 'complete' %}
-      <div class="panel-hdr green"><i class="fa-solid fa-circle-check"></i> ITP Complete</div>
+    <!-- Client Signatories -->
+    <div class="panel" id="invite-panel">
+      <div class="panel-hdr blue"><i class="fa-solid fa-users"></i> Client Signatories</div>
       <div class="panel-body">
-        <p class="text-sm font-bold text-green-700 mb-1">Both parties signed</p>
-        <p class="text-xs text-slate-500">
-          Client: {{ record.client_name }} · {{ record.client_company }}<br/>
-          Signed: {{ record.client_signed_at.strftime('%d %b %Y %H:%M') if record.client_signed_at else '–' }}
-        </p>
-        {% if record.client_signature %}
-        <img src="{{ record.client_signature }}" class="mt-3 h-14 rounded-lg border border-green-200 bg-white" alt="Client sig"/>
-        {% endif %}
-      </div>
-      {% elif record.status == 'client_invited' %}
-      <div class="panel-hdr blue"><i class="fa-solid fa-envelope-open-text"></i> Client Invited</div>
-      <div class="panel-body">
-        <p class="text-sm font-semibold text-blue-700 mb-1">{{ record.client_name }} · {{ record.client_company }}</p>
-        <p class="text-xs text-slate-500 mb-3">Invited {{ record.client_invited_at.strftime('%d %b %Y %H:%M') if record.client_invited_at else '' }}</p>
-        <label class="form-label">Signing link — share this:</label>
-        <div class="flex gap-2">
-          <input type="text" id="client-link"
-                 value="{{ url_for('itp_client_sign', token=record.client_token, _external=True) }}"
-                 class="form-input text-xs" readonly style="font-size:11px"/>
-          <button onclick="copyLink()" class="px-3 bg-blue-100 text-blue-700 rounded-lg text-xs font-bold hover:bg-blue-200 flex-shrink-0">
-            <i class="fa-solid fa-copy"></i>
-          </button>
-        </div>
-      </div>
-      {% else %}
-      <div class="panel-hdr blue"><i class="fa-solid fa-user-check"></i> Invite Client to Sign</div>
-      <div class="panel-body">
-        {% if done == 0 %}
-        <div class="bg-yellow-50 border border-yellow-200 rounded-xl p-3 mb-4 text-xs text-yellow-800">
-          <i class="fa-solid fa-circle-info mr-1"></i>Sign at least one criterion before inviting the client.
-        </div>
-        {% endif %}
-        <form method="POST">
-          <input type="hidden" name="action" value="invite_client"/>
-          <div class="space-y-3">
-            <div>
-              <label class="form-label">Client Representative</label>
-              <select name="client_id" class="form-input" required>
-                <option value="">— Select client —</option>
-                {% for c in clients %}
-                <option value="{{ c.id }}">{{ c.name }} · {{ c.company }}</option>
-                {% endfor %}
-              </select>
+
+        <!-- Existing invites -->
+        <div id="invites-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:{% if record.client_invites %}14px{% else %}0{% endif %};">
+          {% for inv in record.client_invites %}
+          <div id="inv-row-{{ inv.id }}"
+               style="display:flex;align-items:center;gap:8px;padding:10px 12px;
+                      background:#f0f9ff;border:1.5px solid #bae6fd;border-radius:12px;">
+            <div style="flex:1;min-width:0;">
+              <p style="font-size:12px;font-weight:700;color:#0f172a;margin:0;">{{ inv.name }}</p>
+              <p style="font-size:11px;color:#94a3b8;margin:0;">
+                {{ inv.company }}{% if inv.email %} · {{ inv.email }}{% endif %}
+              </p>
             </div>
-            <div>
-              <label class="form-label">Client Email</label>
-              <input type="email" name="client_email" class="form-input" placeholder="client@company.com"/>
-            </div>
+            <button onclick="copyInviteLink('{{ url_for('itp_client_sign', token=inv.token, _external=True) }}')"
+                    title="Copy signing link"
+                    style="padding:6px 10px;border-radius:8px;border:1.5px solid #bae6fd;
+                           background:white;color:#0369a1;font-size:11px;font-weight:700;cursor:pointer;">
+              <i class="fa-solid fa-copy"></i>
+            </button>
+            <button onclick="removeInvite({{ inv.id }})"
+                    title="Remove signatory"
+                    style="padding:6px 9px;border-radius:8px;border:1.5px solid #fecaca;
+                           background:white;color:#ef4444;font-size:11px;cursor:pointer;">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
           </div>
-          <button type="submit" {% if done == 0 %}disabled{% endif %}
-            class="mt-4 w-full py-3 bg-gradient-to-r from-blue-700 to-blue-600 text-white rounded-xl text-sm font-bold hover:from-blue-600 hover:to-blue-500 transition shadow-lg disabled:opacity-40 disabled:cursor-not-allowed">
-            <i class="fa-solid fa-user-plus mr-2"></i>Invite Client to Sign
+          {% else %}
+          <p id="no-invites-msg" style="font-size:12px;color:#94a3b8;text-align:center;padding:10px 0;margin:0;">
+            No signatories added yet.
+          </p>
+          {% endfor %}
+        </div>
+
+        <!-- Add new signatory -->
+        <div style="border-top:1px solid #f1f5f9;padding-top:14px;margin-top:{% if record.client_invites %}0{% else %}0{% endif %};">
+          <p class="form-label" style="margin-bottom:10px;">Add Signatory</p>
+          <div class="space-y-2">
+            <input type="text"    id="inv-name"    class="form-input" placeholder="Full name *"/>
+            <input type="text"    id="inv-company" class="form-input" placeholder="Company"/>
+            <input type="email"   id="inv-email"   class="form-input" placeholder="Email (optional — sends invite)"/>
+          </div>
+          <button id="add-invite-btn" onclick="addInvite()"
+                  class="mt-3 w-full py-2 bg-gradient-to-r from-blue-700 to-blue-600 text-white rounded-xl text-xs font-bold hover:from-blue-600 hover:to-blue-500 transition">
+            <i class="fa-solid fa-user-plus mr-1"></i>Add &amp; Get Link
           </button>
-        </form>
+        </div>
+
       </div>
-      {% endif %}
     </div>
 
     <!-- Linked Documents -->
@@ -796,9 +790,145 @@ async function deleteItemDoc(docId, itemNo, ci) {
   }
 }
 
-function copyLink() {
-  const inp = document.getElementById('client-link');
-  if (inp) { inp.select(); navigator.clipboard.writeText(inp.value).then(() => alert('Link copied!')); }
+// ── AJAX save ITP metadata ────────────────────────────────────────────────
+async function saveMeta() {
+  const form = document.getElementById('itp-meta-form');
+  const btn  = document.getElementById('save-meta-btn');
+  const data = {
+    engineer_name:    form.querySelector('[name="engineer_name"]').value.trim(),
+    engineer_company: form.querySelector('[name="engineer_company"]').value.trim(),
+    lot_number:       form.querySelector('[name="lot_number"]').value.trim(),
+  };
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i>Saving…';
+  try {
+    const res = await fetch(`/projects/{{ proj.id }}/itp/{{ template.id }}/element/{{ wtg.id }}/save-meta`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(data),
+    });
+    if (res.ok) {
+      document.getElementById('save-modal').style.display = 'flex';
+    } else {
+      alert('Failed to save. Please try again.');
+    }
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fa-solid fa-floppy-disk mr-1"></i>Save Details';
+  }
+}
+
+function closeSaveModal(goToInvite) {
+  document.getElementById('save-modal').style.display = 'none';
+  if (goToInvite) {
+    document.getElementById('invite-panel').scrollIntoView({behavior: 'smooth'});
+  }
+}
+
+// ── Multi-signatory invite ─────────────────────────────────────────────────
+async function addInvite() {
+  const name    = document.getElementById('inv-name').value.trim();
+  const company = document.getElementById('inv-company').value.trim();
+  const email   = document.getElementById('inv-email').value.trim();
+  if (!name) { alert('Please enter the client representative name.'); return; }
+
+  const btn = document.getElementById('add-invite-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i>Adding…';
+  try {
+    const res = await fetch(`/projects/{{ proj.id }}/itp/{{ template.id }}/element/{{ wtg.id }}/add-invite`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({name, company, email}),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      const noMsg = document.getElementById('no-invites-msg');
+      if (noMsg) noMsg.remove();
+      document.getElementById('invites-list').appendChild(buildInviteRow(data));
+      document.getElementById('inv-name').value    = '';
+      document.getElementById('inv-company').value = '';
+      document.getElementById('inv-email').value   = '';
+    } else {
+      alert(data.error || 'Failed to add signatory.');
+    }
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fa-solid fa-user-plus mr-1"></i>Add &amp; Get Link';
+  }
+}
+
+function buildInviteRow(inv) {
+  const d = document.createElement('div');
+  d.id = `inv-row-${inv.id}`;
+  d.style.cssText = 'display:flex;align-items:center;gap:8px;padding:10px 12px;' +
+                    'background:#f0f9ff;border:1.5px solid #bae6fd;border-radius:12px;';
+  d.innerHTML = `
+    <div style="flex:1;min-width:0;">
+      <p style="font-size:12px;font-weight:700;color:#0f172a;margin:0;">${inv.name}</p>
+      <p style="font-size:11px;color:#94a3b8;margin:0;">${inv.company}${inv.email ? ' · ' + inv.email : ''}</p>
+    </div>
+    <button onclick="copyInviteLink('${inv.sign_url}')" title="Copy signing link"
+            style="padding:6px 10px;border-radius:8px;border:1.5px solid #bae6fd;
+                   background:white;color:#0369a1;font-size:11px;font-weight:700;cursor:pointer;">
+      <i class="fa-solid fa-copy"></i>
+    </button>
+    <button onclick="removeInvite(${inv.id})" title="Remove signatory"
+            style="padding:6px 9px;border-radius:8px;border:1.5px solid #fecaca;
+                   background:white;color:#ef4444;font-size:11px;cursor:pointer;">
+      <i class="fa-solid fa-xmark"></i>
+    </button>`;
+  return d;
+}
+
+async function removeInvite(invId) {
+  if (!confirm('Remove this signatory? Their signing link will stop working.')) return;
+  const res = await fetch(`/projects/{{ proj.id }}/itp/{{ template.id }}/element/{{ wtg.id }}/remove-invite/${invId}`, {method: 'POST'});
+  const data = await res.json();
+  if (data.ok) {
+    document.getElementById(`inv-row-${invId}`)?.remove();
+    const list = document.getElementById('invites-list');
+    if (!list.querySelector('[id^="inv-row-"]')) {
+      const p = document.createElement('p');
+      p.id = 'no-invites-msg';
+      p.style.cssText = 'font-size:12px;color:#94a3b8;text-align:center;padding:10px 0;margin:0;';
+      p.textContent = 'No signatories added yet.';
+      list.appendChild(p);
+    }
+  } else {
+    alert('Failed to remove signatory.');
+  }
+}
+
+function copyInviteLink(url) {
+  navigator.clipboard.writeText(url).then(() => alert('Signing link copied to clipboard!'));
 }
 </script>
+
+<!-- Save modal -->
+<div id="save-modal"
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);
+            z-index:1000;align-items:center;justify-content:center;">
+  <div style="background:white;border-radius:20px;padding:32px 28px;max-width:400px;width:90%;
+              text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.25);">
+    <i class="fa-solid fa-circle-check" style="font-size:48px;color:#16a34a;display:block;margin-bottom:14px;"></i>
+    <h3 style="font-size:17px;font-weight:800;color:#0f172a;margin:0 0 8px;">Details Saved</h3>
+    <p style="font-size:13px;color:#64748b;margin:0 0 24px;line-height:1.6;">
+      Would you like to invite a client to sign this ITP?
+    </p>
+    <div style="display:flex;gap:12px;justify-content:center;">
+      <button onclick="closeSaveModal(false)"
+              style="padding:11px 24px;border-radius:10px;border:1.5px solid #e2e8f0;
+                     background:white;color:#64748b;font-weight:700;font-size:13px;cursor:pointer;">
+        Not Now
+      </button>
+      <button onclick="closeSaveModal(true)"
+              style="padding:11px 28px;border-radius:10px;border:none;
+                     background:linear-gradient(135deg,#2563eb,#1d4ed8);
+                     color:white;font-weight:700;font-size:13px;cursor:pointer;">
+        <i class="fa-solid fa-user-plus" style="margin-right:6px;"></i>Invite Client
+      </button>
+    </div>
+  </div>
+</div>
 {% endblock %}
