@@ -246,11 +246,12 @@
     </div>
     {% endif %}
 
-    <!-- Element grid -->
-    {% if elements %}
+    <!-- Element grid (filtered to applicable scope only) -->
+    {% set t_elements = elements_by_tid.get(t.id, []) %}
+    {% if t_elements %}
     <div style="padding:14px 22px;">
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;">
-        {% for el in elements %}
+        {% for el in t_elements %}
         {% set rec = by_key.get((el.id, t.id)) %}
         <a href="{{ url_for('project_itp_detail', pid=proj.id, tid=t.id, eid=el.id) }}"
            class="itp-card block">

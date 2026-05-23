@@ -2036,9 +2036,28 @@ def project_itp_index(pid):
     groups        = WTGGroup.query.filter_by(project_id=pid).order_by(WTGGroup.sort_order, WTGGroup.name).all()
     work_packages = WorkPackage.query.filter_by(project_id=pid).order_by(WorkPackage.sort_order, WorkPackage.name).all()
 
+    # Build per-template filtered element lists based on applicable_scope
+    def _scope_elements(tmpl, all_els):
+        scope = tmpl.applicable_scope  # [{type, id, name}]
+        if not scope:
+            return all_els
+        eids = set()
+        for s in scope:
+            stype = s.get('type')
+            sid   = s.get('id')
+            if stype == 'element':
+                eids.add(sid)
+            elif stype == 'wp':
+                eids.update(e.id for e in all_els if e.work_package_id == sid)
+            elif stype == 'group':
+                eids.update(e.id for e in all_els if e.group_id == sid)
+        return [e for e in all_els if e.id in eids] if eids else all_els
+
+    elements_by_tid = {t.id: _scope_elements(t, elements) for t in templates}
+
     return render_template('project_itp_index.html',
                            proj=proj, templates=templates,
-                           by_key=by_key,
+                           by_key=by_key, elements_by_tid=elements_by_tid,
                            elements=elements, groups=groups, work_packages=work_packages)
 
 
@@ -2188,13 +2207,22 @@ def project_itp_template_view(pid, tid):
     itp_type = template.itp_type_key
     scope    = template.applicable_scope   # [{type, id, name}]
 
-    # Collect applicable elements
-    scope_eids = [s['id'] for s in scope if s.get('type') == 'element']
-    # If no explicit element scope, fall back to all project elements
-    if not scope_eids:
-        elements = WTG.query.filter_by(project_id=pid).order_by(WTG.name).all()
+    # Collect applicable elements (respects element / wp / group scope types)
+    all_elements = WTG.query.filter_by(project_id=pid).order_by(WTG.name).all()
+    if not scope:
+        elements = all_elements
     else:
-        elements = WTG.query.filter(WTG.id.in_(scope_eids)).order_by(WTG.name).all()
+        eids = set()
+        for s in scope:
+            stype = s.get('type')
+            sid   = s.get('id')
+            if stype == 'element':
+                eids.add(sid)
+            elif stype == 'wp':
+                eids.update(e.id for e in all_elements if e.work_package_id == sid)
+            elif stype == 'group':
+                eids.update(e.id for e in all_elements if e.group_id == sid)
+        elements = [e for e in all_elements if e.id in eids] if eids else all_elements
 
     records  = ITPRecord.query.filter_by(itp_type=itp_type).all()
     by_eid   = {r.wtg_id: r for r in records}
