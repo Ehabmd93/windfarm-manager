@@ -64,18 +64,41 @@
   border-radius:18px;overflow:auto;
   border:1px solid #1a2744;background:#080e1c;
   background-image:radial-gradient(circle, #1e2d4a 1.2px, transparent 1.2px);
-  background-size:28px 28px;min-height:520px;position:relative;
-  padding:52px 56px 72px;
+  background-size:28px 28px;min-height:540px;position:relative;
+  padding:52px 40px 80px;
 }
 #obs-svg-layer {
   position:absolute;top:0;left:0;pointer-events:none;overflow:visible;z-index:1;
 }
 .obs-tree-content { position:relative;z-index:2; }
-.obs-n {
+
+/* ── Subtree layout: column (node top, children row below) ── */
+.obs-subtree {
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+}
+.obs-children {
+  display:flex;
+  flex-direction:row;
+  justify-content:center;
+  align-items:flex-start;
+  gap:24px;
+  flex-wrap:wrap;
+  margin-top:36px;
+}
+.obs-children.obs-collapsed { display:none; }
+
+/* ── Base node ── */
+.obs-node {
   display:inline-flex;align-items:center;gap:7px;border-radius:11px;
   user-select:none;white-space:nowrap;
-  transition:box-shadow .2s,transform .15s,border-color .15s;
+  transition:box-shadow .2s,transform .15s,border-color .15s,opacity .2s;
 }
+.obs-node[onclick] { cursor:pointer; }
+.obs-node:not([onclick]) { cursor:default; }
+
+/* ── Node variants ── */
 .obs-n-proj {
   background:rgba(10,20,45,.92);border:1.5px solid rgba(56,189,248,.55);
   box-shadow:0 0 28px rgba(56,189,248,.14);
@@ -83,34 +106,46 @@
 }
 .obs-n-proj:hover { box-shadow:0 0 40px rgba(56,189,248,.28);transform:translateY(-2px); }
 .obs-n-group {
-  padding:9px 18px;font-size:12px;font-weight:800;cursor:pointer;
+  padding:9px 18px;font-size:12px;font-weight:800;border:1.5px solid;
 }
-.obs-n-group:hover { transform:translateY(-2px); }
+.obs-n-group[onclick]:hover { transform:translateY(-2px); }
 .obs-n-wp {
   background:rgba(12,18,40,.85);
-  padding:6px 14px;font-size:11px;font-weight:800;cursor:default;
-  border-radius:8px;
+  padding:6px 14px;font-size:11px;font-weight:800;border-radius:9px;border:1.5px solid;
 }
+.obs-n-wp[onclick]:hover { transform:translateY(-1px); }
 .obs-n-elem {
   background:rgba(8,16,36,.88);
-  padding:7px 13px;font-size:12px;font-weight:700;color:#dde6f0;cursor:pointer;
-  box-shadow:0 2px 12px rgba(0,0,0,.5);
+  padding:7px 13px;font-size:12px;font-weight:700;color:#dde6f0;
+  box-shadow:0 2px 12px rgba(0,0,0,.5);border:1.5px solid;
 }
-.obs-n-elem:hover { transform:translateY(-2px); }
+.obs-n-elem[onclick]:hover { transform:translateY(-2px); }
 .obs-n-area {
   background:rgba(8,16,36,.7);
   padding:5px 11px;font-size:11px;font-weight:600;color:#9ab4cc;
-  text-decoration:none;border-radius:8px;
+  border-radius:8px;border:1px solid;
   transition:box-shadow .15s,transform .12s,border-color .15s;
-  display:inline-flex;align-items:center;gap:6px;cursor:pointer;
 }
-.obs-n-area:hover { transform:translateY(-1px);color:#c8d8e8; }
+.obs-n-area[onclick]:hover { transform:translateY(-1px);color:#c8d8e8; }
+.obs-n-act {
+  background:rgba(6,12,28,.65);
+  padding:4px 10px;font-size:10px;font-weight:600;color:#7a94a8;
+  border-radius:7px;border:1px solid rgba(255,255,255,.06);
+  white-space:nowrap;
+}
 .obs-dot { width:8px;height:8px;border-radius:50%;flex-shrink:0; }
-.obs-vline { width:1px;margin:0 auto;flex-shrink:0; }
-.obs-row { display:flex;justify-content:center;flex-wrap:wrap; }
-.obs-col { display:flex;flex-direction:column;align-items:center; }
-.obs-areas-panel { display:none;flex-direction:column;align-items:center;gap:0; }
-.obs-areas-panel.open { display:flex; }
+.obs-arr { transition:transform .25s;flex-shrink:0; }
+
+/* ── Depth control bar ── */
+.depth-btn {
+  font-size:10px;font-weight:700;padding:5px 11px;border-radius:7px;
+  border:1.5px solid #e2e8f0;background:#f8fafc;color:#64748b;
+  cursor:pointer;transition:all .12s;white-space:nowrap;
+}
+.depth-btn:hover { background:#e2e8f0;color:#0f172a; }
+.depth-btn.active-depth {
+  background:#0f172a;border-color:#1e3a5f;color:#38bdf8;
+}
 
 /* ══════════════════ LIST / CONNECTOR TREE ════════════════════════════ */
 .t-children {
@@ -152,7 +187,7 @@
 .act-dot { width:8px;height:8px;border-radius:50%;flex-shrink:0; }
 .t-empty { padding:6px 12px;font-size:11px;color:#cbd5e1;font-style:italic; }
 
-/* ── Ctrl buttons ───────────────────────────────────────────────────── */
+/* ── Generic ctrl btns ── */
 .ctrl-btn {
   font-size:11px;font-weight:700;padding:5px 12px;border-radius:7px;
   border:1.5px solid #e2e8f0;background:#f8fafc;color:#64748b;
@@ -175,7 +210,6 @@
     {% endfor %}
     {% set _ = wps_data.append({'wp': wp, 'elements': wp_elements}) %}
   {% endfor %}
-  {# Elements directly in this group but no WP #}
   {% set direct_elements = [] %}
   {% for el in elements %}
     {% if not el.work_package_id and el.group_id == group.id %}
@@ -185,7 +219,6 @@
   {% set _ = group_data.append({'group': group, 'wps': wps_data, 'direct': direct_elements}) %}
 {% endfor %}
 
-{# Elements with no group and no WP #}
 {% set unassigned = [] %}
 {% for el in elements %}
   {% if not el.work_package_id and not el.group_id %}
@@ -194,9 +227,9 @@
 {% endfor %}
 
 {% block content %}
-<div style="max-width:1060px;margin:0 auto;">
+<div style="max-width:1200px;margin:0 auto;">
 
-  <!-- Breadcrumb + Edit button -->
+  <!-- Breadcrumb -->
   <div style="display:flex;align-items:center;gap:8px;margin-bottom:20px;font-size:13px;flex-wrap:wrap;">
     <a href="{{ url_for('dashboard') }}" style="color:#94a3b8;text-decoration:none;font-weight:600;">Home</a>
     <span style="color:#cbd5e1;">›</span>
@@ -230,9 +263,8 @@
     {% endfor %}
   </div>
 
-  <!-- Toolbar: view selector + expand/collapse -->
+  <!-- Toolbar: view selector -->
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
-    <!-- View dropdown -->
     <div style="position:relative;">
       <button id="view-options-btn" onclick="toggleViewPanel()"
               style="display:inline-flex;align-items:center;gap:7px;padding:8px 16px;
@@ -244,47 +276,22 @@
       </button>
       <div id="view-panel">
         <p style="font-size:10px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;padding:4px 8px 8px;">Choose Layout</p>
-
         <div class="vopt" id="vopt-tree" onclick="setView('tree')">
-          <div class="vopt-icon" style="background:#0b1220;">
-            <i class="fa-solid fa-sitemap" style="color:#38bdf8;"></i>
-          </div>
-          <div>
-            <p style="font-weight:700;font-size:13px;color:#1e293b;">Tree View</p>
-            <p style="font-size:11px;color:#94a3b8;">Obsidian-style node graph</p>
-          </div>
+          <div class="vopt-icon" style="background:#0b1220;"><i class="fa-solid fa-sitemap" style="color:#38bdf8;"></i></div>
+          <div><p style="font-weight:700;font-size:13px;color:#1e293b;">Tree View</p><p style="font-size:11px;color:#94a3b8;">Obsidian-style node graph</p></div>
           <i class="fa-solid fa-check ml-auto text-blue-500 text-xs" id="check-tree"></i>
         </div>
-
         <div class="vopt" id="vopt-card" onclick="setView('card')">
-          <div class="vopt-icon" style="background:#eff6ff;">
-            <i class="fa-solid fa-table-cells-large" style="color:#3b82f6;"></i>
-          </div>
-          <div>
-            <p style="font-weight:700;font-size:13px;color:#1e293b;">Card View</p>
-            <p style="font-size:11px;color:#94a3b8;">Elements as grouped cards</p>
-          </div>
+          <div class="vopt-icon" style="background:#eff6ff;"><i class="fa-solid fa-table-cells-large" style="color:#3b82f6;"></i></div>
+          <div><p style="font-weight:700;font-size:13px;color:#1e293b;">Card View</p><p style="font-size:11px;color:#94a3b8;">Elements as grouped cards</p></div>
           <i class="fa-solid fa-check ml-auto text-blue-500 text-xs" id="check-card" style="display:none;"></i>
         </div>
-
         <div class="vopt" id="vopt-list" onclick="setView('list')">
-          <div class="vopt-icon" style="background:#f0fdf4;">
-            <i class="fa-solid fa-list-tree" style="color:#16a34a;"></i>
-          </div>
-          <div>
-            <p style="font-weight:700;font-size:13px;color:#1e293b;">List View</p>
-            <p style="font-size:11px;color:#94a3b8;">Collapsible connector tree</p>
-          </div>
+          <div class="vopt-icon" style="background:#f0fdf4;"><i class="fa-solid fa-list-tree" style="color:#16a34a;"></i></div>
+          <div><p style="font-weight:700;font-size:13px;color:#1e293b;">List View</p><p style="font-size:11px;color:#94a3b8;">Collapsible connector tree</p></div>
           <i class="fa-solid fa-check ml-auto text-blue-500 text-xs" id="check-list" style="display:none;"></i>
         </div>
-
       </div>
-    </div>
-
-    <!-- Expand / Collapse (list view only) -->
-    <div id="list-ctrls" style="display:none;gap:6px;display:none;">
-      <button class="ctrl-btn" onclick="expandAll()"><i class="fa-solid fa-expand mr-1" style="font-size:9px;"></i>Expand All</button>
-      <button class="ctrl-btn" onclick="collapseAll()"><i class="fa-solid fa-compress mr-1" style="font-size:9px;"></i>Collapse All</button>
     </div>
   </div>
 
@@ -292,180 +299,166 @@
   {# ════════════════════ OBSIDIAN TREE VIEW ═══════════════════════════ #}
   <div id="view-tree" style="animation:fadeInUp .4s ease both;">
 
-    <div style="display:flex;align-items:center;flex-wrap:wrap;gap:14px;margin-bottom:10px;">
-      <span style="font-size:11px;color:#64748b;font-style:italic;">
-        Click a Group to collapse · Click an Element to expand its areas
-      </span>
+    <!-- Depth level controls -->
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+      <span style="font-size:10px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;padding:0 4px;">Expand to:</span>
+      <button class="depth-btn" id="dbtn-groups"   onclick="obsExpandLevel('groups')">Groups</button>
+      <button class="depth-btn" id="dbtn-wps"      onclick="obsExpandLevel('wps')">Work Pkgs</button>
+      <button class="depth-btn" id="dbtn-elements" onclick="obsExpandLevel('elements')">Elements</button>
+      <button class="depth-btn" id="dbtn-areas"    onclick="obsExpandLevel('areas')">Areas</button>
+      <button class="depth-btn" id="dbtn-all"      onclick="obsExpandLevel('all')"><i class="fa-solid fa-expand" style="font-size:9px;"></i> All</button>
+      <button class="depth-btn" style="margin-left:6px;border-color:#1e3a5f;background:#0f172a;color:#64748b;"
+              onclick="obsExpandLevel('root')"><i class="fa-solid fa-compress" style="font-size:9px;"></i> Collapse</button>
+      <span style="margin-left:8px;font-size:10px;color:#334155;font-style:italic;">· Click any node to toggle its subtree</span>
     </div>
 
     <div id="obs-wrap">
-      <svg id="obs-svg-layer" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:visible;z-index:1;"></svg>
+      <svg id="obs-svg-layer" style="position:absolute;top:0;left:0;pointer-events:none;overflow:visible;z-index:1;"></svg>
       <div class="obs-tree-content">
 
         {% set has_content = groups|length > 0 or elements|length > 0 %}
         {% if has_content %}
 
-        {# Build tg_list for tree: groups + unassigned bucket #}
+        {# Build tg_list #}
         {% set tg_list = [] %}
-        {% for gd in group_data %}
-          {% set _ = tg_list.append(gd) %}
-        {% endfor %}
+        {% for gd in group_data %}{% set _ = tg_list.append(gd) %}{% endfor %}
         {% if unassigned %}
-          {% set _ = tg_list.append({'group': {'id': 'ug', 'name': 'Unassigned', 'color': '#64748b'}, 'wps': [], 'direct': unassigned}) %}
+          {% set _ = tg_list.append({'group': {'id': 'ug', 'name': 'Unassigned', 'color': '#64748b', 'work_packages': []}, 'wps': [], 'direct': unassigned}) %}
         {% endif %}
 
-        {# Project root #}
-        <div class="obs-row" style="margin-bottom:64px;">
-          <div class="obs-n obs-n-proj" id="ob-root">
-            <i class="fa-solid fa-wind" style="font-size:13px;"></i>
-            {{ proj.name }}
-          </div>
-        </div>
+        {# ─────────── MACROS ─────────── #}
 
-        {# Level 1: Groups #}
-        <div class="obs-row" id="ob-groups-row" style="gap:48px;margin-bottom:64px;flex-wrap:wrap;">
-          {% for gd in tg_list %}
-          {% set g = gd.group %}
-          {% set g_color = g.color if g.color else '#64748b' %}
-          {% set g_id = g.id|string %}
-          <div class="obs-col" data-gid="{{ g_id }}">
-            <div class="obs-n obs-n-group"
-                 id="ob-g-{{ g_id }}"
-                 data-gid="{{ g_id }}"
-                 data-color="{{ g_color }}"
-                 style="background:{{ g_color }}1e;border:1.5px solid {{ g_color }}88;
-                        box-shadow:0 0 22px {{ g_color }}22;color:{{ g_color }};"
-                 onclick="obsToggleGroup('{{ g_id }}')">
-              <div class="obs-dot" style="background:{{ g_color }};box-shadow:0 0 9px {{ g_color }};"></div>
-              <span>{{ g.name }}</span>
-              {% set el_n = namespace(v=0) %}
-              {% for wdata in gd.wps %}{% set el_n.v = el_n.v + wdata.elements|length %}{% endfor %}
-              {% set el_n.v = el_n.v + gd.direct|length %}
-              <span style="font-size:10px;font-weight:800;padding:1px 8px;border-radius:8px;background:{{ g_color }}28;min-width:20px;text-align:center;">{{ el_n.v }}</span>
-              <i class="fa-solid fa-chevron-down" id="ob-arr-{{ g_id }}" style="font-size:9px;opacity:.65;transition:transform .25s;"></i>
-            </div>
-          </div>
-          {% endfor %}
-        </div>
-
-        {# Level 2+: Elements per group, with WP sub-grouping #}
-        {% macro render_element_obs(el, g_color, g_id) %}
-        {% set area_count = el.areas|length %}
-        {% set act_count  = namespace(v=0) %}{% for a in el.areas %}{% set act_count.v = act_count.v + a.activities|length %}{% endfor %}
-        <div class="obs-col" id="ob-ecol-{{ el.id }}">
-          <div class="obs-n obs-n-elem"
-               id="ob-e-{{ el.id }}"
-               data-gid="{{ g_id }}"
-               data-eid="{{ el.id }}"
-               data-color="{{ g_color }}"
-               style="border-color:{{ g_color }}44;"
-               onclick="obsToggleAreas('{{ el.id }}', '{{ g_color }}')">
-            <i class="fa-solid fa-tower-broadcast" style="font-size:10px;color:{{ g_color }};opacity:.7;"></i>
-            <span>{{ el.name }}</span>
-            {% if area_count %}
-            <div class="obs-dot" style="background:{{ g_color }};opacity:.7;box-shadow:0 0 5px {{ g_color }};"></div>
-            {% else %}
-            <div class="obs-dot" style="background:#475569;"></div>
-            {% endif %}
-          </div>
-          <div class="obs-areas-panel" id="ob-areas-{{ el.id }}" data-color="{{ g_color }}">
-            <div class="obs-vline" style="height:18px;background:{{ g_color }}44;"></div>
-            <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;max-width:320px;">
-              {% for area in el.areas %}
-              {% set a_count = area.activities|length %}
-              <div class="obs-n-area ob-area-chip"
-                   data-eid="{{ el.id }}"
-                   style="border:1px solid {{ g_color }}33;"
-                   onclick="obsToggleActivities({{ area.id }}, this)">
-                <i class="fa-solid fa-map-pin" style="font-size:9px;color:#f59e0b;opacity:.8;"></i>
-                <span>{{ area.label }}</span>
-                {% if a_count %}
-                <span style="background:{{ g_color }}28;color:{{ g_color }};border-radius:8px;padding:1px 6px;font-size:9px;font-weight:800;">{{ a_count }}</span>
-                {% endif %}
-              </div>
-              {% else %}
-              <div class="obs-n-area" style="border:1px solid #47556933;opacity:.5;">
-                <span style="font-style:italic;color:#64748b;">No areas</span>
-              </div>
-              {% endfor %}
-            </div>
-            {# Activities panel per area #}
-            {% for area in el.areas %}
-            {% if area.activities %}
-            <div id="ob-acts-{{ area.id }}" style="display:none;margin-top:8px;padding:8px 12px;
-                 background:rgba(8,16,36,.85);border:1px solid {{ g_color }}33;border-radius:10px;
-                 max-width:300px;">
-              <p style="font-size:9px;font-weight:800;color:{{ g_color }};text-transform:uppercase;
-                        letter-spacing:.08em;margin-bottom:6px;">{{ area.label }} · Activities</p>
-              {% for act in area.activities %}
-              <div style="display:flex;align-items:center;gap:6px;padding:3px 0;">
-                <div style="width:6px;height:6px;border-radius:50%;background:{{ act.status_color }};
-                            box-shadow:0 0 4px {{ act.status_color }};flex-shrink:0;"></div>
-                <span style="font-size:10px;font-weight:600;color:#9ab4cc;">{{ act.name }}</span>
-                <span style="font-size:9px;color:#475569;margin-left:auto;">{{ act.type_label }}</span>
-              </div>
-              {% endfor %}
-            </div>
-            {% endif %}
-            {% endfor %}
+        {# Activity leaf node #}
+        {% macro obs_activity(act) %}
+        <div class="obs-subtree">
+          <div class="obs-node obs-n-act" id="ob-act-{{ act.id }}">
+            <div style="width:7px;height:7px;border-radius:50%;background:{{ act.status_color }};box-shadow:0 0 5px {{ act.status_color }};flex-shrink:0;"></div>
+            <span>{{ act.name }}</span>
+            <span style="font-size:9px;color:#334155;padding:1px 5px;background:rgba(255,255,255,.04);border-radius:5px;">{{ act.type_label }}</span>
           </div>
         </div>
         {% endmacro %}
 
-        {% for gd in tg_list %}
-        {% set g = gd.group %}
-        {% set g_color = g.color if g.color else '#64748b' %}
-        {% set g_id = g.id|string %}
-        <div class="obs-elems-block" id="ob-elems-{{ g_id }}" style="margin-bottom:56px;">
-          <div style="text-align:center;margin-bottom:16px;">
-            <span style="font-size:10px;font-weight:800;text-transform:uppercase;
-                         letter-spacing:.08em;color:{{ g_color }};opacity:.65;">{{ g.name }}</span>
-          </div>
-
-          {% if gd.wps %}
-          <div class="obs-row" style="gap:40px;align-items:flex-start;flex-wrap:wrap;">
-            {% for wdata in gd.wps %}
-            {% if wdata.elements %}
-            <div style="display:flex;flex-direction:column;align-items:center;gap:0;">
-              <div class="obs-n obs-n-wp"
-                   style="border:1.5px solid {{ wdata.wp.color }}66;color:{{ wdata.wp.color }};
-                          margin-bottom:14px;background:{{ wdata.wp.color }}18;">
-                <i class="fa-solid fa-boxes-stacked" style="font-size:10px;"></i>
-                {{ wdata.wp.name }}
-                <span style="font-size:10px;padding:1px 6px;border-radius:6px;background:{{ wdata.wp.color }}28;">{{ wdata.elements|length }}</span>
-              </div>
-              <div style="width:1px;height:14px;background:{{ wdata.wp.color }}44;margin-bottom:4px;"></div>
-              <div class="obs-row" style="gap:14px;align-items:flex-start;flex-wrap:wrap;justify-content:center;">
-                {% for el in wdata.elements %}
-                {{ render_element_obs(el, g_color, g_id) }}
-                {% endfor %}
-              </div>
-            </div>
+        {# Area node → activities #}
+        {% macro obs_area(area, color) %}
+        {% set a_count = area.activities|length %}
+        <div class="obs-subtree">
+          <div class="obs-node obs-n-area" id="ob-area-{{ area.id }}"
+               data-line-color="{{ color }}40"
+               style="border-color:{{ color }}33;"
+               {% if a_count %}onclick="obsToggleChildren('obs-ch-area-{{ area.id }}', this)"{% endif %}>
+            <i class="fa-solid fa-map-pin" style="font-size:9px;color:#f59e0b;opacity:.85;"></i>
+            <span>{{ area.label }}</span>
+            {% if a_count %}
+            <span style="background:{{ color }}28;color:{{ color }};border-radius:7px;padding:1px 6px;font-size:9px;font-weight:800;">{{ a_count }}</span>
+            <i class="obs-arr fa-solid fa-chevron-down" style="font-size:8px;opacity:.55;"></i>
             {% endif %}
-            {% endfor %}
           </div>
-          {% endif %}
-
-          {% if gd.direct %}
-          {% if gd.wps %}
-          <div style="margin-top:20px;text-align:center;">
-            <span style="font-size:9px;font-weight:700;color:#475569;font-style:italic;">No Work Package</span>
-          </div>
-          {% endif %}
-          <div class="obs-row" style="gap:14px;align-items:flex-start;flex-wrap:wrap;justify-content:center;margin-top:10px;">
-            {% for el in gd.direct %}
-            {{ render_element_obs(el, g_color, g_id) }}
-            {% endfor %}
-          </div>
-          {% endif %}
-
-          {% if not gd.wps and not gd.direct %}
-          <div style="text-align:center;padding:12px 0;">
-            <span style="font-size:11px;color:#334155;font-style:italic;">No elements</span>
+          {% if a_count %}
+          <div class="obs-children obs-collapsed" id="obs-ch-area-{{ area.id }}"
+               data-parent="ob-area-{{ area.id }}" style="gap:10px;margin-top:20px;">
+            {% for act in area.activities %}{{ obs_activity(act) }}{% endfor %}
           </div>
           {% endif %}
         </div>
-        {% endfor %}
+        {% endmacro %}
+
+        {# Element node → areas #}
+        {% macro obs_element(el, g_color) %}
+        {% set area_count = el.areas|length %}
+        <div class="obs-subtree">
+          <div class="obs-node obs-n-elem" id="ob-e-{{ el.id }}"
+               data-color="{{ g_color }}"
+               data-line-color="{{ g_color }}55"
+               style="border-color:{{ g_color }}44;"
+               {% if area_count %}onclick="obsToggleChildren('obs-ch-el-{{ el.id }}', this)"{% endif %}>
+            <i class="fa-solid fa-tower-broadcast" style="font-size:10px;color:{{ g_color }};opacity:.7;"></i>
+            <span>{{ el.name }}</span>
+            {% if area_count %}
+            <div class="obs-dot" style="background:{{ g_color }};opacity:.7;box-shadow:0 0 5px {{ g_color }};"></div>
+            <i class="obs-arr fa-solid fa-chevron-down" style="font-size:8px;opacity:.55;"></i>
+            {% else %}
+            <div class="obs-dot" style="background:#334155;"></div>
+            {% endif %}
+          </div>
+          {% if area_count %}
+          <div class="obs-children obs-collapsed" id="obs-ch-el-{{ el.id }}"
+               data-parent="ob-e-{{ el.id }}" style="gap:12px;margin-top:28px;">
+            {% for area in el.areas %}{{ obs_area(area, g_color) }}{% endfor %}
+          </div>
+          {% endif %}
+        </div>
+        {% endmacro %}
+
+        {# ─────────── ROOT NODE ─────────── #}
+        <div class="obs-subtree" style="min-width:100%;">
+          <div class="obs-node obs-n-proj" id="ob-root"
+               data-line-color="rgba(56,189,248,0.22)"
+               onclick="obsToggleChildren('obs-ch-root', this)">
+            <i class="fa-solid fa-wind" style="font-size:13px;"></i>
+            {{ proj.name }}
+            <i class="obs-arr fa-solid fa-chevron-down" style="font-size:9px;opacity:.65;"></i>
+          </div>
+
+          {# ─── Level 1: Groups ─── #}
+          <div class="obs-children" id="obs-ch-root" data-parent="ob-root"
+               style="gap:36px;margin-top:48px;align-items:flex-start;">
+
+            {% for gd in tg_list %}
+            {% set g = gd.group %}
+            {% set g_color = g.color if g.color else '#64748b' %}
+            {% set g_id = g.id|string %}
+            {% set el_n = namespace(v=0) %}
+            {% for wdata in gd.wps %}{% set el_n.v = el_n.v + wdata.elements|length %}{% endfor %}
+            {% set el_n.v = el_n.v + gd.direct|length %}
+
+            <div class="obs-subtree">
+              <div class="obs-node obs-n-group" id="ob-g-{{ g_id }}"
+                   data-color="{{ g_color }}"
+                   data-line-color="{{ g_color }}55"
+                   style="background:{{ g_color }}1e;border-color:{{ g_color }}88;box-shadow:0 0 22px {{ g_color }}22;color:{{ g_color }};"
+                   onclick="obsToggleChildren('obs-ch-g-{{ g_id }}', this)">
+                <div class="obs-dot" style="background:{{ g_color }};box-shadow:0 0 9px {{ g_color }};"></div>
+                {{ g.name }}
+                <span style="font-size:10px;font-weight:800;padding:1px 8px;border-radius:8px;background:{{ g_color }}28;min-width:20px;text-align:center;">{{ el_n.v }}</span>
+                <i class="obs-arr fa-solid fa-chevron-down" style="font-size:9px;opacity:.65;"></i>
+              </div>
+
+              {# ─── Level 2: WPs + direct elements ─── #}
+              <div class="obs-children obs-collapsed" id="obs-ch-g-{{ g_id }}"
+                   data-parent="ob-g-{{ g_id }}" style="gap:22px;margin-top:36px;align-items:flex-start;">
+
+                {% for wdata in gd.wps %}
+                {% if wdata.elements %}
+                <div class="obs-subtree">
+                  <div class="obs-node obs-n-wp" id="ob-wp-{{ wdata.wp.id }}"
+                       data-line-color="{{ wdata.wp.color }}55"
+                       style="border-color:{{ wdata.wp.color }}66;color:{{ wdata.wp.color }};background:{{ wdata.wp.color }}18;"
+                       onclick="obsToggleChildren('obs-ch-wp-{{ wdata.wp.id }}', this)">
+                    <i class="fa-solid fa-{{ wdata.wp.icon }}" style="font-size:10px;"></i>
+                    {{ wdata.wp.name }}
+                    <span style="font-size:10px;padding:1px 6px;border-radius:6px;background:{{ wdata.wp.color }}28;">{{ wdata.elements|length }}</span>
+                    <i class="obs-arr fa-solid fa-chevron-down" style="font-size:9px;opacity:.65;"></i>
+                  </div>
+
+                  {# ─── Level 3: Elements ─── #}
+                  <div class="obs-children obs-collapsed" id="obs-ch-wp-{{ wdata.wp.id }}"
+                       data-parent="ob-wp-{{ wdata.wp.id }}" style="gap:16px;margin-top:32px;align-items:flex-start;">
+                    {% for el in wdata.elements %}{{ obs_element(el, g_color) }}{% endfor %}
+                  </div>
+                </div>
+                {% endif %}
+                {% endfor %}
+
+                {# Direct elements (no WP) #}
+                {% for el in gd.direct %}{{ obs_element(el, g_color) }}{% endfor %}
+
+              </div>
+            </div>
+            {% endfor %}
+
+          </div>
+        </div>
 
         {% else %}
         <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:300px;">
@@ -523,24 +516,19 @@
           </div>
           <div style="display:flex;align-items:center;gap:6px;">
             {% if a_act %}
-            <span style="background:#fef3c7;color:#d97706;border-radius:20px;padding:2px 9px;font-size:10px;font-weight:800;">
-              {{ a_act }} act.
-            </span>
+            <span style="background:#fef3c7;color:#d97706;border-radius:20px;padding:2px 9px;font-size:10px;font-weight:800;">{{ a_act }} act.</span>
             {% else %}
             <span style="color:#cbd5e1;font-size:10px;font-weight:600;">no activities</span>
             {% endif %}
           </div>
         </div>
         {% else %}
-        <div style="padding:12px 16px;font-size:12px;color:#94a3b8;font-style:italic;">
-          No areas yet
-        </div>
+        <div style="padding:12px 16px;font-size:12px;color:#94a3b8;font-style:italic;">No areas yet</div>
         {% endfor %}
       </div>
     </div>
     {% endmacro %}
 
-    {# Render by group #}
     {% for gd in group_data %}
     {% set total_el = namespace(v=0) %}
     {% for wdata in gd.wps %}{% set total_el.v = total_el.v + wdata.elements|length %}{% endfor %}
@@ -555,14 +543,13 @@
                      background:{{ gd.group.color }}18;color:{{ gd.group.color }};">{{ total_el.v }} elements</span>
         <div style="flex:1;height:1px;background:#e2e8f0;"></div>
       </div>
-
       {% for wdata in gd.wps %}
       {% if wdata.elements %}
       <div style="margin-bottom:14px;">
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;padding-left:4px;">
           <div style="width:22px;height:22px;border-radius:6px;background:{{ wdata.wp.color }}18;
                       display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-            <i class="fa-solid fa-boxes-stacked" style="color:{{ wdata.wp.color }};font-size:9px;"></i>
+            <i class="fa-solid fa-{{ wdata.wp.icon }}" style="color:{{ wdata.wp.color }};font-size:9px;"></i>
           </div>
           <span style="font-size:12px;font-weight:800;color:{{ wdata.wp.color }};">{{ wdata.wp.name }}</span>
           <span style="font-size:10px;color:#94a3b8;">{{ wdata.elements|length }} elem.</span>
@@ -573,7 +560,6 @@
       </div>
       {% endif %}
       {% endfor %}
-
       {% if gd.direct %}
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;padding-left:4px;">
         {% for el in gd.direct %}{{ element_card(el) }}{% endfor %}
@@ -583,7 +569,6 @@
     {% endif %}
     {% endfor %}
 
-    {# Unassigned elements #}
     {% if unassigned %}
     <div style="margin-bottom:30px;">
       <div class="group-hdr-bar">
@@ -605,9 +590,9 @@
   {# ═══════════════════ LIST / CONNECTOR TREE ═══════════════════════ #}
   <div id="view-list" style="display:none;animation:fadeInUp .4s ease both;">
 
-    <div id="list-ctrls-inner" style="display:flex;gap:8px;margin-bottom:12px;">
-      <button class="ctrl-btn" onclick="expandAll()"><i class="fa-solid fa-expand mr-1" style="font-size:9px;"></i>Expand All</button>
-      <button class="ctrl-btn" onclick="collapseAll()"><i class="fa-solid fa-compress mr-1" style="font-size:9px;"></i>Collapse All</button>
+    <div style="display:flex;gap:8px;margin-bottom:12px;">
+      <button class="ctrl-btn" onclick="expandAll()"><i class="fa-solid fa-expand" style="font-size:9px;"></i> Expand All</button>
+      <button class="ctrl-btn" onclick="collapseAll()"><i class="fa-solid fa-compress" style="font-size:9px;"></i> Collapse All</button>
     </div>
 
     <div class="card" style="border-radius:18px;padding:22px;">
@@ -627,9 +612,7 @@
           <div class="t-dot" style="background:{{ g.color }};box-shadow:0 0 6px {{ g.color }}88;"></div>
           <span class="lvl-group" style="color:{{ g.color }};">{{ g.name }}</span>
           <span class="t-badge" style="background:{{ g.color }}15;color:{{ g.color }};border:1px solid {{ g.color }}30;">Group</span>
-          <span class="t-count">
-            {{ g.work_packages|length }} WP{{ 's' if g.work_packages|length != 1 }}
-          </span>
+          <span class="t-count">{{ g.work_packages|length }} WP{{ 's' if g.work_packages|length != 1 }}</span>
         </div>
         <div class="t-children" id="g-{{ g.id }}">
           {% for wdata in gd.wps %}
@@ -699,6 +682,7 @@
 
           {% for el in gd.direct %}
           {% set el_area_count = el.areas|length %}
+          {% set el_act_count  = namespace(v=0) %}{% for a in el.areas %}{% set el_act_count.v = el_act_count.v + a.activities|length %}{% endfor %}
           <div class="t-row" onclick="toggleNode('el-d-{{ el.id }}', this)">
             <div class="t-chev {% if el.areas %}open{% else %}leaf{% endif %}">
               {% if el.areas %}<i class="fa-solid fa-chevron-right"></i>
@@ -709,16 +693,33 @@
             </div>
             <span class="lvl-element">{{ el.name }}</span>
             <span class="t-badge" style="background:#f1f5f9;color:#94a3b8;">{{ el.element_type_label }}</span>
-            <span class="t-count">{{ el_area_count }} area{{ 's' if el_area_count!=1 }}</span>
+            <span class="t-count">{{ el_area_count }} area{{ 's' if el_area_count!=1 }} · {{ el_act_count.v }} act.</span>
           </div>
           {% if el.areas %}
           <div class="t-children" id="el-d-{{ el.id }}">
             {% for area in el.areas %}
-            <div class="t-row" style="cursor:default;">
-              <div class="t-chev leaf"><i class="fa-solid fa-minus" style="opacity:.3;font-size:6px;"></i></div>
+            <div class="t-row" onclick="toggleNode('area-d-{{ area.id }}', this)">
+              <div class="t-chev {% if area.activities %}open{% else %}leaf{% endif %}">
+                {% if area.activities %}<i class="fa-solid fa-chevron-right"></i>
+                {% else %}<i class="fa-solid fa-minus" style="opacity:.3;font-size:6px;"></i>{% endif %}
+              </div>
               <i class="fa-solid fa-map-pin" style="color:#f59e0b;font-size:12px;width:16px;text-align:center;flex-shrink:0;"></i>
               <span class="lvl-area">{{ area.label }}</span>
+              {% if area.activities %}<span class="t-badge" style="background:#fef3c7;color:#d97706;">{{ area.activities|length }} act.</span>{% endif %}
             </div>
+            {% if area.activities %}
+            <div class="t-children" id="area-d-{{ area.id }}">
+              {% for act in area.activities %}
+              <div class="t-row" style="cursor:default;" onclick="event.stopPropagation()">
+                <div class="t-chev leaf"><i class="fa-solid fa-minus" style="opacity:.3;font-size:6px;"></i></div>
+                <div class="act-dot" style="background:{{ act.status_color }};box-shadow:0 0 4px {{ act.status_color }};"></div>
+                <span class="lvl-act">{{ act.name }}</span>
+                <span class="t-badge" style="background:#f1f5f9;color:#94a3b8;">{{ act.type_label }}</span>
+                <span class="t-count" style="color:{{ act.status_color }};">{{ act.status_label }}</span>
+              </div>
+              {% endfor %}
+            </div>
+            {% endif %}
             {% endfor %}
           </div>
           {% endif %}
@@ -830,7 +831,6 @@ function toggleNode(id, rowEl) {
   children.style.display = isOpen ? 'none' : '';
   if (chev && !chev.classList.contains('leaf')) {
     chev.classList.toggle('open', !isOpen);
-    rowEl.classList.toggle('open', !isOpen);
   }
 }
 function expandAll() {
@@ -842,47 +842,102 @@ function collapseAll() {
   document.querySelectorAll('#view-list .t-chev:not(.leaf)').forEach(c => c.classList.remove('open'));
 }
 
-// ── Obsidian: toggle group collapse ──────────────────────────────────────────
-function obsToggleGroup(gid) {
-  const block = document.getElementById('ob-elems-' + gid);
-  const arrow = document.getElementById('ob-arr-' + gid);
-  const gnode = document.getElementById('ob-g-' + gid);
-  if (!block) return;
-  const collapsed = block.style.display === 'none';
-  block.style.display = collapsed ? '' : 'none';
-  if (arrow) arrow.style.transform = collapsed ? '' : 'rotate(-90deg)';
-  if (gnode) gnode.style.opacity   = collapsed ? '1' : '0.55';
+// ── Obsidian: toggle a node's children ───────────────────────────────────────
+function obsToggleChildren(childrenId, nodeEl) {
+  const ch = document.getElementById(childrenId);
+  if (!ch) return;
+  const willCollapse = !ch.classList.contains('obs-collapsed');
+  ch.classList.toggle('obs-collapsed', willCollapse);
+  const arr = nodeEl.querySelector('.obs-arr');
+  if (arr) arr.style.transform = willCollapse ? 'rotate(-90deg)' : '';
+  nodeEl.style.opacity = willCollapse ? '0.5' : '1';
   requestAnimationFrame(drawTreeLines);
 }
 
-// ── Obsidian: toggle areas panel ──────────────────────────────────────────────
-function obsToggleAreas(eid, color) {
-  const panel = document.getElementById('ob-areas-' + eid);
-  const enode = document.getElementById('ob-e-' + eid);
-  if (!panel) return;
-  const open = panel.classList.toggle('open');
-  if (enode) {
-    enode.style.borderColor = open ? (color || '#38bdf8') + 'cc' : (color || '#64748b') + '44';
-    enode.style.boxShadow   = open ? `0 0 20px ${color || '#38bdf8'}44` : '0 2px 12px rgba(0,0,0,.5)';
+// ── Obsidian: expand to depth level ──────────────────────────────────────────
+// Level map: parent class → numeric depth (0=proj, 1=group, 2=wp, 3=elem, 4=area)
+const OBS_DEPTH_MAP = [
+  ['obs-n-proj',  0],
+  ['obs-n-group', 1],
+  ['obs-n-wp',    2],
+  ['obs-n-elem',  3],
+  ['obs-n-area',  4],
+];
+const DEPTH_LEVELS = ['root','groups','wps','elements','areas','all'];
+
+function obsExpandLevel(targetLevel) {
+  const levelIdx = DEPTH_LEVELS.indexOf(targetLevel);
+  if (levelIdx < 0) return;
+  const showAll = targetLevel === 'all';
+
+  // Update active depth button
+  ['groups','wps','elements','areas','all'].forEach(k => {
+    const btn = document.getElementById('dbtn-' + k);
+    if (btn) btn.classList.toggle('active-depth', k === targetLevel);
+  });
+
+  document.querySelectorAll('#obs-wrap .obs-children').forEach(ch => {
+    const parent = document.getElementById(ch.dataset.parent);
+    if (!parent) return;
+    let pDepth = -1;
+    for (const [cls, d] of OBS_DEPTH_MAP) {
+      if (parent.classList.contains(cls)) { pDepth = d; break; }
+    }
+    const shouldShow = showAll ? true : (pDepth < levelIdx);
+    ch.classList.toggle('obs-collapsed', !shouldShow);
+    const arr = parent.querySelector('.obs-arr');
+    if (arr) arr.style.transform = !shouldShow ? 'rotate(-90deg)' : '';
+    parent.style.opacity = !shouldShow ? '0.5' : '1';
+  });
+
+  requestAnimationFrame(drawTreeLines);
+}
+
+// ── Draw SVG bezier connections ───────────────────────────────────────────────
+function drawTreeLines() {
+  const wrap = document.getElementById('obs-wrap');
+  const svg  = document.getElementById('obs-svg-layer');
+  if (!wrap || !svg) return;
+  svg.innerHTML = '';
+  const W = Math.max(wrap.scrollWidth, wrap.offsetWidth);
+  const H = Math.max(wrap.scrollHeight, wrap.offsetHeight);
+  svg.setAttribute('width',  W); svg.setAttribute('height',  H);
+  svg.style.width  = W + 'px';  svg.style.height = H + 'px';
+  const wr = wrap.getBoundingClientRect();
+  const sx = wrap.scrollLeft, sy = wrap.scrollTop;
+
+  function cx(el) { const r = el.getBoundingClientRect(); return r.left - wr.left + sx + r.width/2; }
+  function bot(el){ const r = el.getBoundingClientRect(); return r.top  - wr.top  + sy + r.height; }
+  function topY(el){ const r = el.getBoundingClientRect(); return r.top  - wr.top  + sy; }
+
+  function bezier(x1,y1,x2,y2,stroke,w) {
+    if ([x1,y1,x2,y2].some(isNaN)) return;
+    const my = (y1 + y2) / 2;
+    const p  = document.createElementNS('http://www.w3.org/2000/svg','path');
+    p.setAttribute('d', `M${x1},${y1} C${x1},${my} ${x2},${my} ${x2},${y2}`);
+    p.setAttribute('stroke', stroke);
+    p.setAttribute('stroke-width', w || '1.5');
+    p.setAttribute('fill', 'none');
+    p.setAttribute('stroke-linecap', 'round');
+    svg.appendChild(p);
   }
-  requestAnimationFrame(drawTreeLines);
+
+  // Draw lines: for every visible children container, bezier parent → each child
+  document.querySelectorAll('#obs-wrap .obs-children:not(.obs-collapsed)').forEach(ch => {
+    const parentEl = document.getElementById(ch.dataset.parent);
+    if (!parentEl) return;
+    const color = parentEl.dataset.lineColor || 'rgba(100,116,139,0.3)';
+    const strokeW = parentEl.classList.contains('obs-n-proj')  ? '1.8' :
+                    parentEl.classList.contains('obs-n-group') ? '1.6' :
+                    parentEl.classList.contains('obs-n-wp')    ? '1.4' :
+                    parentEl.classList.contains('obs-n-elem')  ? '1.2' : '1.0';
+    ch.querySelectorAll(':scope > .obs-subtree > .obs-node').forEach(childNode => {
+      bezier(cx(parentEl), bot(parentEl), cx(childNode), topY(childNode), color, strokeW);
+    });
+  });
 }
 
-// ── Obsidian: toggle activities panel for an area chip ────────────────────────
-function obsToggleActivities(areaId, chipEl) {
-  const panel = document.getElementById('ob-acts-' + areaId);
-  if (!panel) return;
-  const open = panel.style.display === 'block';
-  // Hide all other activity panels in the same areas panel
-  chipEl.closest('.obs-areas-panel')
-    ?.querySelectorAll('[id^="ob-acts-"]')
-    .forEach(p => { if (p !== panel) p.style.display = 'none'; });
-  panel.style.display = open ? 'none' : 'block';
-  chipEl.style.borderColor = open ? '' : '#f59e0b88';
-  requestAnimationFrame(drawTreeLines);
-}
-
-// ── Node hover effects ────────────────────────────────────────────────────────
+// ── Node hover glow ───────────────────────────────────────────────────────────
 function initTreeHover() {
   document.querySelectorAll('.obs-n-group').forEach(nd => {
     const c = nd.dataset.color || '#64748b';
@@ -908,64 +963,6 @@ function initTreeHover() {
       nd.style.boxShadow   = '0 2px 12px rgba(0,0,0,.5)';
       nd.style.transform   = '';
       nd.style.background  = 'rgba(8,16,36,0.88)';
-    });
-  });
-}
-
-// ── Draw SVG bezier connections ───────────────────────────────────────────────
-function drawTreeLines() {
-  const wrap = document.getElementById('obs-wrap');
-  const svg  = document.getElementById('obs-svg-layer');
-  if (!wrap || !svg) return;
-  svg.innerHTML = '';
-  const W = wrap.scrollWidth, H = wrap.scrollHeight;
-  svg.setAttribute('width', W); svg.setAttribute('height', H);
-  svg.style.width = W + 'px';  svg.style.height = H + 'px';
-  const wr = wrap.getBoundingClientRect();
-  const sx = wrap.scrollLeft, sy = wrap.scrollTop;
-
-  function cx(el) { const r = el.getBoundingClientRect(); return r.left - wr.left + sx + r.width/2; }
-  function cy(el) { const r = el.getBoundingClientRect(); return r.top  - wr.top  + sy + r.height/2; }
-  function bot(el){ const r = el.getBoundingClientRect(); return r.top  - wr.top  + sy + r.height; }
-  function top(el){ const r = el.getBoundingClientRect(); return r.top  - wr.top  + sy; }
-
-  function bezier(x1,y1,x2,y2,stroke,w) {
-    const my = (y1+y2)/2;
-    const p  = document.createElementNS('http://www.w3.org/2000/svg','path');
-    p.setAttribute('d',`M${x1},${y1} C${x1},${my} ${x2},${my} ${x2},${y2}`);
-    p.setAttribute('stroke', stroke);
-    p.setAttribute('stroke-width', w || '1.6');
-    p.setAttribute('fill','none');
-    p.setAttribute('stroke-linecap','round');
-    svg.appendChild(p);
-  }
-
-  const root = document.getElementById('ob-root');
-  if (!root) return;
-
-  document.querySelectorAll('.obs-n-group').forEach(gnd => {
-    if (gnd.style.opacity === '0.55') return;
-    bezier(cx(root), bot(root), cx(gnd), top(gnd), 'rgba(56,189,248,0.22)', '1.4');
-  });
-
-  document.querySelectorAll('.obs-elems-block').forEach(block => {
-    if (block.style.display === 'none') return;
-    const gid   = block.id.replace('ob-elems-','');
-    const gnd   = document.getElementById('ob-g-' + gid);
-    if (!gnd) return;
-    const color = gnd.dataset.color || '#64748b';
-    block.querySelectorAll('.obs-n-elem').forEach(end => {
-      bezier(cx(gnd), bot(gnd), cx(end), top(end), color + '55', '1.5');
-    });
-  });
-
-  document.querySelectorAll('.obs-areas-panel.open').forEach(panel => {
-    const eid = panel.id.replace('ob-areas-','');
-    const end = document.getElementById('ob-e-' + eid);
-    if (!end) return;
-    const color = panel.dataset.color || '#64748b';
-    panel.querySelectorAll('.ob-area-chip').forEach(chip => {
-      bezier(cx(end), bot(end), cx(chip), top(chip), color + '44', '1.2');
     });
   });
 }
