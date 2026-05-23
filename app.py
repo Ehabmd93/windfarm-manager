@@ -2225,27 +2225,34 @@ def api_project_itp_add_invite(pid, tid, eid):
     if not name:
         return jsonify({'error': 'Name is required.'}), 400
 
-    token  = uuid.uuid4().hex
+    # Ensure ONE canonical token exists for this ITP record
+    is_new_token = False
+    if not record.client_token:
+        record.client_token      = uuid.uuid4().hex
+        record.client_invited_at = datetime.now(timezone.utc)
+        is_new_token = True
+    if not record.client_name:
+        record.client_name    = name
+        record.client_company = company
+        record.client_email   = email
+    if record.status in ('draft', 'in_progress'):
+        record.status = 'client_invited'
+
+    # Each person gets their own audit invite record (unique token for DB),
+    # but the UI always shows the canonical record.client_token as the signing URL.
+    invite_token = uuid.uuid4().hex
     invite = ITPClientInvite(
         record_id = record.id,
         name      = name,
         company   = company,
         email     = email,
-        token     = token,
+        token     = invite_token,
     )
-    # Also back-fill the legacy fields so existing flows still work
-    if not record.client_name:
-        record.client_name    = name
-        record.client_company = company
-        record.client_email   = email
-        record.client_token   = token
-        record.client_invited_at = datetime.now(timezone.utc)
-    if record.status in ('draft', 'in_progress'):
-        record.status = 'client_invited'
     db.session.add(invite)
     db.session.commit()
 
-    sign_url = url_for('itp_client_sign', token=token, _external=True)
+    # Always advertise the ONE canonical link
+    sign_url = url_for('itp_client_sign', token=record.client_token, _external=True)
 
     # Send invitation email if email provided
     wtg = record.wtg
@@ -2264,12 +2271,13 @@ def api_project_itp_add_invite(pid, tid, eid):
         )
 
     return jsonify({
-        'ok':       True,
-        'id':       invite.id,
-        'name':     name,
-        'company':  company,
-        'email':    email,
-        'sign_url': sign_url,
+        'ok':          True,
+        'id':          invite.id,
+        'name':        name,
+        'company':     company,
+        'email':       email,
+        'sign_url':    sign_url,
+        'is_new_link': is_new_token,
     })
 
 

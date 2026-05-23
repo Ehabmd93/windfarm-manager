@@ -114,6 +114,18 @@
     /* ── Loading spinner overlay on buttons ── */
     @keyframes spin{ to{ transform:rotate(360deg); } }
     .spinning{ animation:spin .7s linear infinite;display:inline-block; }
+
+    /* ── Toast notification ── */
+    #save-toast{
+      position:fixed;bottom:28px;right:24px;z-index:9999;
+      padding:12px 20px;border-radius:12px;font-size:13px;font-weight:700;
+      color:white;box-shadow:0 8px 28px rgba(0,0,0,.25);
+      display:flex;align-items:center;gap:10px;
+      transform:translateY(80px);opacity:0;
+      transition:transform .3s ease,opacity .3s ease;
+      pointer-events:none;
+    }
+    #save-toast.show{ transform:translateY(0);opacity:1; }
   </style>
 </head>
 <body>
@@ -661,7 +673,36 @@
   {{ proj_name }} &middot; QA Manager Platform &middot; Uncontrolled When Printed
 </div>
 
+<!-- Toast notification -->
+<div id="save-toast">
+  <i id="save-toast-icon" class="fa-solid fa-check-circle"></i>
+  <span id="save-toast-msg">Saved</span>
+</div>
+
 <script>
+// ── Toast notification ─────────────────────────────────────────────────────
+let _toastTimer = null;
+function showToast(msg, type = 'success') {
+  const toast = document.getElementById('save-toast');
+  const icon  = document.getElementById('save-toast-icon');
+  const label = document.getElementById('save-toast-msg');
+  if (!toast) return;
+  label.textContent = msg;
+  if (type === 'success') {
+    toast.style.background = '#166534';
+    icon.className = 'fa-solid fa-check-circle';
+  } else if (type === 'warning') {
+    toast.style.background = '#92400e';
+    icon.className = 'fa-solid fa-triangle-exclamation';
+  } else {
+    toast.style.background = '#334155';
+    icon.className = 'fa-solid fa-rotate-left';
+  }
+  toast.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => toast.classList.remove('show'), 3000);
+}
+
 // ── Constants ──────────────────────────────────────────────────────────────
 const TOKEN     = '{{ token }}';
 const FINALIZED = {{ 'true' if record.status in ('complete', 'client_commented') else 'false' }};
@@ -758,6 +799,7 @@ async function confirmAccept(actNo, ci) {
   if (res.ok) {
     setCritState(actNo, ci, 'accepted', '', signature);
     updateProgress(res);
+    showToast('✓ Item accepted & saved', 'success');
   } else {
     alert(res.error || 'Could not save. Please try again.');
   }
@@ -789,6 +831,7 @@ async function submitConcern(actNo, ci) {
   if (res.ok) {
     setCritState(actNo, ci, 'concern', comment);
     updateProgress(res);
+    showToast('⚠ Concern saved', 'warning');
   } else {
     alert(res.error || 'Could not save. Please try again.');
   }
@@ -800,6 +843,7 @@ async function undoReview(actNo, ci) {
   if (res.ok) {
     setCritState(actNo, ci, 'pending', '', '');
     updateProgress(res);
+    showToast('Item reset to pending', 'reset');
   } else {
     alert(res.error || 'Could not reset. Please try again.');
   }
