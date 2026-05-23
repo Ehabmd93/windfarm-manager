@@ -78,6 +78,17 @@
     }
     .concern-box textarea:focus{ outline:none;border-color:#f59e0b;box-shadow:0 0 0 3px rgba(245,158,11,.15); }
 
+    /* ── Per-item accept signature box ── */
+    .accept-sig-box{
+      display:none;margin-top:10px;
+      background:#f0fdf4;border:2px solid #86efac;border-radius:12px;padding:14px;
+    }
+    .accept-sig-box.open{ display:block; }
+    .accept-sig-canvas{
+      display:block;width:100%;height:100px;touch-action:none;cursor:crosshair;
+      border-radius:8px;background:white;border:1.5px dashed #86efac;
+    }
+
     /* ── Activity accordion ── */
     .act-body{ overflow:hidden;transition:max-height 0.35s ease; }
     .act-body.collapsed{ max-height:0 !important; }
@@ -557,13 +568,41 @@
                 <!-- PENDING — show action buttons -->
                 <div>
                   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-                    <button class="btn-accept" onclick="acceptItem('{{ act_no }}', {{ ci }})">
-                      <i class="fa-solid fa-check-circle"></i> Accept
+                    <button class="btn-accept" onclick="showAcceptSig('{{ act_no }}', {{ ci }})">
+                      <i class="fa-solid fa-pen-nib"></i> Accept &amp; Sign
                     </button>
                     <button class="btn-concern" onclick="showConcernBox('{{ act_no }}', {{ ci }})">
                       <i class="fa-solid fa-triangle-exclamation"></i> Raise Concern
                     </button>
                   </div>
+
+                  <!-- Per-item accept signature pad (hidden by default) -->
+                  <div id="accept-sig-box-{{ act_no }}-{{ ci }}" class="accept-sig-box">
+                    <p style="font-size:12px;font-weight:700;color:#166534;margin:0 0 8px;">
+                      <i class="fa-solid fa-pen-nib" style="margin-right:5px;"></i>Draw your signature to accept this item:
+                    </p>
+                    <canvas id="accept-sig-canvas-{{ act_no }}-{{ ci }}"
+                            class="accept-sig-canvas" width="600" height="100"></canvas>
+                    <div style="display:flex;gap:8px;margin-top:10px;">
+                      <button onclick="clearItemSig('{{ act_no }}', {{ ci }})"
+                              style="padding:8px 14px;border-radius:8px;font-size:12px;font-weight:600;
+                                     background:white;color:#64748b;border:1.5px solid #e2e8f0;cursor:pointer;">
+                        <i class="fa-solid fa-eraser" style="margin-right:4px;"></i>Clear
+                      </button>
+                      <button onclick="cancelAccept('{{ act_no }}', {{ ci }})"
+                              style="padding:8px 14px;border-radius:8px;font-size:12px;font-weight:600;
+                                     background:white;color:#64748b;border:1.5px solid #e2e8f0;cursor:pointer;">
+                        <i class="fa-solid fa-xmark" style="margin-right:4px;"></i>Cancel
+                      </button>
+                      <button onclick="confirmAccept('{{ act_no }}', {{ ci }})"
+                              style="flex:1;padding:8px 16px;border-radius:8px;font-size:12px;font-weight:700;
+                                     background:linear-gradient(135deg,#15803d,#16a34a);color:white;
+                                     border:none;cursor:pointer;">
+                        <i class="fa-solid fa-check-circle" style="margin-right:5px;"></i>Confirm &amp; Accept
+                      </button>
+                    </div>
+                  </div>
+
                   <!-- Inline concern input (hidden by default) -->
                   <div id="concern-box-{{ act_no }}-{{ ci }}" class="concern-box">
                     <p style="font-size:12px;font-weight:700;color:#92400e;margin:0 0 8px;">
@@ -736,10 +775,76 @@ async function callReview(actNo, ci, body) {
   return resp.json();
 }
 
-async function acceptItem(actNo, ci) {
-  const res = await callReview(actNo, ci, {action: 'accept'});
+// ── Per-item accept signature pad ──────────────────────────────────────────
+const _itemCanvases = {};   // key: `${actNo}-${ci}` → {ctx, drawing, hasContent}
+
+function initItemCanvas(actNo, ci) {
+  const key = `${actNo}-${ci}`;
+  const canvas = document.getElementById(`accept-sig-canvas-${actNo}-${ci}`);
+  if (!canvas || _itemCanvases[key]) return;
+  const ctx = canvas.getContext('2d');
+  const state = { ctx, drawing: false, hasContent: false };
+  _itemCanvases[key] = state;
+
+  function gp(e) {
+    const r = canvas.getBoundingClientRect();
+    const s = e.touches ? e.touches[0] : e;
+    return { x: (s.clientX - r.left) * (canvas.width / r.width),
+             y: (s.clientY - r.top)  * (canvas.height / r.height) };
+  }
+  canvas.addEventListener('pointerdown', e => {
+    state.drawing = true; state.hasContent = true;
+    const p = gp(e); ctx.beginPath(); ctx.moveTo(p.x, p.y);
+    canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener('pointermove', e => {
+    if (!state.drawing) return;
+    const p = gp(e);
+    ctx.lineTo(p.x, p.y);
+    ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.stroke();
+  });
+  canvas.addEventListener('pointerup',    () => { state.drawing = false; });
+  canvas.addEventListener('pointerleave', () => { state.drawing = false; });
+}
+
+function showAcceptSig(actNo, ci) {
+  // Close concern box if open
+  const cb = document.getElementById(`concern-box-${actNo}-${ci}`);
+  if (cb) cb.classList.remove('open');
+  // Open signature box
+  const box = document.getElementById(`accept-sig-box-${actNo}-${ci}`);
+  if (box) { box.classList.add('open'); initItemCanvas(actNo, ci); }
+}
+
+function clearItemSig(actNo, ci) {
+  const key = `${actNo}-${ci}`;
+  const state = _itemCanvases[key];
+  const canvas = document.getElementById(`accept-sig-canvas-${actNo}-${ci}`);
+  if (state && canvas) { state.ctx.clearRect(0, 0, canvas.width, canvas.height); state.hasContent = false; }
+}
+
+function cancelAccept(actNo, ci) {
+  const box = document.getElementById(`accept-sig-box-${actNo}-${ci}`);
+  if (box) box.classList.remove('open');
+  clearItemSig(actNo, ci);
+}
+
+async function confirmAccept(actNo, ci) {
+  const key    = `${actNo}-${ci}`;
+  const state  = _itemCanvases[key];
+  const canvas = document.getElementById(`accept-sig-canvas-${actNo}-${ci}`);
+  if (!canvas || !state) return;
+
+  // Verify something was drawn
+  const pd = state.ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+  const hasDrawing = Array.from(pd).some((v, i) => i % 4 === 3 && v > 0);
+  if (!hasDrawing) { alert('Please draw your signature before accepting.'); return; }
+
+  const signature = canvas.toDataURL('image/png');
+  const res = await callReview(actNo, ci, { action: 'accept', signature });
   if (res.ok) {
-    setCritState(actNo, ci, 'accepted', '');
+    setCritState(actNo, ci, 'accepted', '', signature);
     updateProgress(res);
   } else {
     alert(res.error || 'Could not save. Please try again.');
@@ -747,6 +852,9 @@ async function acceptItem(actNo, ci) {
 }
 
 function showConcernBox(actNo, ci) {
+  // Close accept sig box if open
+  const ab = document.getElementById(`accept-sig-box-${actNo}-${ci}`);
+  if (ab) ab.classList.remove('open');
   const box = document.getElementById(`concern-box-${actNo}-${ci}`);
   if (box) box.classList.add('open');
 }
@@ -778,12 +886,30 @@ async function undoReview(actNo, ci) {
   if (!confirm('Are you sure you want to undo your review for this item?')) return;
   const res = await callReview(actNo, ci, {action: 'reset'});
   if (res.ok) {
-    setCritState(actNo, ci, 'pending', '');
+    setCritState(actNo, ci, 'pending', '', '');
     updateProgress(res);
   } else {
     alert(res.error || 'Could not reset. Please try again.');
   }
 }
+
+// Initialize all server-rendered pending canvases on page load
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.accept-sig-canvas').forEach(canvas => {
+    const id = canvas.id.replace('accept-sig-canvas-', '');
+    const [actNo, ci] = id.split('-').reduce((acc, v, i, arr) => {
+      // id format: actNo-ci where actNo might itself contain digits
+      // Use dataset approach — actNo is everything before last '-', ci is last part
+      return acc;
+    }, []);
+    // Extract from canvas id directly
+    const parts = canvas.id.replace('accept-sig-canvas-', '');
+    const lastDash = parts.lastIndexOf('-');
+    const a = parts.substring(0, lastDash);
+    const c = parseInt(parts.substring(lastDash + 1));
+    initItemCanvas(a, c);
+  });
+});
 
 // ── Update criterion DOM state ─────────────────────────────────────────────
 function esc(s) {
@@ -792,18 +918,25 @@ function esc(s) {
     .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-function setCritState(actNo, ci, state, comment) {
+function setCritState(actNo, ci, state, comment, signature) {
   const stateDiv = document.getElementById(`crit-state-${actNo}-${ci}`);
   const iconDiv  = document.getElementById(`crit-icon-${actNo}-${ci}`);
   if (!stateDiv) return;
 
   if (state === 'accepted') {
     stateDiv.innerHTML = `
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-        <span class="badge-accepted"><i class="fa-solid fa-check-circle"></i> Accepted</span>
-        <button class="btn-undo" onclick="undoReview('${actNo}', ${ci})">
-          <i class="fa-solid fa-rotate-left"></i> Undo
-        </button>
+      <div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:${signature ? '8px' : '0'};">
+          <span class="badge-accepted"><i class="fa-solid fa-check-circle"></i> Accepted &amp; Signed</span>
+          <button class="btn-undo" onclick="undoReview('${actNo}', ${ci})">
+            <i class="fa-solid fa-rotate-left"></i> Undo
+          </button>
+        </div>
+        ${signature ? `<div style="background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:10px;
+                                   padding:8px 12px;display:inline-flex;align-items:center;gap:8px;">
+          <img src="${signature}" style="height:36px;border-radius:6px;border:1px solid #86efac;background:white;" alt="Client signature"/>
+          <span style="font-size:11px;font-weight:600;color:#166534;">Your signature</span>
+        </div>` : ''}
       </div>`;
     if (iconDiv) {
       iconDiv.style.background = '#dcfce7';
@@ -833,13 +966,38 @@ function setCritState(actNo, ci, state, comment) {
     stateDiv.innerHTML = `
       <div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-          <button class="btn-accept" onclick="acceptItem('${actNo}', ${ci})">
-            <i class="fa-solid fa-check-circle"></i> Accept
+          <button class="btn-accept" onclick="showAcceptSig('${actNo}', ${ci})">
+            <i class="fa-solid fa-pen-nib"></i> Accept &amp; Sign
           </button>
           <button class="btn-concern" onclick="showConcernBox('${actNo}', ${ci})">
             <i class="fa-solid fa-triangle-exclamation"></i> Raise Concern
           </button>
         </div>
+
+        <div id="accept-sig-box-${actNo}-${ci}" class="accept-sig-box">
+          <p style="font-size:12px;font-weight:700;color:#166534;margin:0 0 8px;">
+            <i class="fa-solid fa-pen-nib" style="margin-right:5px;"></i>Draw your signature to accept this item:
+          </p>
+          <canvas id="accept-sig-canvas-${actNo}-${ci}" class="accept-sig-canvas" width="600" height="100"></canvas>
+          <div style="display:flex;gap:8px;margin-top:10px;">
+            <button onclick="clearItemSig('${actNo}', ${ci})"
+                    style="padding:8px 14px;border-radius:8px;font-size:12px;font-weight:600;
+                           background:white;color:#64748b;border:1.5px solid #e2e8f0;cursor:pointer;">
+              <i class="fa-solid fa-eraser" style="margin-right:4px;"></i>Clear
+            </button>
+            <button onclick="cancelAccept('${actNo}', ${ci})"
+                    style="padding:8px 14px;border-radius:8px;font-size:12px;font-weight:600;
+                           background:white;color:#64748b;border:1.5px solid #e2e8f0;cursor:pointer;">
+              <i class="fa-solid fa-xmark" style="margin-right:4px;"></i>Cancel
+            </button>
+            <button onclick="confirmAccept('${actNo}', ${ci})"
+                    style="flex:1;padding:8px 16px;border-radius:8px;font-size:12px;font-weight:700;
+                           background:linear-gradient(135deg,#15803d,#16a34a);color:white;border:none;cursor:pointer;">
+              <i class="fa-solid fa-check-circle" style="margin-right:5px;"></i>Confirm &amp; Accept
+            </button>
+          </div>
+        </div>
+
         <div id="concern-box-${actNo}-${ci}" class="concern-box">
           <p style="font-size:12px;font-weight:700;color:#92400e;margin:0 0 8px;">
             <i class="fa-solid fa-comment-dots" style="margin-right:5px;"></i>Describe your concern:
@@ -861,6 +1019,9 @@ function setCritState(actNo, ci, state, comment) {
           </div>
         </div>
       </div>`;
+    // Re-initialize the newly created canvas
+    delete _itemCanvases[`${actNo}-${ci}`];
+    initItemCanvas(actNo, ci);
     if (iconDiv) {
       iconDiv.style.background = '#e0e7ff';
       iconDiv.innerHTML = '<i class="fa-solid fa-eye" style="color:#6366f1;font-size:10px;"></i>';

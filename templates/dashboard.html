@@ -311,7 +311,7 @@
       {% set qa_modules = [
         ('proof_rolling',    url_for('proof_roll_index'), 'fa-file-circle-check', '#22c55e', '#dcfce7', 'Proof Rolling',    'Record & review proof roll tests'),
         ('geo_testing',      '#',                         'fa-microscope',        '#10b981', '#d1fae5', 'Geo Testing',      'DCP, compaction & geo test records'),
-        ('itp',              url_for('itp_index'),        'fa-clipboard-list',    '#8b5cf6', '#ede9fe', 'ITPs',             'Inspection test plans & hold points'),
+        ('itp',              url_for('project_itp_index', pid=proj.id) if proj else url_for('itp_index'), 'fa-clipboard-list', '#8b5cf6', '#ede9fe', 'ITPs', 'Inspection test plans & hold points'),
         ('foundation',       url_for('foundation_index'), 'fa-layer-group',       '#f97316', '#fff7ed', 'Foundation Tracker','Foundation stage tracking'),
       ] %}
       {% for key, href, icon, color, bg, title, desc in qa_modules %}

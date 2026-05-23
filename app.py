@@ -2121,7 +2121,8 @@ def project_itp_detail(pid, tid, eid):
             wtg_id=eid, itp_type=itp_type,
             project_itp_template_id=tid,
             created_by=current_user.id, status='draft',
-            engineer_company='TCS',
+            engineer_name=current_user.name,
+            engineer_company='CBOP',
         )
         db.session.add(record)
         db.session.flush()
@@ -2258,7 +2259,9 @@ def itp_detail(wtg_id, itp_type):
     record = ITPRecord.query.filter_by(wtg_id=wtg_id, itp_type=itp_type).first()
     if not record:
         record = ITPRecord(wtg_id=wtg_id, itp_type=itp_type,
-                           created_by=current_user.id, status='draft')
+                           created_by=current_user.id, status='draft',
+                           engineer_name=current_user.name,
+                           engineer_company='CBOP')
         db.session.add(record)
         db.session.flush()
 
@@ -2380,9 +2383,13 @@ def api_client_review_item(token, item_no, ci):
     action = data.get('action', '')
 
     if action == 'accept':
+        sig = (data.get('signature') or '').strip()
+        if not sig:
+            return jsonify({'error': 'Please draw your signature before accepting.'}), 400
         s.client_reviewed  = True
         s.client_accepted  = True
         s.client_comments  = ''
+        s.client_signature = sig
         s.client_signed_at = datetime.now(timezone.utc)
 
     elif action == 'concern':
@@ -2554,10 +2561,16 @@ def api_itp_sign_criterion(record_id, item_no, crit_idx):
     except (ValueError, TypeError):
         s.lucas_signed_at = datetime.now()
 
-    # Update ITP record status from draft → in_progress
+    # Update ITP record status from draft → in_progress, and auto-fill engineer name
     record = ITPRecord.query.get(record_id)
-    if record and record.status == 'draft':
-        record.status = 'in_progress'
+    if record:
+        if record.status == 'draft':
+            record.status = 'in_progress'
+        # Auto-populate engineer name from logged-in user if not already set
+        if not record.engineer_name:
+            record.engineer_name = current_user.name
+        if not record.engineer_company:
+            record.engineer_company = 'CBOP'
 
     db.session.commit()
     return jsonify({

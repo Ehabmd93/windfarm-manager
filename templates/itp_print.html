@@ -385,11 +385,7 @@ td.sig-cell { padding:2pt; }
       </tr>
       <tr>
         <td class="label-cell">Location / Lot #</td>
-        <td class="wide-value" colspan="3">{{ record.location or '' }} &nbsp; {{ record.lot_number or '' }}</td>
-      </tr>
-      <tr>
-        <td class="label-cell">WTG</td>
-        <td class="wide-value" colspan="3">{{ wtg.name }}</td>
+        <td class="wide-value" colspan="3">{{ wtg.name }}{% if record.location %} &middot; {{ record.location }}{% endif %}{% if record.lot_number %} &middot; Lot {{ record.lot_number }}{% endif %}</td>
       </tr>
     </tbody>
   </table>
@@ -555,8 +551,8 @@ td.sig-cell { padding:2pt; }
         {% if s and s.client_reviewed %}
           {% if s.client_accepted %}
           <div class="sig-signed" style="border-color:#93c5fd;background:#eff6ff;">
-            <div class="sig-who" style="color:#1d4ed8;">✓ Accepted</div>
-            <div class="sig-who" style="color:#1d4ed8;font-weight:normal;">{{ record.client_name or 'Client' }}</div>
+            {% if s.client_signature %}<img src="{{ s.client_signature }}" alt="client sig"/>{% endif %}
+            <div class="sig-who" style="color:#1d4ed8;">✓ {{ record.client_name or 'Client' }}</div>
             <div class="sig-when" style="color:#60a5fa;">
               {% if s.client_signed_at %}{{ s.client_signed_at.strftime('%d %b %Y %H:%M') }}{% endif %}
             </div>
