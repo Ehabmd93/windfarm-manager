@@ -2357,6 +2357,76 @@ def itp_detail(wtg_id, itp_type):
                            linked_docs=itp_linked_docs)
 
 
+@app.route('/api/itp/client/<token>/item/<item_no>/<int:ci>', methods=['POST'])
+def api_client_review_item(token, item_no, ci):
+    """Public API — client per-item review: accept or raise concern."""
+    record = ITPRecord.query.filter_by(client_token=token).first_or_404()
+
+    # Allow review while status is client_invited OR client_reviewing
+    if record.status not in ('client_invited', 'client_reviewing'):
+        return jsonify({'error': 'This ITP is no longer in review state.'}), 400
+
+    s = ITPItemStatus.query.filter_by(
+        itp_record_id   = record.id,
+        item_no         = str(item_no),
+        criterion_index = ci,
+    ).first()
+    if not s:
+        return jsonify({'error': 'Item not found.'}), 404
+    if not s.lucas_complete:
+        return jsonify({'error': 'Item has not been signed by the engineer yet.'}), 400
+
+    data   = request.get_json(silent=True) or {}
+    action = data.get('action', '')
+
+    if action == 'accept':
+        s.client_reviewed  = True
+        s.client_accepted  = True
+        s.client_comments  = ''
+        s.client_signed_at = datetime.now(timezone.utc)
+
+    elif action == 'concern':
+        comment = (data.get('comment') or '').strip()
+        if not comment:
+            return jsonify({'error': 'Please describe your concern before submitting.'}), 400
+        s.client_reviewed  = True
+        s.client_accepted  = False
+        s.client_comments  = comment
+        s.client_signed_at = datetime.now(timezone.utc)
+
+    elif action == 'reset':
+        s.client_reviewed  = False
+        s.client_accepted  = None
+        s.client_comments  = ''
+        s.client_signed_at = None
+
+    else:
+        return jsonify({'error': f'Unknown action: {action}'}), 400
+
+    # Bump ITP status to client_reviewing so the engineer can see progress
+    if record.status == 'client_invited':
+        record.status = 'client_reviewing'
+
+    db.session.commit()
+
+    # Compute review progress totals
+    signed_items = [x for x in record.item_statuses if x.lucas_complete]
+    reviewed     = [x for x in signed_items if x.client_reviewed]
+    accepted     = [x for x in reviewed if x.client_accepted]
+    concerns     = [x for x in reviewed if not x.client_accepted]
+    pending      = [x for x in signed_items if not x.client_reviewed]
+
+    return jsonify({
+        'ok':          True,
+        'total':       len(signed_items),
+        'reviewed':    len(reviewed),
+        'accepted':    len(accepted),
+        'concerns':    len(concerns),
+        'pending':     len(pending),
+        'all_reviewed': len(pending) == 0 and len(signed_items) > 0,
+    })
+
+
 @app.route('/itp/client/<token>', methods=['GET', 'POST'])
 def itp_client_sign(token):
     """Public page for client to review + sign the ITP (KRWF and project-specific)."""
@@ -2378,12 +2448,21 @@ def itp_client_sign(token):
             if not sig:
                 flash('Please draw your signature.', 'danger')
             else:
+                # Ensure all engineer-signed items have been reviewed
+                signed_items = [s for s in record.item_statuses if s.lucas_complete]
+                unreviewed   = [s for s in signed_items if not s.client_reviewed]
+                if unreviewed:
+                    flash(f'Please review all {len(unreviewed)} remaining item(s) before signing.', 'danger')
+                    return redirect(url_for('itp_client_sign', token=token))
+
+                concerns = [s for s in signed_items if s.client_reviewed and not s.client_accepted]
+
                 record.client_signature = sig
                 record.client_signed_at = datetime.now(timezone.utc)
-                record.status           = 'complete'
+                record.status           = 'client_commented' if concerns else 'complete'
                 db.session.commit()
 
-                # ── In-app notifications ───────────────────────────────────
+                # ── In-app notifications ────────────────────────────────────
                 notify_users = User.query.filter(
                     User.role.in_(['engineer', 'supervisor', 'manager', 'admin'])
                 ).all()
@@ -2404,18 +2483,30 @@ def itp_client_sign(token):
                                             itp_type=record.itp_type)
                     except Exception:
                         pass
+
+                if concerns:
+                    notif_type  = 'warning'
+                    notif_title = f'Client Raised {len(concerns)} Concern(s) — {wtg.name}'
+                    notif_msg   = (f'{record.client_name} ({record.client_company}) reviewed '
+                                   f'"{itp_name}" for {wtg.name} · {proj_name} and raised '
+                                   f'{len(concerns)} concern(s). Review their comments.')
+                else:
+                    notif_type  = 'itp_signed'
+                    notif_title = f'ITP Approved by Client — {wtg.name}'
+                    notif_msg   = (f'{record.client_name} ({record.client_company}) approved all '
+                                   f'items in "{itp_name}" for {wtg.name} · {proj_name}')
+
                 for u in notify_users:
                     db.session.add(Notification(
                         user_id = u.id,
-                        type    = 'itp_signed',
-                        title   = f'ITP Signed by Client — {wtg.name}',
-                        message = (f'{record.client_name} ({record.client_company}) signed '
-                                   f'"{itp_name}" for {wtg.name} · {proj_name}'),
+                        type    = notif_type,
+                        title   = notif_title,
+                        message = notif_msg,
                         url     = notif_url,
                     ))
                 db.session.commit()
 
-                # ── Email notification to internal team ────────────────────
+                # ── Email notification to internal team ─────────────────────
                 email_client_signed(
                     record       = record,
                     wtg_name     = wtg.name,
@@ -2424,7 +2515,13 @@ def itp_client_sign(token):
                     proj_name    = proj_name,
                     itp_name     = itp_name,
                 )
-                flash('ITP signed successfully. Thank you!', 'success')
+
+                if concerns:
+                    flash(f'Review submitted with {len(concerns)} concern(s). '
+                          f'The inspection team has been notified.', 'success')
+                else:
+                    flash('ITP approved and signed. Thank you!', 'success')
+
             return redirect(url_for('itp_client_sign', token=token))
 
     return render_template('itp_client_sign.html',

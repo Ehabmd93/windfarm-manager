@@ -573,6 +573,10 @@ class ITPItemStatus(db.Model):
     client_comments  = db.Column(db.Text)
     client_signature = db.Column(db.Text)   # base64 PNG
 
+    # Per-item client review (new — per-item Accept / Raise Concern)
+    client_reviewed  = db.Column(db.Boolean, default=False)  # has client ticked this item
+    client_accepted  = db.Column(db.Boolean, nullable=True)  # True=accepted, False=concern raised, None=not reviewed
+
     # Attached documents / photos per criterion
     documents        = db.relationship('ITPItemDocument', backref='item_status',
                                        cascade='all, delete-orphan', lazy='select')

@@ -3,124 +3,249 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>{{ defn.get('name','ITP') }} – Client Sign-off · {{ wtg.name }}</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <title>{{ defn.get('name','ITP') }} – Client Review · {{ wtg.name }}</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
   <style>
-    body { font-family:-apple-system,BlinkMacSystemFont,'Inter',sans-serif; background:#f0f4f8; }
-    .code-badge { font-size:10px;font-weight:800;padding:2px 7px;border-radius:5px;white-space:nowrap; }
-    .code-H  { background:#fef2f2;color:#dc2626; }
-    .code-W  { background:#eff6ff;color:#2563eb; }
-    .code-T  { background:#fdf4ff;color:#7c3aed; }
-    .code-C  { background:#f0fdf4;color:#16a34a; }
-    .code-M  { background:#fff7ed;color:#ea580c; }
-    .code-DR { background:#f8fafc;color:#64748b;border:1px solid #e2e8f0; }
-    .code-SS { background:#f8fafc;color:#94a3b8; }
-    .crit-row { border-bottom:1px solid #f1f5f9; }
-    .crit-row:last-child { border-bottom:none; }
-    .sig-pad-wrap { border:2px dashed #cbd5e1;border-radius:12px;background:#fafafa;padding:8px; }
-    #client-sig-canvas { display:block;width:100%;height:150px;touch-action:none;cursor:crosshair;border-radius:8px; }
+    *{ box-sizing:border-box; }
+    body{ font-family:-apple-system,BlinkMacSystemFont,'Inter',sans-serif; background:#f0f4f8; margin:0; color:#0f172a; }
 
-    /* Activity accordion */
-    .act-body { overflow:hidden;transition:max-height 0.35s ease; }
-    .act-body.collapsed { max-height:0 !important; }
+    /* ── Code badges ── */
+    .cb{ font-size:10px;font-weight:800;padding:2px 7px;border-radius:5px;white-space:nowrap; }
+    .cb-H { background:#fef2f2;color:#dc2626; }
+    .cb-W { background:#eff6ff;color:#2563eb; }
+    .cb-T { background:#fdf4ff;color:#7c3aed; }
+    .cb-C { background:#f0fdf4;color:#16a34a; }
+    .cb-M { background:#fff7ed;color:#ea580c; }
+    .cb-DR{ background:#f8fafc;color:#64748b;border:1px solid #e2e8f0; }
+    .cb-SS{ background:#f8fafc;color:#94a3b8; }
 
-    /* Doc card */
-    .doc-card {
+    /* ── Criterion row ── */
+    .crit-row{ border-bottom:1px solid #f1f5f9;padding:14px 16px; }
+    .crit-row:last-child{ border-bottom:none; }
+
+    /* ── Review action buttons ── */
+    .btn-accept{
+      display:inline-flex;align-items:center;gap:6px;
+      padding:9px 18px;border-radius:10px;font-size:12px;font-weight:700;
+      background:#f0fdf4;color:#16a34a;border:2px solid #bbf7d0;
+      cursor:pointer;transition:all .15s;
+    }
+    .btn-accept:hover{ background:#dcfce7;border-color:#86efac;transform:translateY(-1px); }
+
+    .btn-concern{
+      display:inline-flex;align-items:center;gap:6px;
+      padding:9px 18px;border-radius:10px;font-size:12px;font-weight:700;
+      background:#fffbeb;color:#d97706;border:2px solid #fde68a;
+      cursor:pointer;transition:all .15s;
+    }
+    .btn-concern:hover{ background:#fef3c7;border-color:#fbbf24;transform:translateY(-1px); }
+
+    .btn-undo{
+      display:inline-flex;align-items:center;gap:5px;
+      padding:6px 12px;border-radius:8px;font-size:11px;font-weight:600;
+      background:#f8fafc;color:#94a3b8;border:1.5px solid #e2e8f0;
+      cursor:pointer;transition:all .15s;
+    }
+    .btn-undo:hover{ color:#64748b;border-color:#cbd5e1; }
+
+    /* ── Status badges ── */
+    .badge-accepted{
+      display:inline-flex;align-items:center;gap:6px;
+      padding:7px 14px;border-radius:10px;font-size:12px;font-weight:700;
+      background:#f0fdf4;color:#16a34a;border:2px solid #bbf7d0;
+    }
+    .badge-concern{
+      display:inline-flex;align-items:center;gap:6px;
+      padding:7px 14px;border-radius:10px;font-size:12px;font-weight:700;
+      background:#fffbeb;color:#d97706;border:2px solid #fde68a;
+    }
+    .badge-pending{
+      display:inline-flex;align-items:center;gap:6px;
+      padding:7px 14px;border-radius:10px;font-size:12px;font-weight:700;
+      background:#f1f5f9;color:#64748b;border:2px solid #e2e8f0;
+    }
+
+    /* ── Concern input box ── */
+    .concern-box{
+      display:none;margin-top:10px;
+      background:#fffbeb;border:2px solid #fde68a;border-radius:12px;padding:14px;
+    }
+    .concern-box.open{ display:block; }
+    .concern-box textarea{
+      width:100%;min-height:80px;border:1.5px solid #fde68a;border-radius:8px;
+      padding:10px;font-size:13px;color:#0f172a;background:white;
+      font-family:inherit;resize:vertical;line-height:1.5;
+    }
+    .concern-box textarea:focus{ outline:none;border-color:#f59e0b;box-shadow:0 0 0 3px rgba(245,158,11,.15); }
+
+    /* ── Activity accordion ── */
+    .act-body{ overflow:hidden;transition:max-height 0.35s ease; }
+    .act-body.collapsed{ max-height:0 !important; }
+
+    /* ── Signature pad ── */
+    .sig-pad-wrap{ border:2px dashed #cbd5e1;border-radius:12px;background:#fafafa;padding:8px; }
+    #client-sig-canvas{ display:block;width:100%;height:150px;touch-action:none;cursor:crosshair;border-radius:8px; }
+
+    /* ── Doc card ── */
+    .doc-card{
       display:flex;align-items:center;gap:8px;padding:7px 10px;
       border:1px solid #e2e8f0;border-radius:8px;background:#fafafa;
       text-decoration:none;transition:background .15s;
     }
-    .doc-card:hover { background:#f0f9ff; }
+    .doc-card:hover{ background:#f0f9ff; }
+
+    /* ── Progress ring ── */
+    .prog-ring{ width:64px;height:64px;transform:rotate(-90deg); }
+    .prog-ring-bg  { fill:none;stroke:#e2e8f0;stroke-width:6; }
+    .prog-ring-fill{ fill:none;stroke:#2563eb;stroke-width:6;stroke-linecap:round;
+                     stroke-dasharray:157;transition:stroke-dashoffset .5s ease; }
+
+    /* ── Loading spinner overlay on buttons ── */
+    @keyframes spin{ to{ transform:rotate(360deg); } }
+    .spinning{ animation:spin .7s linear infinite;display:inline-block; }
   </style>
 </head>
 <body>
 
-<!-- ── Top header ──────────────────────────────────────────────────────── -->
-<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:20px 16px;">
-  <div style="max-width:720px;margin:0 auto;display:flex;align-items:flex-start;gap:14px;">
-    <div style="width:48px;height:48px;border-radius:13px;background:rgba(255,255,255,.18);
+<!-- ─────────── TOP HEADER ─────────────────────────────────────────────── -->
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:22px 16px;">
+  <div style="max-width:760px;margin:0 auto;display:flex;align-items:flex-start;gap:14px;">
+    <div style="width:52px;height:52px;border-radius:14px;background:rgba(255,255,255,.18);
                 display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-      <i class="fa-solid fa-clipboard-check" style="font-size:20px;color:white;"></i>
+      <i class="fa-solid fa-clipboard-check" style="font-size:22px;color:white;"></i>
     </div>
     <div style="flex:1;min-width:0;">
       <p style="color:#93c5fd;font-size:11px;font-weight:700;text-transform:uppercase;
-                letter-spacing:.06em;margin:0 0 3px;">
-        {{ proj_name }}
-      </p>
-      <h1 style="color:white;font-size:18px;font-weight:800;margin:0 0 2px;">
+                letter-spacing:.06em;margin:0 0 3px;">{{ proj_name }}</p>
+      <h1 style="color:white;font-size:19px;font-weight:800;margin:0 0 3px;line-height:1.2;">
         {{ defn.get('name','ITP') }}
       </h1>
-      <p style="color:#93c5fd;font-size:12px;margin:0;">{{ wtg.name }} · Client Review &amp; Sign-off</p>
+      <p style="color:#93c5fd;font-size:12px;margin:0;">
+        {{ wtg.name }} &middot; Client Review &amp; Sign-off
+      </p>
     </div>
     <div style="flex-shrink:0;margin-top:2px;">
       {% if record.status == 'complete' %}
-      <span style="background:#86efac;color:#14532d;font-size:11px;font-weight:700;
-                   padding:4px 10px;border-radius:20px;">✓ COMPLETE</span>
+        <span style="background:#86efac;color:#14532d;font-size:11px;font-weight:700;padding:5px 12px;border-radius:20px;">
+          <i class="fa-solid fa-check" style="margin-right:4px;"></i>COMPLETE
+        </span>
+      {% elif record.status == 'client_commented' %}
+        <span style="background:#fde68a;color:#92400e;font-size:11px;font-weight:700;padding:5px 12px;border-radius:20px;">
+          <i class="fa-solid fa-triangle-exclamation" style="margin-right:4px;"></i>CONCERNS RAISED
+        </span>
+      {% elif record.status == 'client_reviewing' %}
+        <span style="background:#e0e7ff;color:#3730a3;font-size:11px;font-weight:700;padding:5px 12px;border-radius:20px;">
+          <i class="fa-solid fa-magnifying-glass" style="margin-right:4px;"></i>REVIEWING
+        </span>
       {% else %}
-      <span style="background:#fde68a;color:#92400e;font-size:11px;font-weight:700;
-                   padding:4px 10px;border-radius:20px;">AWAITING SIGNATURE</span>
+        <span style="background:#dbeafe;color:#1e40af;font-size:11px;font-weight:700;padding:5px 12px;border-radius:20px;">
+          <i class="fa-solid fa-envelope-open" style="margin-right:4px;"></i>AWAITING REVIEW
+        </span>
       {% endif %}
     </div>
   </div>
 </div>
 
-<!-- ── Flash messages ──────────────────────────────────────────────────── -->
-<div style="max-width:720px;margin:0 auto;padding:0 16px;">
+<div style="max-width:760px;margin:0 auto;padding:16px;">
+
+  <!-- Flash messages -->
   {% with messages = get_flashed_messages(with_categories=true) %}
   {% for cat, msg in messages %}
-  <div style="margin-top:14px;padding:12px 16px;border-radius:12px;font-size:13px;font-weight:600;
-    {% if cat=='success' %}background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;
-    {% else %}background:#fef2f2;color:#991b1b;border:1px solid #fecaca;{% endif %}">
-    <i class="fa-solid {% if cat=='success' %}fa-circle-check{% else %}fa-circle-xmark{% endif %} mr-2"></i>{{ msg }}
+  <div style="margin-bottom:14px;padding:13px 16px;border-radius:12px;font-size:13px;font-weight:600;
+    {% if cat=='success' %}background:#f0fdf4;color:#166534;border:1.5px solid #bbf7d0;
+    {% else %}background:#fef2f2;color:#991b1b;border:1.5px solid #fecaca;{% endif %}">
+    <i class="fa-solid {% if cat=='success' %}fa-circle-check{% else %}fa-circle-xmark{% endif %}" style="margin-right:6px;"></i>{{ msg }}
   </div>
   {% endfor %}
   {% endwith %}
-</div>
 
-<div style="max-width:720px;margin:0 auto;padding:16px;">
+  <!-- ─── FINAL STATE BANNERS ─────────────────────────────────────────── -->
+  {% if record.status == 'complete' %}
+  <div style="background:#f0fdf4;border:2px solid #bbf7d0;border-radius:18px;
+              padding:32px 24px;text-align:center;margin-bottom:16px;">
+    <i class="fa-solid fa-circle-check" style="font-size:52px;color:#22c55e;display:block;margin-bottom:14px;"></i>
+    <h2 style="font-size:20px;font-weight:800;color:#166534;margin:0 0 8px;">ITP Approved &amp; Complete</h2>
+    <p style="color:#16a34a;font-size:14px;margin:0 0 4px;">
+      Signed by <strong>{{ record.client_name }}</strong> ({{ record.client_company }})
+    </p>
+    <p style="color:#4ade80;font-size:12px;margin:0 0 16px;">
+      <i class="fa-solid fa-clock" style="margin-right:4px;"></i>
+      {{ record.client_signed_at.strftime('%d %b %Y at %H:%M UTC') if record.client_signed_at else '' }}
+    </p>
+    {% if record.client_signature %}
+    <img src="{{ record.client_signature }}"
+         style="height:70px;border-radius:10px;border:1.5px solid #86efac;background:white;
+                display:inline-block;padding:4px;" alt="Client signature"/>
+    {% endif %}
+  </div>
 
-  <!-- ── ITP Summary ──────────────────────────────────────────────────── -->
-  <div style="background:white;border-radius:18px;border:1.5px solid #e2e8f0;padding:20px;margin-bottom:16px;">
-    <h2 style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;
-               letter-spacing:.06em;margin:0 0 14px;">ITP Summary</h2>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:13px;">
+  {% elif record.status == 'client_commented' %}
+  <div style="background:#fffbeb;border:2px solid #fde68a;border-radius:18px;
+              padding:28px 24px;text-align:center;margin-bottom:16px;">
+    <i class="fa-solid fa-triangle-exclamation" style="font-size:48px;color:#f59e0b;display:block;margin-bottom:12px;"></i>
+    <h2 style="font-size:18px;font-weight:800;color:#92400e;margin:0 0 8px;">Review Submitted with Concerns</h2>
+    <p style="color:#b45309;font-size:13px;margin:0 0 4px;">
+      <strong>{{ record.client_name }}</strong> ({{ record.client_company }}) has submitted concerns.
+    </p>
+    <p style="color:#b45309;font-size:12px;margin:0 0 16px;">
+      The inspection team has been notified and will be in touch.
+    </p>
+    {% if record.client_signature %}
+    <img src="{{ record.client_signature }}"
+         style="height:60px;border-radius:10px;border:1px solid #fde68a;background:white;
+                display:inline-block;padding:4px;" alt="Client signature"/>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <!-- ─── ITP SUMMARY ──────────────────────────────────────────────────── -->
+  <div style="background:white;border-radius:18px;border:1.5px solid #e2e8f0;
+              padding:20px;margin-bottom:14px;">
+    <h3 style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;
+               letter-spacing:.06em;margin:0 0 14px;">ITP Summary</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
       <div>
-        <p style="color:#94a3b8;font-size:10px;font-weight:700;text-transform:uppercase;margin:0 0 3px;">Element / Location</p>
-        <p style="font-weight:700;color:#0f172a;margin:0;">{{ wtg.name }}</p>
+        <p style="color:#94a3b8;font-size:10px;font-weight:700;text-transform:uppercase;margin:0 0 2px;">Element</p>
+        <p style="font-weight:700;color:#0f172a;font-size:13px;margin:0;">{{ wtg.name }}</p>
       </div>
       <div>
-        <p style="color:#94a3b8;font-size:10px;font-weight:700;text-transform:uppercase;margin:0 0 3px;">Project</p>
-        <p style="font-weight:700;color:#0f172a;margin:0;">{{ proj_name }}</p>
+        <p style="color:#94a3b8;font-size:10px;font-weight:700;text-transform:uppercase;margin:0 0 2px;">Project</p>
+        <p style="font-weight:700;color:#0f172a;font-size:13px;margin:0;">{{ proj_name }}</p>
       </div>
       <div>
-        <p style="color:#94a3b8;font-size:10px;font-weight:700;text-transform:uppercase;margin:0 0 3px;">Spec Reference</p>
-        <p style="font-weight:600;color:#334155;margin:0;">{{ defn.get('spec','–') }}</p>
+        <p style="color:#94a3b8;font-size:10px;font-weight:700;text-transform:uppercase;margin:0 0 2px;">Spec Reference</p>
+        <p style="font-weight:600;color:#334155;font-size:13px;margin:0;">{{ defn.get('spec','–') or '–' }}</p>
       </div>
       <div>
-        <p style="color:#94a3b8;font-size:10px;font-weight:700;text-transform:uppercase;margin:0 0 3px;">Revision</p>
-        <p style="font-weight:600;color:#334155;margin:0;">Rev {{ defn.get('revision','') }}{% if defn.get('date') %} · {{ defn.get('date') }}{% endif %}</p>
+        <p style="color:#94a3b8;font-size:10px;font-weight:700;text-transform:uppercase;margin:0 0 2px;">Revision</p>
+        <p style="font-weight:600;color:#334155;font-size:13px;margin:0;">
+          Rev {{ defn.get('revision','A') }}{% if defn.get('date') %} &middot; {{ defn.get('date') }}{% endif %}
+        </p>
+      </div>
+      <div>
+        <p style="color:#94a3b8;font-size:10px;font-weight:700;text-transform:uppercase;margin:0 0 2px;">Inspected by</p>
+        <p style="font-weight:700;color:#0f172a;font-size:13px;margin:0;">
+          {{ record.engineer_name or 'Engineer' }} &middot; {{ record.engineer_company or 'TCS' }}
+        </p>
+      </div>
+      <div>
+        <p style="color:#94a3b8;font-size:10px;font-weight:700;text-transform:uppercase;margin:0 0 2px;">Client Reviewer</p>
+        <p style="font-weight:700;color:#0f172a;font-size:13px;margin:0;">
+          {{ record.client_name }} &middot; {{ record.client_company }}
+        </p>
       </div>
       {% if record.lot_number %}
       <div>
-        <p style="color:#94a3b8;font-size:10px;font-weight:700;text-transform:uppercase;margin:0 0 3px;">Lot Number</p>
-        <p style="font-weight:600;color:#334155;margin:0;">{{ record.lot_number }}</p>
+        <p style="color:#94a3b8;font-size:10px;font-weight:700;text-transform:uppercase;margin:0 0 2px;">Lot Number</p>
+        <p style="font-weight:600;color:#334155;font-size:13px;margin:0;">{{ record.lot_number }}</p>
       </div>
       {% endif %}
       {% if record.location %}
       <div>
-        <p style="color:#94a3b8;font-size:10px;font-weight:700;text-transform:uppercase;margin:0 0 3px;">Location</p>
-        <p style="font-weight:600;color:#334155;margin:0;">{{ record.location }}</p>
+        <p style="color:#94a3b8;font-size:10px;font-weight:700;text-transform:uppercase;margin:0 0 2px;">Location</p>
+        <p style="font-weight:600;color:#334155;font-size:13px;margin:0;">{{ record.location }}</p>
       </div>
       {% endif %}
-      <div>
-        <p style="color:#94a3b8;font-size:10px;font-weight:700;text-transform:uppercase;margin:0 0 3px;">Inspected by</p>
-        <p style="font-weight:700;color:#0f172a;margin:0;">{{ record.engineer_name or 'Engineer' }} · {{ record.engineer_company or 'TCS' }}</p>
-      </div>
-      <div>
-        <p style="color:#94a3b8;font-size:10px;font-weight:700;text-transform:uppercase;margin:0 0 3px;">Client</p>
-        <p style="font-weight:700;color:#0f172a;margin:0;">{{ record.client_name }} · {{ record.client_company }}</p>
-      </div>
     </div>
     {% if defn.get('scope') %}
     <div style="margin-top:14px;padding-top:14px;border-top:1px solid #f1f5f9;">
@@ -130,155 +255,242 @@
     {% endif %}
   </div>
 
-  <!-- Progress bar -->
-  {% set done_count  = statuses.values()|selectattr('lucas_complete')|list|length %}
-  {% set total_count = statuses|length %}
-  {% set pct = (done_count / total_count * 100)|int if total_count else 0 %}
-  <div style="background:white;border-radius:14px;border:1.5px solid #e2e8f0;
-              padding:14px 18px;margin-bottom:16px;display:flex;align-items:center;gap:14px;">
-    <div style="flex:1;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-        <span style="font-size:12px;font-weight:700;color:#475569;">Inspection Progress</span>
-        <span style="font-size:13px;font-weight:800;color:#2563eb;">{{ done_count }}/{{ total_count }} signed</span>
-      </div>
-      <div style="background:#f1f5f9;border-radius:999px;height:8px;overflow:hidden;">
-        <div style="width:{{ pct }}%;height:100%;border-radius:999px;
-                    background:linear-gradient(90deg,#2563eb,#7c3aed);"></div>
-      </div>
-    </div>
-    <div style="font-size:22px;font-weight:900;color:{% if pct==100 %}#16a34a{% else %}#2563eb{% endif %};">
-      {{ pct }}%
-    </div>
-  </div>
-
-  {% if record.status == 'complete' %}
-  <!-- ── Already Signed ──────────────────────────────────────────────── -->
-  <div style="background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:18px;
-              padding:28px;text-align:center;margin-bottom:16px;">
-    <i class="fa-solid fa-circle-check" style="font-size:48px;color:#22c55e;display:block;margin-bottom:12px;"></i>
-    <h2 style="font-size:18px;font-weight:800;color:#166534;margin:0 0 6px;">ITP Complete</h2>
-    <p style="color:#16a34a;font-size:14px;margin:0 0 16px;">
-      Signed by <strong>{{ record.client_name }}</strong> ({{ record.client_company }})<br>
-      {{ record.client_signed_at.strftime('%d %b %Y at %H:%M') if record.client_signed_at else '' }}
-    </p>
-    {% if record.client_signature %}
-    <img src="{{ record.client_signature }}"
-         style="height:70px;border-radius:10px;border:1px solid #86efac;background:white;
-                display:inline-block;padding:4px;" alt="Client signature"/>
+  <!-- ─── REVIEW PROGRESS ──────────────────────────────────────────────── -->
+  {# Compute counts server-side for initial render #}
+  {% set ns = namespace(total_signed=0, reviewed=0, accepted=0, concerns=0, pending=0) %}
+  {% for s in record.item_statuses %}
+    {% if s.lucas_complete %}
+      {% set ns.total_signed = ns.total_signed + 1 %}
+      {% if s.client_reviewed %}
+        {% set ns.reviewed = ns.reviewed + 1 %}
+        {% if s.client_accepted %}
+          {% set ns.accepted = ns.accepted + 1 %}
+        {% else %}
+          {% set ns.concerns = ns.concerns + 1 %}
+        {% endif %}
+      {% else %}
+        {% set ns.pending = ns.pending + 1 %}
+      {% endif %}
     {% endif %}
-  </div>
-  {% endif %}
+  {% endfor %}
+  {% set init_pct = ((ns.reviewed / ns.total_signed * 100)|int) if ns.total_signed else 0 %}
+  {% set init_offset = (157 * (1 - init_pct / 100))|round|int %}
 
-  <!-- ── Checklist Review ────────────────────────────────────────────── -->
-  <div style="background:white;border-radius:18px;border:1.5px solid #e2e8f0;
-              overflow:hidden;margin-bottom:16px;">
-    <div style="background:#2563eb;color:white;padding:14px 18px;
-                display:flex;align-items:center;gap:10px;">
+  <div id="progress-panel" style="background:white;border-radius:18px;border:1.5px solid #e2e8f0;
+                                   padding:20px;margin-bottom:14px;">
+    <div style="display:flex;align-items:center;gap:18px;">
+      <!-- Donut ring -->
+      <div style="position:relative;width:68px;height:68px;flex-shrink:0;">
+        <svg class="prog-ring" viewBox="0 0 60 60">
+          <circle class="prog-ring-bg"   cx="30" cy="30" r="25"/>
+          <circle id="ring-fill" class="prog-ring-fill" cx="30" cy="30" r="25"
+                  style="stroke-dashoffset:{{ init_offset }};"/>
+        </svg>
+        <div id="ring-pct"
+             style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+                    font-size:13px;font-weight:800;color:#1e293b;">
+          {{ init_pct }}%
+        </div>
+      </div>
+
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <span style="font-size:14px;font-weight:700;color:#0f172a;">Review Progress</span>
+          <span id="prog-summary" style="font-size:12px;font-weight:700;color:#475569;">
+            {{ ns.reviewed }}/{{ ns.total_signed }} reviewed
+          </span>
+        </div>
+        <div style="display:flex;gap:7px;flex-wrap:wrap;">
+          <span id="chip-accepted" style="display:inline-flex;align-items:center;gap:4px;
+            padding:4px 10px;border-radius:7px;font-size:11px;font-weight:700;
+            background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;">
+            <i class="fa-solid fa-check"></i>
+            <span id="cnt-accepted">{{ ns.accepted }}</span>&nbsp;Accepted
+          </span>
+          <span id="chip-concern" style="display:inline-flex;align-items:center;gap:4px;
+            padding:4px 10px;border-radius:7px;font-size:11px;font-weight:700;
+            background:#fffbeb;color:#d97706;border:1px solid #fde68a;">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            <span id="cnt-concern">{{ ns.concerns }}</span>&nbsp;<span id="lbl-concern">Concern{{ 's' if ns.concerns != 1 else '' }}</span>
+          </span>
+          <span id="chip-pending" style="display:inline-flex;align-items:center;gap:4px;
+            padding:4px 10px;border-radius:7px;font-size:11px;font-weight:700;
+            background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0;">
+            <i class="fa-solid fa-clock"></i>
+            <span id="cnt-pending">{{ ns.pending }}</span>&nbsp;Pending
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Progress bar -->
+    <div style="margin-top:14px;background:#f1f5f9;border-radius:999px;height:6px;overflow:hidden;">
+      <div id="prog-bar"
+           style="height:100%;border-radius:999px;transition:width .5s ease;
+                  background:linear-gradient(90deg,#2563eb,#7c3aed);width:{{ init_pct }}%;"></div>
+    </div>
+
+    <!-- All-reviewed banner -->
+    <div id="all-reviewed-banner"
+         style="margin-top:12px;display:{% if ns.pending == 0 and ns.total_signed > 0 %}flex{% else %}none{% endif %};
+                align-items:center;gap:10px;padding:11px 14px;
+                background:#f0fdf4;border-radius:10px;border:1.5px solid #bbf7d0;">
+      <i class="fa-solid fa-circle-check" style="color:#22c55e;font-size:16px;"></i>
+      <div>
+        <p style="font-size:13px;font-weight:700;color:#166534;margin:0;">All items reviewed</p>
+        <p style="font-size:11px;color:#4ade80;margin:0;">You can now draw your signature and submit below</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── CHECKLIST ────────────────────────────────────────────────────── -->
+  <div style="background:white;border-radius:18px;border:1.5px solid #e2e8f0;overflow:hidden;margin-bottom:16px;">
+    <div style="background:linear-gradient(135deg,#1d4ed8,#2563eb);color:white;
+                padding:14px 18px;display:flex;align-items:center;gap:10px;">
       <i class="fa-solid fa-list-check" style="font-size:14px;"></i>
       <span style="font-size:13px;font-weight:700;">Inspection Checklist</span>
-      <span style="margin-left:auto;font-size:11px;opacity:.75;">Review all items signed by engineer</span>
+      <span style="margin-left:auto;font-size:11px;opacity:.8;">
+        Accept or raise a concern on each engineer-signed item
+      </span>
     </div>
 
+    {% set is_finalized = record.status in ('complete', 'client_commented') %}
+
+    {% if not defn.get('items') %}
+    <div style="padding:32px;text-align:center;color:#94a3b8;">
+      <i class="fa-solid fa-clipboard" style="font-size:32px;display:block;margin-bottom:10px;"></i>
+      <p style="font-size:14px;font-weight:600;margin:0;">No checklist items found.</p>
+    </div>
+    {% endif %}
+
     {% for item in defn.get('items', []) %}
-    {% set act_no = item.no if item.no is defined else item['no'] %}
-    {% set act_name = item.activity if item.activity is defined else item['activity'] %}
-    {% set criteria = item.criteria if item.criteria is defined else item['criteria'] %}
-    {% set rows = item.rows if item.rows is defined else item.get('rows', []) %}
+    {% set act_no   = item['no'] if item is mapping else item.no %}
+    {% set act_name = item['activity'] if item is mapping else item.activity %}
+    {% set criteria = item['criteria'] if item is mapping else item.criteria %}
+    {% set rows     = item.get('rows', []) if item is mapping else (item.rows if item.rows is defined else []) %}
 
     <!-- Activity header -->
     <div style="border-bottom:1px solid #f1f5f9;">
       <div onclick="toggleAct('act-{{ loop.index }}')"
-           style="background:#f8fafc;padding:12px 18px;display:flex;align-items:center;
-                  gap:10px;cursor:pointer;border-bottom:1px solid #f1f5f9;"
-           onmouseover="this.style.background='#f1f5f9'"
-           onmouseout="this.style.background='#f8fafc'">
-        <span style="width:22px;height:22px;border-radius:7px;background:#e0e7ff;color:#4338ca;
+           id="act-hdr-{{ loop.index }}"
+           style="background:#f8fafc;padding:13px 18px;display:flex;align-items:center;gap:10px;cursor:pointer;">
+
+        <span style="width:24px;height:24px;border-radius:8px;background:#e0e7ff;color:#4338ca;
                      display:flex;align-items:center;justify-content:center;font-size:10px;
                      font-weight:800;flex-shrink:0;">{{ act_no }}</span>
         <span style="font-weight:700;color:#1e293b;font-size:13px;flex:1;">{{ act_name }}</span>
-        {% set act_signed = namespace(n=0) %}
+
+        {# Count engineer-signed and client-reviewed items in this activity #}
+        {% set acns = namespace(signed=0, rev=0, acc=0, con=0) %}
         {% for ci in range(criteria|length) %}
           {% set s = statuses.get((act_no|string, ci)) %}
-          {% if s and s.lucas_complete %}{% set act_signed.n = act_signed.n + 1 %}{% endif %}
+          {% if s and s.lucas_complete %}
+            {% set acns.signed = acns.signed + 1 %}
+            {% if s.client_reviewed %}
+              {% set acns.rev = acns.rev + 1 %}
+              {% if s.client_accepted %}{% set acns.acc = acns.acc + 1 %}
+              {% else %}{% set acns.con = acns.con + 1 %}{% endif %}
+            {% endif %}
+          {% endif %}
         {% endfor %}
-        <span style="font-size:11px;font-weight:700;
-          {% if act_signed.n == criteria|length and criteria|length > 0 %}color:#16a34a;
-          {% elif act_signed.n > 0 %}color:#7c3aed;{% else %}color:#94a3b8;{% endif %}">
-          {{ act_signed.n }}/{{ criteria|length }}
-        </span>
+
+        <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
+          {% if acns.con > 0 %}
+          <span style="font-size:10px;font-weight:700;color:#d97706;background:#fffbeb;
+                       padding:2px 7px;border-radius:5px;border:1px solid #fde68a;">
+            {{ acns.con }} concern{{ 's' if acns.con != 1 else '' }}
+          </span>
+          {% endif %}
+          <span style="font-size:11px;font-weight:700;
+            {% if acns.rev == acns.signed and acns.signed > 0 %}color:#16a34a;
+            {% elif acns.rev > 0 %}color:#7c3aed;{% else %}color:#94a3b8;{% endif %}">
+            {{ acns.rev }}/{{ acns.signed }}
+          </span>
+        </div>
         <i id="arr-{{ loop.index }}" class="fa-solid fa-chevron-down"
-           style="color:#cbd5e1;font-size:10px;transition:transform .25s;"></i>
+           style="color:#cbd5e1;font-size:10px;transition:transform .25s;flex-shrink:0;"></i>
       </div>
 
-      <!-- Criteria rows -->
+      <!-- Criterion rows -->
       <div id="act-{{ loop.index }}" class="act-body" style="max-height:9999px;">
         {% for crit in criteria %}
         {% set ci = loop.index0 %}
         {% set s  = statuses.get((act_no|string, ci)) %}
         {% set row = rows[ci] if ci < rows|length else {} %}
+        {% set insp = (row.get('inspection') or '') if row else '' %}
 
-        <div class="crit-row" style="padding:12px 18px;">
-          <div style="display:flex;align-items:flex-start;gap:10px;">
+        <div class="crit-row" id="crit-row-{{ act_no }}-{{ ci }}">
+          <div style="display:flex;align-items:flex-start;gap:12px;">
 
-            <!-- Status indicator -->
-            <div style="width:28px;height:28px;border-radius:8px;flex-shrink:0;margin-top:1px;
+            <!-- Left status icon -->
+            <div id="crit-icon-{{ act_no }}-{{ ci }}"
+                 style="width:30px;height:30px;border-radius:9px;flex-shrink:0;margin-top:1px;
                         display:flex;align-items:center;justify-content:center;
-              {% if s and s.lucas_complete %}background:#dcfce7;{% else %}background:#f1f5f9;{% endif %}">
-              {% if s and s.lucas_complete %}
-              <i class="fa-solid fa-check" style="color:#16a34a;font-size:11px;"></i>
+                 {% if s and s.client_reviewed and s.client_accepted %}background:#dcfce7;
+                 {% elif s and s.client_reviewed %}background:#fef3c7;
+                 {% elif s and s.lucas_complete %}background:#e0e7ff;
+                 {% else %}background:#f1f5f9;{% endif %}">
+              {% if s and s.client_reviewed and s.client_accepted %}
+                <i class="fa-solid fa-check" style="color:#16a34a;font-size:11px;"></i>
+              {% elif s and s.client_reviewed %}
+                <i class="fa-solid fa-triangle-exclamation" style="color:#d97706;font-size:11px;"></i>
+              {% elif s and s.lucas_complete %}
+                <i class="fa-solid fa-eye" style="color:#6366f1;font-size:10px;"></i>
               {% else %}
-              <i class="fa-solid fa-minus" style="color:#cbd5e1;font-size:11px;"></i>
+                <i class="fa-solid fa-minus" style="color:#cbd5e1;font-size:11px;"></i>
               {% endif %}
             </div>
 
             <div style="flex:1;min-width:0;">
-              <!-- Code + frequency -->
+              <!-- Inspection code + frequency row -->
               {% if row %}
               <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;flex-wrap:wrap;">
-                <span class="code-badge code-{{ (row.get('inspection') or row.get('inspection','SS') or 'SS').split('&')[0] }}">
-                  {{ row.get('inspection','') }}
-                </span>
-                <span style="font-size:11px;color:#94a3b8;">{{ row.get('frequency','') }}</span>
+                {% set insp_key = (insp.split('&')[0].strip() or 'SS') if insp else 'SS' %}
+                <span class="cb cb-{{ insp_key }}">{{ insp or 'SS' }}</span>
+                {% if row.get('frequency') %}
+                <span style="font-size:11px;color:#94a3b8;">{{ row.get('frequency') }}</span>
+                {% endif %}
               </div>
               {% endif %}
 
               <!-- Criterion text -->
-              <p style="font-size:13px;color:{% if s and s.lucas_complete %}#334155{% else %}#94a3b8{% endif %};
-                        line-height:1.55;margin:0 0 8px;">{{ crit }}</p>
+              <p style="font-size:13px;line-height:1.6;margin:0 0 10px;
+                 {% if s and s.lucas_complete %}color:#334155;{% else %}color:#94a3b8;{% endif %}">
+                {{ crit }}
+              </p>
 
-              <!-- Engineer signature preview -->
+              <!-- Engineer sign-off preview -->
               {% if s and s.lucas_complete %}
-              <div style="display:flex;align-items:center;gap:10px;
-                          background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;
-                          padding:8px 12px;margin-bottom:8px;">
+              <div style="background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:10px;
+                          padding:9px 12px;margin-bottom:10px;display:flex;align-items:center;gap:10px;">
                 {% if s.lucas_signature %}
                 <img src="{{ s.lucas_signature }}"
-                     style="height:36px;border-radius:6px;border:1px solid #86efac;background:white;flex-shrink:0;"
-                     alt="Engineer signature"/>
+                     style="height:38px;border-radius:6px;border:1px solid #86efac;
+                            background:white;flex-shrink:0;" alt="Engineer sig"/>
                 {% endif %}
                 <div style="min-width:0;">
-                  <p style="font-size:11px;font-weight:700;color:#166534;margin:0 0 1px;">
+                  <p style="font-size:11px;font-weight:700;color:#166534;margin:0 0 2px;">
                     <i class="fa-solid fa-check-circle" style="margin-right:4px;"></i>
-                    {{ record.engineer_name or 'Engineer' }} · {{ record.engineer_company or 'TCS' }}
+                    {{ record.engineer_name or 'Engineer' }} &middot; {{ record.engineer_company or 'TCS' }}
                   </p>
                   <p style="font-size:11px;color:#4ade80;margin:0;">
                     {% if s.lucas_signed_at %}
                     <i class="fa-solid fa-clock" style="margin-right:3px;"></i>
                     {{ s.lucas_signed_at.strftime('%d %b %Y %H:%M') }}
                     {% endif %}
-                    {% if s.lucas_comments %} · {{ s.lucas_comments }}{% endif %}
+                    {% if s.lucas_comments %}&nbsp;&middot; {{ s.lucas_comments }}{% endif %}
                   </p>
                 </div>
               </div>
               {% endif %}
 
-              <!-- Attached documents (visible to client) -->
+              <!-- Attached documents -->
               {% if s and s.documents %}
-              <div style="margin-top:6px;">
+              <div style="margin-bottom:10px;">
                 <p style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;
                           letter-spacing:.04em;margin:0 0 6px;">
-                  <i class="fa-solid fa-paperclip" style="margin-right:4px;"></i>
-                  {{ s.documents|length }} Attached Document{% if s.documents|length != 1 %}s{% endif %}
+                  <i class="fa-solid fa-paperclip" style="margin-right:3px;"></i>
+                  {{ s.documents|length }} Attached File{{ 's' if s.documents|length != 1 else '' }}
                 </p>
                 <div style="display:flex;flex-direction:column;gap:5px;">
                   {% for doc in s.documents %}
@@ -288,20 +500,109 @@
                       {% if doc.doc_type=='photo' %}background:#dbeafe;
                       {% elif doc.doc_type=='pdf' %}background:#fee2e2;
                       {% else %}background:#f1f5f9;{% endif %}">
-                      <i class="fa-solid
-                        {% if doc.doc_type=='photo' %}fa-image" style="color:#3b82f6;
-                        {% elif doc.doc_type=='pdf' %}fa-file-pdf" style="color:#ef4444;
-                        {% else %}fa-file" style="color:#94a3b8;{% endif %}
-                        font-size:11px;"></i>
+                      <i class="fa-solid {% if doc.doc_type=='photo' %}fa-image" style="color:#3b82f6;
+                         {% elif doc.doc_type=='pdf' %}fa-file-pdf" style="color:#ef4444;
+                         {% else %}fa-file" style="color:#94a3b8;{% endif %} font-size:11px;"></i>
                     </div>
                     <span style="font-size:12px;font-weight:600;color:#334155;flex:1;
                                  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
                       {{ doc.original_name }}
                     </span>
-                    <i class="fa-solid fa-external-link-alt" style="color:#94a3b8;font-size:10px;flex-shrink:0;"></i>
+                    <i class="fa-solid fa-arrow-up-right-from-square" style="color:#94a3b8;font-size:10px;flex-shrink:0;"></i>
                   </a>
                   {% endfor %}
                 </div>
+              </div>
+              {% endif %}
+
+              <!-- ── Per-item review actions ─────────────────────────── -->
+              {% if s and s.lucas_complete %}
+
+              <div id="crit-state-{{ act_no }}-{{ ci }}">
+                {% if s.client_reviewed and s.client_accepted %}
+                <!-- ACCEPTED -->
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                  <span class="badge-accepted">
+                    <i class="fa-solid fa-check-circle"></i> Accepted
+                  </span>
+                  {% if not is_finalized %}
+                  <button class="btn-undo" onclick="undoReview('{{ act_no }}', {{ ci }})">
+                    <i class="fa-solid fa-rotate-left"></i> Undo
+                  </button>
+                  {% endif %}
+                </div>
+
+                {% elif s.client_reviewed and not s.client_accepted %}
+                <!-- CONCERN RAISED -->
+                <div>
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+                    <span class="badge-concern">
+                      <i class="fa-solid fa-triangle-exclamation"></i> Concern Raised
+                    </span>
+                    {% if not is_finalized %}
+                    <button class="btn-undo" onclick="undoReview('{{ act_no }}', {{ ci }})">
+                      <i class="fa-solid fa-rotate-left"></i> Undo
+                    </button>
+                    {% endif %}
+                  </div>
+                  {% if s.client_comments %}
+                  <div style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:10px;
+                              padding:10px 14px;font-size:13px;color:#92400e;line-height:1.5;">
+                    <i class="fa-solid fa-comment-dots" style="margin-right:6px;"></i>{{ s.client_comments }}
+                  </div>
+                  {% endif %}
+                </div>
+
+                {% elif not is_finalized %}
+                <!-- PENDING — show action buttons -->
+                <div>
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                    <button class="btn-accept" onclick="acceptItem('{{ act_no }}', {{ ci }})">
+                      <i class="fa-solid fa-check-circle"></i> Accept
+                    </button>
+                    <button class="btn-concern" onclick="showConcernBox('{{ act_no }}', {{ ci }})">
+                      <i class="fa-solid fa-triangle-exclamation"></i> Raise Concern
+                    </button>
+                  </div>
+                  <!-- Inline concern input (hidden by default) -->
+                  <div id="concern-box-{{ act_no }}-{{ ci }}" class="concern-box">
+                    <p style="font-size:12px;font-weight:700;color:#92400e;margin:0 0 8px;">
+                      <i class="fa-solid fa-comment-dots" style="margin-right:5px;"></i>Describe your concern:
+                    </p>
+                    <textarea id="concern-text-{{ act_no }}-{{ ci }}"
+                              placeholder="e.g. Test results don't match specification, awaiting rectification..."></textarea>
+                    <div style="display:flex;gap:8px;margin-top:10px;">
+                      <button onclick="cancelConcern('{{ act_no }}', {{ ci }})"
+                              style="padding:8px 16px;border-radius:8px;font-size:12px;font-weight:600;
+                                     background:white;color:#64748b;border:1.5px solid #e2e8f0;cursor:pointer;">
+                        <i class="fa-solid fa-xmark" style="margin-right:4px;"></i>Cancel
+                      </button>
+                      <button onclick="submitConcern('{{ act_no }}', {{ ci }})"
+                              style="flex:1;padding:8px 16px;border-radius:8px;font-size:12px;font-weight:700;
+                                     background:linear-gradient(135deg,#d97706,#f59e0b);color:white;
+                                     border:none;cursor:pointer;">
+                        <i class="fa-solid fa-paper-plane" style="margin-right:5px;"></i>Submit Concern
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {% else %}
+                <!-- Finalized but this item was never reviewed (edge case) -->
+                <span class="badge-pending">
+                  <i class="fa-solid fa-minus"></i> Not Reviewed
+                </span>
+                {% endif %}
+
+              </div>{# /crit-state #}
+
+              {% else %}
+              <!-- Engineer has not signed this item yet -->
+              <div style="display:inline-flex;align-items:center;gap:6px;
+                          padding:6px 12px;border-radius:8px;background:#f8fafc;
+                          border:1px solid #e2e8f0;font-size:11px;color:#94a3b8;">
+                <i class="fa-solid fa-hourglass-half"></i>
+                Awaiting engineer sign-off
               </div>
               {% endif %}
 
@@ -309,64 +610,112 @@
           </div>
         </div>
         {% endfor %}
-      </div>
+      </div>{# /act-body #}
     </div>
     {% endfor %}
   </div>
 
-  {% if record.status != 'complete' %}
-  <!-- ── Client Signature ─────────────────────────────────────────────── -->
+  <!-- ─── SIGNATURE SECTION ────────────────────────────────────────────── -->
+  {% if record.status not in ('complete', 'client_commented') %}
   <div style="background:white;border-radius:18px;border:2px solid #bfdbfe;overflow:hidden;margin-bottom:24px;">
     <div style="background:linear-gradient(135deg,#1d4ed8,#2563eb);color:white;
                 padding:14px 18px;display:flex;align-items:center;gap:10px;">
       <i class="fa-solid fa-pen-nib" style="font-size:14px;"></i>
-      <span style="font-size:13px;font-weight:700;">Your Signature — {{ record.client_name }}</span>
+      <span style="font-size:13px;font-weight:700;">
+        Sign &amp; Submit — {{ record.client_name }}
+      </span>
     </div>
-    <div style="padding:20px;">
-      <p style="font-size:13px;color:#475569;margin:0 0 18px;line-height:1.6;">
-        By signing below, <strong>{{ record.client_name }}</strong>
-        ({{ record.client_company }}) confirms that the above ITP for
-        <strong>{{ wtg.name }}</strong> has been reviewed and accepted.
-        All inspection criteria are acknowledged.
-      </p>
+    <div style="padding:22px;">
 
-      <form method="POST" id="client-sign-form">
-        <input type="hidden" name="action" value="client_sign"/>
-        <label style="display:block;font-size:11px;font-weight:700;color:#64748b;
-                      text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">
-          Draw Your Signature <span style="color:#ef4444;">*</span>
-        </label>
-        <div class="sig-pad-wrap" style="margin-bottom:16px;">
-          <canvas id="client-sig-canvas" width="700" height="150"></canvas>
+      <!-- LOCKED state -->
+      <div id="sig-locked"
+           style="display:{% if ns.pending > 0 or ns.total_signed == 0 %}flex{% else %}none{% endif %};
+                  flex-direction:column;align-items:center;justify-content:center;
+                  padding:28px;text-align:center;
+                  background:#f8fafc;border:2px dashed #e2e8f0;border-radius:14px;">
+        <i class="fa-solid fa-lock" style="font-size:36px;color:#cbd5e1;display:block;margin-bottom:12px;"></i>
+        <p style="font-size:14px;font-weight:700;color:#475569;margin:0 0 6px;">Signature Locked</p>
+        <p style="font-size:13px;color:#94a3b8;margin:0;" id="locked-msg">
+          {% if ns.total_signed == 0 %}
+            There are no engineer-signed items to review yet.
+          {% else %}
+            Review all {{ ns.pending }} remaining item{{ 's' if ns.pending != 1 else '' }} to unlock your signature.
+          {% endif %}
+        </p>
+      </div>
+
+      <!-- ACTIVE state -->
+      <div id="sig-active"
+           style="display:{% if ns.pending == 0 and ns.total_signed > 0 %}block{% else %}none{% endif %};">
+
+        <!-- Context message -->
+        <div id="sig-context" style="margin-bottom:18px;padding:12px 16px;border-radius:12px;
+          {% if ns.concerns > 0 %}background:#fffbeb;border:1.5px solid #fde68a;
+          {% else %}background:#f0fdf4;border:1.5px solid #bbf7d0;{% endif %}">
+          {% if ns.concerns > 0 %}
+          <p style="font-size:13px;color:#92400e;margin:0;line-height:1.6;">
+            <i class="fa-solid fa-triangle-exclamation" style="margin-right:6px;"></i>
+            You have raised <strong>{{ ns.concerns }} concern{{ 's' if ns.concerns != 1 else '' }}</strong>.
+            By signing, you submit your review with these concerns.
+            The inspection team will be notified to address them.
+          </p>
+          {% else %}
+          <p style="font-size:13px;color:#166534;margin:0;line-height:1.6;">
+            <i class="fa-solid fa-check-circle" style="margin-right:6px;"></i>
+            All items accepted. By signing below you confirm acceptance of this ITP.
+          </p>
+          {% endif %}
         </div>
-        <input type="hidden" name="client_signature" id="client-sig-data"/>
-        <div style="display:flex;gap:10px;">
-          <button type="button" onclick="clearClientSig()"
-            style="padding:10px 18px;border:1.5px solid #e2e8f0;color:#64748b;border-radius:10px;
-                   font-size:13px;font-weight:700;background:white;cursor:pointer;">
-            <i class="fa-solid fa-eraser" style="margin-right:6px;"></i>Clear
-          </button>
-          <button type="submit" onclick="return captureClientSig()"
-            style="flex:1;padding:14px;border-radius:10px;font-size:14px;font-weight:800;
-                   border:none;cursor:pointer;color:white;
-                   background:linear-gradient(135deg,#14532d,#16a34a);
-                   box-shadow:0 4px 14px rgba(22,163,74,.35);">
-            <i class="fa-solid fa-signature" style="margin-right:8px;"></i>Sign &amp; Submit ITP
-          </button>
-        </div>
-      </form>
+
+        <form method="POST" id="client-sign-form">
+          <input type="hidden" name="action" value="client_sign"/>
+          <label style="display:block;font-size:11px;font-weight:700;color:#64748b;
+                        text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">
+            Draw Your Signature <span style="color:#ef4444;">*</span>
+          </label>
+          <div class="sig-pad-wrap" style="margin-bottom:16px;">
+            <canvas id="client-sig-canvas" width="700" height="150"></canvas>
+          </div>
+          <input type="hidden" name="client_signature" id="client-sig-data"/>
+          <div style="display:flex;gap:10px;">
+            <button type="button" onclick="clearClientSig()"
+                    style="padding:11px 20px;border:1.5px solid #e2e8f0;color:#64748b;border-radius:10px;
+                           font-size:13px;font-weight:700;background:white;cursor:pointer;">
+              <i class="fa-solid fa-eraser" style="margin-right:6px;"></i>Clear
+            </button>
+            <button type="submit" id="submit-btn" onclick="return captureClientSig()"
+                    style="flex:1;padding:14px;border-radius:10px;font-size:14px;font-weight:800;
+                           border:none;cursor:pointer;color:white;
+                           {% if ns.concerns > 0 %}background:linear-gradient(135deg,#d97706,#f59e0b);
+                           box-shadow:0 4px 14px rgba(245,158,11,.35);
+                           {% else %}background:linear-gradient(135deg,#14532d,#16a34a);
+                           box-shadow:0 4px 14px rgba(22,163,74,.35);{% endif %}">
+              {% if ns.concerns > 0 %}
+              <i class="fa-solid fa-triangle-exclamation" style="margin-right:8px;"></i>Submit Review with {{ ns.concerns }} Concern{{ 's' if ns.concerns != 1 else '' }}
+              {% else %}
+              <i class="fa-solid fa-signature" style="margin-right:8px;"></i>Sign &amp; Approve ITP
+              {% endif %}
+            </button>
+          </div>
+        </form>
+      </div>
+
     </div>
   </div>
   {% endif %}
 
-</div><!-- max-w-720 -->
+</div><!-- /max-width container -->
 
 <div style="text-align:center;padding:20px;color:#94a3b8;font-size:11px;border-top:1px solid #e2e8f0;">
-  {{ proj_name }} · QA Manager Platform &middot; Uncontrolled When Printed
+  {{ proj_name }} &middot; QA Manager Platform &middot; Uncontrolled When Printed
 </div>
 
 <script>
-// ── Activity toggle ───────────────────────────────────────────────────────
+// ── Constants ──────────────────────────────────────────────────────────────
+const TOKEN     = '{{ record.client_token }}';
+const FINALIZED = {{ 'true' if record.status in ('complete', 'client_commented') else 'false' }};
+
+// ── Activity accordion ─────────────────────────────────────────────────────
 function toggleAct(id) {
   const body = document.getElementById(id);
   const idx  = id.split('-')[1];
@@ -377,7 +726,228 @@ function toggleAct(id) {
   if (arr) arr.style.transform = collapsed ? '' : 'rotate(-90deg)';
 }
 
-// ── Signature canvas ──────────────────────────────────────────────────────
+// ── Review API helpers ─────────────────────────────────────────────────────
+async function callReview(actNo, ci, body) {
+  const resp = await fetch(`/api/itp/client/${TOKEN}/item/${actNo}/${ci}`, {
+    method:  'POST',
+    headers: {'Content-Type': 'application/json'},
+    body:    JSON.stringify(body),
+  });
+  return resp.json();
+}
+
+async function acceptItem(actNo, ci) {
+  const res = await callReview(actNo, ci, {action: 'accept'});
+  if (res.ok) {
+    setCritState(actNo, ci, 'accepted', '');
+    updateProgress(res);
+  } else {
+    alert(res.error || 'Could not save. Please try again.');
+  }
+}
+
+function showConcernBox(actNo, ci) {
+  const box = document.getElementById(`concern-box-${actNo}-${ci}`);
+  if (box) box.classList.add('open');
+}
+
+function cancelConcern(actNo, ci) {
+  const box = document.getElementById(`concern-box-${actNo}-${ci}`);
+  if (box) box.classList.remove('open');
+  const txt = document.getElementById(`concern-text-${actNo}-${ci}`);
+  if (txt) txt.value = '';
+}
+
+async function submitConcern(actNo, ci) {
+  const txt = document.getElementById(`concern-text-${actNo}-${ci}`);
+  const comment = txt ? txt.value.trim() : '';
+  if (!comment) {
+    alert('Please describe your concern before submitting.');
+    return;
+  }
+  const res = await callReview(actNo, ci, {action: 'concern', comment});
+  if (res.ok) {
+    setCritState(actNo, ci, 'concern', comment);
+    updateProgress(res);
+  } else {
+    alert(res.error || 'Could not save. Please try again.');
+  }
+}
+
+async function undoReview(actNo, ci) {
+  if (!confirm('Are you sure you want to undo your review for this item?')) return;
+  const res = await callReview(actNo, ci, {action: 'reset'});
+  if (res.ok) {
+    setCritState(actNo, ci, 'pending', '');
+    updateProgress(res);
+  } else {
+    alert(res.error || 'Could not reset. Please try again.');
+  }
+}
+
+// ── Update criterion DOM state ─────────────────────────────────────────────
+function esc(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function setCritState(actNo, ci, state, comment) {
+  const stateDiv = document.getElementById(`crit-state-${actNo}-${ci}`);
+  const iconDiv  = document.getElementById(`crit-icon-${actNo}-${ci}`);
+  if (!stateDiv) return;
+
+  if (state === 'accepted') {
+    stateDiv.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <span class="badge-accepted"><i class="fa-solid fa-check-circle"></i> Accepted</span>
+        <button class="btn-undo" onclick="undoReview('${actNo}', ${ci})">
+          <i class="fa-solid fa-rotate-left"></i> Undo
+        </button>
+      </div>`;
+    if (iconDiv) {
+      iconDiv.style.background = '#dcfce7';
+      iconDiv.innerHTML = '<i class="fa-solid fa-check" style="color:#16a34a;font-size:11px;"></i>';
+    }
+
+  } else if (state === 'concern') {
+    stateDiv.innerHTML = `
+      <div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+          <span class="badge-concern"><i class="fa-solid fa-triangle-exclamation"></i> Concern Raised</span>
+          <button class="btn-undo" onclick="undoReview('${actNo}', ${ci})">
+            <i class="fa-solid fa-rotate-left"></i> Undo
+          </button>
+        </div>
+        ${comment ? `<div style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:10px;
+                                 padding:10px 14px;font-size:13px;color:#92400e;line-height:1.5;">
+          <i class="fa-solid fa-comment-dots" style="margin-right:6px;"></i>${esc(comment)}
+        </div>` : ''}
+      </div>`;
+    if (iconDiv) {
+      iconDiv.style.background = '#fef3c7';
+      iconDiv.innerHTML = '<i class="fa-solid fa-triangle-exclamation" style="color:#d97706;font-size:11px;"></i>';
+    }
+
+  } else { // pending
+    stateDiv.innerHTML = `
+      <div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <button class="btn-accept" onclick="acceptItem('${actNo}', ${ci})">
+            <i class="fa-solid fa-check-circle"></i> Accept
+          </button>
+          <button class="btn-concern" onclick="showConcernBox('${actNo}', ${ci})">
+            <i class="fa-solid fa-triangle-exclamation"></i> Raise Concern
+          </button>
+        </div>
+        <div id="concern-box-${actNo}-${ci}" class="concern-box">
+          <p style="font-size:12px;font-weight:700;color:#92400e;margin:0 0 8px;">
+            <i class="fa-solid fa-comment-dots" style="margin-right:5px;"></i>Describe your concern:
+          </p>
+          <textarea id="concern-text-${actNo}-${ci}"
+                    placeholder="e.g. Test results don't match specification, awaiting rectification..."></textarea>
+          <div style="display:flex;gap:8px;margin-top:10px;">
+            <button onclick="cancelConcern('${actNo}', ${ci})"
+                    style="padding:8px 16px;border-radius:8px;font-size:12px;font-weight:600;
+                           background:white;color:#64748b;border:1.5px solid #e2e8f0;cursor:pointer;">
+              <i class="fa-solid fa-xmark" style="margin-right:4px;"></i>Cancel
+            </button>
+            <button onclick="submitConcern('${actNo}', ${ci})"
+                    style="flex:1;padding:8px 16px;border-radius:8px;font-size:12px;font-weight:700;
+                           background:linear-gradient(135deg,#d97706,#f59e0b);color:white;
+                           border:none;cursor:pointer;">
+              <i class="fa-solid fa-paper-plane" style="margin-right:5px;"></i>Submit Concern
+            </button>
+          </div>
+        </div>
+      </div>`;
+    if (iconDiv) {
+      iconDiv.style.background = '#e0e7ff';
+      iconDiv.innerHTML = '<i class="fa-solid fa-eye" style="color:#6366f1;font-size:10px;"></i>';
+    }
+  }
+}
+
+// ── Update progress panel ──────────────────────────────────────────────────
+function updateProgress(data) {
+  // Chips
+  document.getElementById('cnt-accepted').textContent = data.accepted;
+  document.getElementById('cnt-concern').textContent  = data.concerns;
+  document.getElementById('cnt-pending').textContent  = data.pending;
+  document.getElementById('lbl-concern').textContent  = `Concern${data.concerns !== 1 ? 's' : ''}`;
+  document.getElementById('prog-summary').textContent = `${data.reviewed}/${data.total} reviewed`;
+
+  // Bar + ring
+  const pct = data.total > 0 ? Math.round((data.reviewed / data.total) * 100) : 0;
+  document.getElementById('prog-bar').style.width = pct + '%';
+  document.getElementById('ring-pct').textContent = pct + '%';
+  const offset = 157 * (1 - pct / 100);
+  document.getElementById('ring-fill').style.strokeDashoffset = offset;
+
+  // All-reviewed banner
+  const banner = document.getElementById('all-reviewed-banner');
+  if (banner) banner.style.display = data.all_reviewed ? 'flex' : 'none';
+
+  // Signature section
+  if (data.all_reviewed) {
+    unlockSignature(data.concerns);
+  } else {
+    lockSignature(data.pending);
+  }
+}
+
+function lockSignature(pendingCount) {
+  const locked = document.getElementById('sig-locked');
+  const active = document.getElementById('sig-active');
+  const msg    = document.getElementById('locked-msg');
+  if (locked) locked.style.display = 'flex';
+  if (active) active.style.display = 'none';
+  if (msg) msg.textContent =
+    `Review all ${pendingCount} remaining item${pendingCount !== 1 ? 's' : ''} to unlock your signature.`;
+}
+
+function unlockSignature(concernCount) {
+  const locked  = document.getElementById('sig-locked');
+  const active  = document.getElementById('sig-active');
+  const ctx     = document.getElementById('sig-context');
+  const btn     = document.getElementById('submit-btn');
+  if (locked) locked.style.display = 'none';
+  if (active) active.style.display = 'block';
+
+  if (ctx) {
+    if (concernCount > 0) {
+      ctx.style.background = '#fffbeb';
+      ctx.style.borderColor = '#fde68a';
+      ctx.innerHTML = `<p style="font-size:13px;color:#92400e;margin:0;line-height:1.6;">
+        <i class="fa-solid fa-triangle-exclamation" style="margin-right:6px;"></i>
+        You have raised <strong>${concernCount} concern${concernCount !== 1 ? 's' : ''}</strong>.
+        By signing, you submit your review with these concerns.
+        The inspection team will be notified to address them.
+      </p>`;
+    } else {
+      ctx.style.background = '#f0fdf4';
+      ctx.style.borderColor = '#bbf7d0';
+      ctx.innerHTML = `<p style="font-size:13px;color:#166534;margin:0;line-height:1.6;">
+        <i class="fa-solid fa-check-circle" style="margin-right:6px;"></i>
+        All items accepted. By signing below you confirm acceptance of this ITP.
+      </p>`;
+    }
+  }
+
+  if (btn) {
+    if (concernCount > 0) {
+      btn.style.background   = 'linear-gradient(135deg,#d97706,#f59e0b)';
+      btn.style.boxShadow    = '0 4px 14px rgba(245,158,11,.35)';
+      btn.innerHTML = `<i class="fa-solid fa-triangle-exclamation" style="margin-right:8px;"></i>Submit Review with ${concernCount} Concern${concernCount !== 1 ? 's' : ''}`;
+    } else {
+      btn.style.background   = 'linear-gradient(135deg,#14532d,#16a34a)';
+      btn.style.boxShadow    = '0 4px 14px rgba(22,163,74,.35)';
+      btn.innerHTML = `<i class="fa-solid fa-signature" style="margin-right:8px;"></i>Sign &amp; Approve ITP`;
+    }
+  }
+}
+
+// ── Signature canvas ───────────────────────────────────────────────────────
 const ccanvas = document.getElementById('client-sig-canvas');
 if (ccanvas) {
   const cctx  = ccanvas.getContext('2d');
@@ -389,7 +959,7 @@ if (ccanvas) {
     const s = e.touches ? e.touches[0] : e;
     return {
       x: (s.clientX - r.left) * (ccanvas.width  / r.width),
-      y: (s.clientY - r.top)  * (ccanvas.height / r.height)
+      y: (s.clientY - r.top)  * (ccanvas.height / r.height),
     };
   }
   ccanvas.addEventListener('pointerdown', e => {
@@ -401,24 +971,26 @@ if (ccanvas) {
     if (!drawing) return;
     const p = gp(e);
     cctx.lineTo(p.x, p.y);
-    cctx.strokeStyle = '#1e293b'; cctx.lineWidth = 2.5;
-    cctx.lineCap = 'round'; cctx.lineJoin = 'round';
+    cctx.strokeStyle = '#1e293b';
+    cctx.lineWidth   = 2.5;
+    cctx.lineCap     = 'round';
+    cctx.lineJoin    = 'round';
     cctx.stroke();
   });
-  ccanvas.addEventListener('pointerup',    () => drawing = false);
-  ccanvas.addEventListener('pointerleave', () => drawing = false);
+  ccanvas.addEventListener('pointerup',    () => { drawing = false; });
+  ccanvas.addEventListener('pointerleave', () => { drawing = false; });
 
   window.clearClientSig = () => {
     cctx.clearRect(0, 0, ccanvas.width, ccanvas.height);
     ccanvas.hasContent = false;
   };
+
   window.captureClientSig = () => {
-    if (!ccanvas.hasContent) {
-      const pd = cctx.getImageData(0, 0, ccanvas.width, ccanvas.height).data;
-      if (!Array.from(pd).some((v,i) => i%4===3 && v>0)) {
-        alert('Please draw your signature before submitting.');
-        return false;
-      }
+    const pd = cctx.getImageData(0, 0, ccanvas.width, ccanvas.height).data;
+    const hasDrawing = Array.from(pd).some((v, i) => i % 4 === 3 && v > 0);
+    if (!hasDrawing) {
+      alert('Please draw your signature before submitting.');
+      return false;
     }
     document.getElementById('client-sig-data').value = ccanvas.toDataURL('image/png');
     return true;
