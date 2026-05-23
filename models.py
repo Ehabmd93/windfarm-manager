@@ -853,6 +853,23 @@ class DocumentLink(db.Model):
 
 
 # ═══════════════════════════════════════════════
+# IN-APP NOTIFICATIONS
+# ═══════════════════════════════════════════════
+class Notification(db.Model):
+    __tablename__ = 'notifications'
+    id         = db.Column(db.Integer, primary_key=True)
+    user_id    = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    type       = db.Column(db.String(30), default='info')
+    # type values: info | success | warning | itp_signed | itp_invited
+    title      = db.Column(db.String(200), nullable=False)
+    message    = db.Column(db.Text, default='')
+    url        = db.Column(db.String(500), default='')
+    is_read    = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    user       = db.relationship('User', backref='notifications', lazy=True)
+
+
+# ═══════════════════════════════════════════════
 class ProgressWidget(db.Model):
     """User-configured chart/table widgets on the Progress Tracker page."""
     __tablename__ = 'progress_widgets'

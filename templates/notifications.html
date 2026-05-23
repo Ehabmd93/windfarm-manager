@@ -1,0 +1,120 @@
+{% extends 'base.html' %}
+{% block title %}Notifications{% endblock %}
+{% block page_title %}Notifications{% endblock %}
+{% block page_sub %}Your activity feed{% endblock %}
+
+{% block head %}
+<style>
+  .notif-card {
+    display:flex; align-items:flex-start; gap:14px; padding:16px 18px;
+    background:white; border-radius:14px; border:1.5px solid #f1f5f9;
+    margin-bottom:10px; transition:all .15s; text-decoration:none; color:inherit;
+  }
+  .notif-card:hover { border-color:#e0e7ff; box-shadow:0 4px 14px rgba(0,0,0,.06); }
+  .notif-card.unread { border-color:#dbeafe; background:#f0f9ff; }
+  .notif-icon {
+    width:42px; height:42px; border-radius:12px; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center; font-size:16px;
+  }
+  .notif-time { font-size:11px; color:#94a3b8; margin-top:3px; }
+  .unread-dot {
+    width:8px; height:8px; border-radius:50%; background:#3b82f6;
+    flex-shrink:0; margin-top:6px;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="max-width:680px;margin:0 auto;">
+
+  <!-- Header -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+    <div>
+      <h2 style="font-size:18px;font-weight:800;color:#0f172a;margin:0;">Notifications</h2>
+      <p style="font-size:12px;color:#94a3b8;margin:4px 0 0;">
+        {{ notifications|length }} notification{% if notifications|length != 1 %}s{% endif %}
+      </p>
+    </div>
+    {% if notifications %}
+    <button onclick="markAllRead()"
+            style="padding:7px 14px;background:#f1f5f9;color:#475569;border:1.5px solid #e2e8f0;
+                   border-radius:9px;font-size:12px;font-weight:700;cursor:pointer;">
+      <i class="fa-solid fa-check-double" style="margin-right:5px;"></i>Mark all read
+    </button>
+    {% endif %}
+  </div>
+
+  {% if not notifications %}
+  <!-- Empty state -->
+  <div style="text-align:center;padding:60px 20px;background:white;border-radius:18px;border:1.5px solid #f1f5f9;">
+    <i class="fa-solid fa-bell-slash" style="font-size:40px;color:#e2e8f0;display:block;margin-bottom:14px;"></i>
+    <h3 style="font-size:16px;font-weight:700;color:#334155;margin:0 0 6px;">All caught up!</h3>
+    <p style="font-size:13px;color:#94a3b8;margin:0;">You have no notifications yet. When clients sign ITPs or actions are taken, you'll see them here.</p>
+  </div>
+
+  {% else %}
+  {% for n in notifications %}
+  {% if n.url %}
+  <a href="{{ n.url }}" class="notif-card {% if not n.is_read %}unread{% endif %}">
+  {% else %}
+  <div class="notif-card {% if not n.is_read %}unread{% endif %}">
+  {% endif %}
+
+    <!-- Icon -->
+    <div class="notif-icon" style="
+      {% if n.type == 'itp_signed' %}background:#f0fdf4;
+      {% elif n.type == 'itp_invited' %}background:#eff6ff;
+      {% elif n.type == 'success' %}background:#f0fdf4;
+      {% elif n.type == 'warning' %}background:#fffbeb;
+      {% else %}background:#f0f9ff;{% endif %}">
+      <i class="fa-solid
+        {% if n.type == 'itp_signed' %}fa-signature" style="color:#16a34a;
+        {% elif n.type == 'itp_invited' %}fa-envelope-open-text" style="color:#2563eb;
+        {% elif n.type == 'success' %}fa-circle-check" style="color:#16a34a;
+        {% elif n.type == 'warning' %}fa-triangle-exclamation" style="color:#d97706;
+        {% else %}fa-bell" style="color:#3b82f6;{% endif %}
+        font-size:16px;"></i>
+    </div>
+
+    <!-- Content -->
+    <div style="flex:1;min-width:0;">
+      <p style="font-size:13px;font-weight:{% if not n.is_read %}700{% else %}600{% endif %};
+                color:#0f172a;margin:0 0 3px;">{{ n.title }}</p>
+      {% if n.message %}
+      <p style="font-size:12px;color:#64748b;margin:0 0 4px;line-height:1.5;">{{ n.message }}</p>
+      {% endif %}
+      <p class="notif-time">
+        <i class="fa-solid fa-clock" style="margin-right:3px;"></i>
+        {{ n.created_at.strftime('%d %b %Y %H:%M') }}
+      </p>
+    </div>
+
+    <!-- Unread indicator -->
+    {% if not n.is_read %}
+    <div class="unread-dot"></div>
+    {% endif %}
+
+  {% if n.url %}
+  </a>
+  {% else %}
+  </div>
+  {% endif %}
+  {% endfor %}
+  {% endif %}
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function markAllRead() {
+  await fetch('/api/notifications/read-all', {method:'POST'});
+  // Remove all unread styles
+  document.querySelectorAll('.notif-card.unread').forEach(el => el.classList.remove('unread'));
+  document.querySelectorAll('.unread-dot').forEach(el => el.remove());
+  // Update bell badge
+  const badge = document.getElementById('notif-badge');
+  if (badge) badge.style.display = 'none';
+}
+</script>
+{% endblock %}

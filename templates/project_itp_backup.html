@@ -1,0 +1,197 @@
+{% extends 'base.html' %}
+{% block title %}ITP Backup — {{ proj.name }}{% endblock %}
+{% block page_title %}ITP Backup{% endblock %}
+{% block page_sub %}{{ proj.name }} · Download signed ITPs as ZIP{% endblock %}
+
+{% block head %}
+<style>
+  .tmpl-card {
+    display:flex;align-items:center;gap:14px;padding:16px 18px;
+    background:white;border-radius:14px;border:1.5px solid #f1f5f9;
+    margin-bottom:10px;cursor:pointer;transition:all .15s;
+  }
+  .tmpl-card:hover { border-color:#c4b5fd;box-shadow:0 4px 14px rgba(0,0,0,.06); }
+  .tmpl-card.selected { border-color:#7c3aed;background:#f5f3ff; }
+  .tmpl-card input[type=checkbox] { width:18px;height:18px;accent-color:#7c3aed;cursor:pointer;flex-shrink:0; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="max-width:680px;margin:0 auto;">
+
+  <!-- Breadcrumb -->
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:20px;font-size:13px;">
+    <a href="{{ url_for('project_itp_index', pid=proj.id) }}" style="color:#94a3b8;text-decoration:none;font-weight:600;">
+      <i class="fa-solid fa-arrow-left" style="margin-right:4px;"></i>All ITPs
+    </a>
+    <span style="color:#cbd5e1;">›</span>
+    <span style="color:#0f172a;font-weight:700;">Backup</span>
+  </div>
+
+  <!-- Header banner -->
+  <div style="background:linear-gradient(135deg,#4338ca,#7c3aed);border-radius:18px;
+              padding:22px 24px;margin-bottom:24px;display:flex;align-items:center;gap:16px;color:white;">
+    <div style="width:52px;height:52px;background:rgba(255,255,255,.15);border-radius:14px;
+                display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+      <i class="fa-solid fa-file-zipper" style="font-size:22px;"></i>
+    </div>
+    <div>
+      <h2 style="font-size:18px;font-weight:800;margin:0 0 4px;">Download ITP Backup</h2>
+      <p style="font-size:12px;opacity:.75;margin:0;">
+        Select which ITPs to include in the backup ZIP. Each ITP generates a
+        print-ready HTML file per element, with all signatures and attachments embedded.
+      </p>
+    </div>
+  </div>
+
+  {% if not templates %}
+  <div style="text-align:center;padding:50px;background:white;border-radius:18px;border:1.5px solid #f1f5f9;">
+    <i class="fa-solid fa-clipboard-list" style="font-size:36px;color:#e2e8f0;display:block;margin-bottom:12px;"></i>
+    <p style="font-size:15px;font-weight:700;color:#334155;margin:0 0 6px;">No ITPs yet</p>
+    <p style="font-size:13px;color:#94a3b8;margin:0 0 18px;">Create some ITPs first before backing up.</p>
+    <a href="{{ url_for('project_itp_create', pid=proj.id) }}"
+       style="display:inline-flex;align-items:center;gap:6px;padding:9px 20px;
+              background:#7c3aed;color:white;border-radius:10px;font-weight:700;
+              font-size:13px;text-decoration:none;">
+      <i class="fa-solid fa-plus"></i> Create ITP
+    </a>
+  </div>
+
+  {% else %}
+  <!-- Select All -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+    <span style="font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;">
+      {{ templates|length }} ITP Template{% if templates|length != 1 %}s{% endif %}
+    </span>
+    <div style="display:flex;gap:8px;">
+      <button onclick="selectAll(true)"
+              style="padding:5px 12px;background:#f5f3ff;color:#7c3aed;border:1px solid #ddd6fe;
+                     border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">
+        Select All
+      </button>
+      <button onclick="selectAll(false)"
+              style="padding:5px 12px;background:#f8fafc;color:#64748b;border:1px solid #e2e8f0;
+                     border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">
+        Clear
+      </button>
+    </div>
+  </div>
+
+  <!-- Template cards -->
+  {% for t in templates %}
+  <div class="tmpl-card" onclick="toggleCard(this, {{ t.id }})">
+    <input type="checkbox" class="tmpl-cb" data-tid="{{ t.id }}" onclick="event.stopPropagation();" onchange="updateCard(this)"/>
+    <div style="width:40px;height:40px;border-radius:11px;background:#f5f3ff;
+                display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+      <i class="fa-solid fa-clipboard-check" style="color:#7c3aed;font-size:15px;"></i>
+    </div>
+    <div style="flex:1;min-width:0;">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <span style="font-size:10px;font-weight:800;color:#7c3aed;background:#f5f3ff;
+                     padding:1px 7px;border-radius:5px;">ITP #{{ t.itp_number }}</span>
+        <span style="font-size:14px;font-weight:700;color:#0f172a;">{{ t.name }}</span>
+      </div>
+      <p style="font-size:11px;color:#94a3b8;margin:3px 0 0;">
+        Rev {{ t.revision }}{% if t.spec %} · {{ t.spec }}{% endif %}
+        · {{ t.applicable_scope|length }} scope item{% if t.applicable_scope|length != 1 %}s{% endif %}
+      </p>
+    </div>
+    <i class="fa-solid fa-check-circle" style="color:#7c3aed;font-size:18px;opacity:0;transition:opacity .15s;" class="check-icon"></i>
+  </div>
+  {% endfor %}
+
+  <!-- Download button -->
+  <div style="margin-top:20px;position:sticky;bottom:16px;">
+    <button id="dl-btn" onclick="downloadBackup()" disabled
+            style="width:100%;padding:15px;border-radius:12px;font-size:15px;font-weight:800;
+                   border:none;cursor:pointer;color:white;opacity:.5;
+                   background:linear-gradient(135deg,#4338ca,#7c3aed);
+                   box-shadow:0 4px 20px rgba(124,58,237,.4);transition:opacity .2s;">
+      <i class="fa-solid fa-file-zipper" style="margin-right:8px;"></i>
+      <span id="dl-btn-label">Select ITPs to download</span>
+    </button>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const selectedTids = new Set();
+
+function toggleCard(card, tid) {
+  const cb = card.querySelector('.tmpl-cb');
+  cb.checked = !cb.checked;
+  updateCard(cb);
+}
+function updateCard(cb) {
+  const tid  = parseInt(cb.dataset.tid);
+  const card = cb.closest('.tmpl-card');
+  const icon = card.querySelector('.fa-check-circle');
+  if (cb.checked) {
+    selectedTids.add(tid);
+    card.classList.add('selected');
+    if (icon) icon.style.opacity = '1';
+  } else {
+    selectedTids.delete(tid);
+    card.classList.remove('selected');
+    if (icon) icon.style.opacity = '0';
+  }
+  refreshBtn();
+}
+function selectAll(val) {
+  document.querySelectorAll('.tmpl-cb').forEach(cb => {
+    cb.checked = val;
+    updateCard(cb);
+  });
+}
+function refreshBtn() {
+  const btn   = document.getElementById('dl-btn');
+  const label = document.getElementById('dl-btn-label');
+  const n = selectedTids.size;
+  if (n > 0) {
+    btn.disabled = false;
+    btn.style.opacity = '1';
+    label.textContent = `Download ${n} ITP${n!==1?'s':''} as ZIP`;
+  } else {
+    btn.disabled = true;
+    btn.style.opacity = '.5';
+    label.textContent = 'Select ITPs to download';
+  }
+}
+async function downloadBackup() {
+  const btn = document.getElementById('dl-btn');
+  btn.disabled = true;
+  document.getElementById('dl-btn-label').innerHTML =
+    '<i class="fa-solid fa-spinner fa-spin" style="margin-right:8px;"></i>Building ZIP...';
+
+  const resp = await fetch('{{ url_for("project_itp_backup", pid=proj.id) }}', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({template_ids: [...selectedTids]})
+  });
+
+  if (!resp.ok) {
+    const d = await resp.json().catch(() => ({}));
+    alert(d.error || 'Error generating backup.');
+    btn.disabled = false;
+    refreshBtn();
+    return;
+  }
+
+  // Trigger download
+  const blob = await resp.blob();
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `{{ proj.name | replace(' ','_') }}_ITPs_Backup.zip`;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  btn.disabled = false;
+  refreshBtn();
+}
+</script>
+{% endblock %}

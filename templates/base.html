@@ -375,6 +375,22 @@
       <div class="flex items-center gap-2 md:gap-3">
         <span class="text-xs text-slate-400 hidden md:block">{{ now.strftime('%d %b %Y') if now else '' }}</span>
         {% if current_user.is_authenticated %}
+        <!-- Notification Bell -->
+        <a href="{{ url_for('notifications_list') }}" id="notif-bell"
+           style="position:relative;width:36px;height:36px;border-radius:10px;background:#f8fafc;
+                  border:1.5px solid #e2e8f0;display:flex;align-items:center;justify-content:center;
+                  color:#64748b;text-decoration:none;transition:all .15s;"
+           title="Notifications"
+           onmouseover="this.style.background='#f0f9ff';this.style.borderColor='#93c5fd';this.style.color='#2563eb'"
+           onmouseout="this.style.background='#f8fafc';this.style.borderColor='#e2e8f0';this.style.color='#64748b'">
+          <i class="fa-solid fa-bell" style="font-size:14px;"></i>
+          <span id="notif-badge"
+                style="display:none;position:absolute;top:-5px;right:-5px;
+                       background:#ef4444;color:white;font-size:9px;font-weight:800;
+                       border-radius:99px;min-width:16px;height:16px;padding:0 4px;
+                       display:none;align-items:center;justify-content:center;
+                       border:2px solid white;"></span>
+        </a>
         <span class="badge-blue capitalize">{{ current_user.role }}</span>
         {% endif %}
       </div>
@@ -484,6 +500,26 @@
         if (window.innerWidth < 768) closeSidebar();
       });
     });
+
+    // ── Notification badge polling ────────────────────────────────────────
+    {% if current_user.is_authenticated %}
+    function refreshNotifBadge() {
+      fetch('/api/notifications/unread-count')
+        .then(r => r.json())
+        .then(d => {
+          const badge = document.getElementById('notif-badge');
+          if (!badge) return;
+          if (d.count > 0) {
+            badge.textContent = d.count > 99 ? '99+' : d.count;
+            badge.style.display = 'inline-flex';
+          } else {
+            badge.style.display = 'none';
+          }
+        }).catch(() => {});
+    }
+    refreshNotifBadge();
+    setInterval(refreshNotifBadge, 30000); // poll every 30s
+    {% endif %}
 
   </script>
   {% block scripts %}{% endblock %}

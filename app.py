@@ -23,6 +23,7 @@ from models import (db, User, WTG, Area, QATest, TestRecord,
                     FoundationStage, FoundationStageTemplate, FoundationDocument, FOUNDATION_STAGES,
                     CustomTrackingField, ProgressWidget,
                     Document, DocumentLink, DocumentFolder,
+                    Notification,
                     DOCUMENT_CATEGORIES, DOCUMENT_LINK_TYPES, DOCUMENT_LINK_DICT)
 from itp_definitions import ITP_DEFINITIONS, CLIENTS
 from seed import seed
@@ -2358,11 +2359,17 @@ def itp_detail(wtg_id, itp_type):
 
 @app.route('/itp/client/<token>', methods=['GET', 'POST'])
 def itp_client_sign(token):
-    """Public page for client to review + sign the ITP."""
+    """Public page for client to review + sign the ITP (KRWF and project-specific)."""
     record   = ITPRecord.query.filter_by(client_token=token).first_or_404()
     wtg      = record.wtg
-    defn     = ITP_DEFINITIONS.get(record.itp_type, {})
-    statuses = {(s.item_no, s.criterion_index): s for s in record.item_statuses}
+    # Resolve ITP definition (supports both KRWF and project-specific)
+    if record.itp_type.startswith('PROJ_'):
+        tmpl = ProjectITPTemplate.query.get(record.project_itp_template_id)
+        defn = tmpl.to_dict() if tmpl else {}
+    else:
+        defn = ITP_DEFINITIONS.get(record.itp_type, {})
+    statuses  = {(s.item_no, s.criterion_index): s for s in record.item_statuses}
+    proj_name = wtg.project.name if wtg and wtg.project else 'Project'
 
     if request.method == 'POST':
         action = request.form.get('action')
@@ -2376,26 +2383,53 @@ def itp_client_sign(token):
                 record.status           = 'complete'
                 db.session.commit()
 
-                # ── Notify internal team ───────────────────────────────────
-                from models import User
-                notify = User.query.filter(
-                    User.role.in_(['engineer', 'supervisor', 'manager'])
+                # ── In-app notifications ───────────────────────────────────
+                notify_users = User.query.filter(
+                    User.role.in_(['engineer', 'supervisor', 'manager', 'admin'])
                 ).all()
+                itp_name  = defn.get('name', record.itp_type)
+                notif_url = ''
+                if record.project_itp_template_id and wtg:
+                    try:
+                        notif_url = url_for('project_itp_detail',
+                                            pid=wtg.project_id,
+                                            tid=record.project_itp_template_id,
+                                            eid=wtg.id)
+                    except Exception:
+                        pass
+                else:
+                    try:
+                        notif_url = url_for('itp_detail',
+                                            wtg_id=wtg.id,
+                                            itp_type=record.itp_type)
+                    except Exception:
+                        pass
+                for u in notify_users:
+                    db.session.add(Notification(
+                        user_id = u.id,
+                        type    = 'itp_signed',
+                        title   = f'ITP Signed by Client — {wtg.name}',
+                        message = (f'{record.client_name} ({record.client_company}) signed '
+                                   f'"{itp_name}" for {wtg.name} · {proj_name}'),
+                        url     = notif_url,
+                    ))
+                db.session.commit()
+
+                # ── Email notification to internal team ────────────────────
                 email_client_signed(
                     record       = record,
                     wtg_name     = wtg.name,
                     client_name  = record.client_name or 'Client',
-                    notify_users = notify,
+                    notify_users = notify_users,
+                    proj_name    = proj_name,
+                    itp_name     = itp_name,
                 )
-
                 flash('ITP signed successfully. Thank you!', 'success')
             return redirect(url_for('itp_client_sign', token=token))
 
     return render_template('itp_client_sign.html',
-                           record=record,
-                           wtg=wtg,
-                           defn=defn,
-                           statuses=statuses,
+                           record=record, wtg=wtg, defn=defn,
+                           statuses=statuses, proj_name=proj_name,
                            today=date.today().isoformat())
 
 
@@ -2509,14 +2543,19 @@ def api_itp_item_doc_delete(doc_id):
 @app.route('/itp/<int:record_id>/print')
 @login_required
 def itp_print(record_id):
-    """Render a print-friendly ITP for PDF download."""
-    record   = ITPRecord.query.get_or_404(record_id)
-    defn     = ITP_DEFINITIONS.get(record.itp_type)
+    """Render a print-friendly ITP for PDF download. Supports both KRWF and project-specific ITPs."""
+    record = ITPRecord.query.get_or_404(record_id)
+    if record.itp_type.startswith('PROJ_'):
+        tmpl = ProjectITPTemplate.query.get(record.project_itp_template_id)
+        defn = tmpl.to_dict() if tmpl else None
+    else:
+        defn = ITP_DEFINITIONS.get(record.itp_type)
     if not defn:
         return 'ITP type not found', 404
-    statuses = {(s.item_no, s.criterion_index): s for s in record.item_statuses}
+    statuses  = {(s.item_no, s.criterion_index): s for s in record.item_statuses}
+    proj_name = record.wtg.project.name if record.wtg and record.wtg.project else 'Project'
     return render_template('itp_print.html', record=record, defn=defn,
-                           statuses=statuses, wtg=record.wtg)
+                           statuses=statuses, wtg=record.wtg, proj_name=proj_name)
 
 
 # ITP bulk export page
@@ -2546,7 +2585,11 @@ def itp_export_zip():
             record = ITPRecord.query.get(rid)
             if not record:
                 continue
-            defn = ITP_DEFINITIONS.get(record.itp_type)
+            if record.itp_type.startswith('PROJ_'):
+                tmpl = ProjectITPTemplate.query.get(record.project_itp_template_id)
+                defn = tmpl.to_dict() if tmpl else None
+            else:
+                defn = ITP_DEFINITIONS.get(record.itp_type)
             if not defn:
                 continue
             statuses = {(s.item_no, s.criterion_index): s for s in record.item_statuses}
@@ -2573,6 +2616,107 @@ def itp_export_zip():
         as_attachment=True,
         download_name='King_Rocks_ITPs.zip'
     )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PROJECT ITP BACKUP (ZIP)
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route('/projects/<int:pid>/itp/backup', methods=['GET', 'POST'])
+@login_required
+def project_itp_backup(pid):
+    """Page + ZIP generator for project-specific ITP backup."""
+    proj      = Project.query.get_or_404(pid)
+    templates = (ProjectITPTemplate.query
+                 .filter_by(project_id=pid, is_active=True)
+                 .order_by(ProjectITPTemplate.id).all())
+
+    if request.method == 'POST':
+        import zipfile, io as _io
+        data = request.get_json(silent=True) or {}
+        tids = [int(x) for x in data.get('template_ids', [])]
+        if not tids:
+            return jsonify({'error': 'No templates selected'}), 400
+
+        # Collect all records for these templates
+        all_records = ITPRecord.query.filter(
+            ITPRecord.project_itp_template_id.in_(tids)
+        ).all()
+
+        zip_buf = _io.BytesIO()
+        with zipfile.ZipFile(zip_buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for record in all_records:
+                tmpl = ProjectITPTemplate.query.get(record.project_itp_template_id)
+                if not tmpl:
+                    continue
+                defn     = tmpl.to_dict()
+                statuses = {(s.item_no, s.criterion_index): s for s in record.item_statuses}
+                html_content = render_template(
+                    'itp_print.html',
+                    record=record, defn=defn, statuses=statuses,
+                    wtg=record.wtg, proj_name=proj.name
+                )
+                html_content = html_content.replace(
+                    "window.addEventListener('load', () => setTimeout(() => window.print(), 900));",
+                    "// Auto-print disabled in ZIP export"
+                )
+                el_name  = record.wtg.name if record.wtg else f'el{record.wtg_id}'
+                itp_name = tmpl.name.replace(' ', '_').replace('/', '-')[:40]
+                fname    = f"{itp_name}_{el_name}.html"
+                zf.writestr(fname, html_content)
+
+        if zip_buf.tell() == 0:
+            return jsonify({'error': 'No printable records found'}), 400
+
+        zip_buf.seek(0)
+        from flask import send_file
+        safe_proj = proj.name.replace(' ', '_')
+        return send_file(zip_buf, mimetype='application/zip', as_attachment=True,
+                         download_name=f'{safe_proj}_ITPs_Backup.zip')
+
+    return render_template('project_itp_backup.html', proj=proj, templates=templates)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# NOTIFICATIONS
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route('/notifications')
+@login_required
+def notifications_list():
+    notifs = (Notification.query
+              .filter_by(user_id=current_user.id)
+              .order_by(Notification.created_at.desc())
+              .limit(100).all())
+    # Mark all as read on page visit
+    for n in notifs:
+        n.is_read = True
+    db.session.commit()
+    return render_template('notifications.html', notifications=notifs)
+
+
+@app.route('/api/notifications/unread-count')
+@login_required
+def api_notif_unread_count():
+    count = Notification.query.filter_by(user_id=current_user.id, is_read=False).count()
+    return jsonify({'count': count})
+
+
+@app.route('/api/notifications/<int:nid>/read', methods=['POST'])
+@login_required
+def api_notif_mark_read(nid):
+    n = Notification.query.filter_by(id=nid, user_id=current_user.id).first_or_404()
+    n.is_read = True
+    db.session.commit()
+    return jsonify({'ok': True})
+
+
+@app.route('/api/notifications/read-all', methods=['POST'])
+@login_required
+def api_notif_read_all():
+    Notification.query.filter_by(user_id=current_user.id, is_read=False).update({'is_read': True})
+    db.session.commit()
+    return jsonify({'ok': True})
 
 
 # ══════════════════════════════════════════════════════════════════════════════

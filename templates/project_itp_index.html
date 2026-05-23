@@ -30,6 +30,12 @@
     <span style="color:#0f172a;font-weight:700;">ITPs</span>
     <div style="flex:1;"></div>
     {% if templates %}
+    <a href="{{ url_for('project_itp_backup', pid=proj.id) }}"
+       style="display:inline-flex;align-items:center;gap:7px;padding:8px 14px;border-radius:10px;
+              background:#f5f3ff;color:#7c3aed;font-size:12px;border:1.5px solid #ddd6fe;
+              font-weight:700;text-decoration:none;">
+      <i class="fa-solid fa-file-zipper"></i> Backup
+    </a>
     <a href="{{ url_for('project_itp_create', pid=proj.id) }}"
        style="display:inline-flex;align-items:center;gap:7px;padding:8px 18px;border-radius:10px;
               background:linear-gradient(135deg,#7c3aed,#6d28d9);color:white;font-size:12px;
