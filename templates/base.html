@@ -264,7 +264,10 @@
           </a>
           {% endif %}
           {% if active_project.feature_enabled('itp') %}
-          <a href="{{ url_for('itp_index') }}" class="sub-link {% if request.endpoint in ('itp_index','itp_detail','itp_export') %}active{% endif %}">
+          {# KRWF legacy → /itp; all other projects → /projects/<pid>/itp #}
+          {% set _itp_url = url_for('project_itp_index', pid=active_project.id) %}
+          {% set _itp_active = request.endpoint in ('itp_index','itp_detail','itp_export','project_itp_index','project_itp_create','project_itp_detail','project_itp_template_view') %}
+          <a href="{{ _itp_url }}" class="sub-link {% if _itp_active %}active{% endif %}">
             <i class="fa-solid fa-clipboard-list" style="width:14px;"></i> ITPs
           </a>
           {% endif %}

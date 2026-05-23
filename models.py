@@ -1,4 +1,4 @@
-import os
+import os, json
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from datetime import datetime, timezone
@@ -432,11 +432,79 @@ class TestPhoto(db.Model):
 # ─────────────────────────────────────────────
 # ITP RECORDS  (one per WTG per ITP type)
 # ─────────────────────────────────────────────
+# ═══════════════════════════════════════════════
+# PROJECT ITP TEMPLATES  (new-style, per-project)
+# ═══════════════════════════════════════════════
+class ProjectITPTemplate(db.Model):
+    """Project-specific ITP definition — replaces hardcoded ITP_DEFINITIONS for new projects."""
+    __tablename__ = 'project_itp_templates'
+    id              = db.Column(db.Integer, primary_key=True)
+    project_id      = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=False)
+    itp_number      = db.Column(db.String(20), default='01')
+    name            = db.Column(db.String(200), nullable=False)
+    revision        = db.Column(db.String(10),  default='A')
+    date            = db.Column(db.String(20),  default='')
+    works           = db.Column(db.String(200), default='')
+    spec            = db.Column(db.String(200), default='')
+    scope           = db.Column(db.Text,        default='')
+    prepared_by     = db.Column(db.String(100), default='')
+    approved_by     = db.Column(db.String(100), default='')
+    # JSON list of item dicts: [{no, activity, criteria, rows, lucas_codes, client_codes, hold_witness}]
+    items_json      = db.Column(db.Text, default='[]')
+    # JSON list of scope selections: [{type: group|wp|element|area, id, name}]
+    applicable_scope_json = db.Column(db.Text, default='[]')
+    is_active       = db.Column(db.Boolean, default=True)
+    created_at      = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    created_by_id   = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+
+    project         = db.relationship('Project', backref='itp_templates', lazy=True)
+
+    # ── JSON accessors ──
+    @property
+    def items(self):
+        try: return json.loads(self.items_json or '[]')
+        except: return []
+
+    @items.setter
+    def items(self, val):
+        self.items_json = json.dumps(val)
+
+    @property
+    def applicable_scope(self):
+        try: return json.loads(self.applicable_scope_json or '[]')
+        except: return []
+
+    @applicable_scope.setter
+    def applicable_scope(self, val):
+        self.applicable_scope_json = json.dumps(val)
+
+    def to_dict(self):
+        """Return same structure as ITP_DEFINITIONS values so itp_detail.html works unchanged."""
+        return {
+            'itp_number':   self.itp_number,
+            'name':         self.name,
+            'revision':     self.revision,
+            'date':         self.date or '',
+            'works':        self.works or '',
+            'spec':         self.spec or '',
+            'scope':        self.scope or '',
+            'prepared_by':  self.prepared_by or '',
+            'approved_by':  self.approved_by or '',
+            'items':        self.items,
+        }
+
+    @property
+    def itp_type_key(self):
+        """Unique key for ITPRecord.itp_type column."""
+        return f'PROJ_{self.id}'
+
+
 class ITPRecord(db.Model):
     __tablename__ = 'itp_records'
     id              = db.Column(db.Integer, primary_key=True)
     wtg_id          = db.Column(db.Integer, db.ForeignKey('wtgs.id'), nullable=False)
-    itp_type        = db.Column(db.String(10), nullable=False)   # ITP02 | ITP03
+    itp_type        = db.Column(db.String(20), nullable=False)   # ITP02 | ITP03 | PROJ_<tid>
+    project_itp_template_id = db.Column(db.Integer, db.ForeignKey('project_itp_templates.id'), nullable=True)
     lot_number      = db.Column(db.String(50))
     location        = db.Column(db.String(200))
     created_at      = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))

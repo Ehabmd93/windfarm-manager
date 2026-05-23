@@ -18,6 +18,7 @@ from models import (db, User, WTG, Area, QATest, TestRecord,
                     ProofRollEquipment, ProofRollPhoto, ProofRollRectPhoto,
                     TempPhotoUpload,
                     TestPhoto,
+                    ProjectITPTemplate,
                     ITPRecord, ITPItemStatus, ITPItemDocument,
                     FoundationStage, FoundationStageTemplate, FoundationDocument, FOUNDATION_STAGES,
                     CustomTrackingField, ProgressWidget,
@@ -2007,6 +2008,212 @@ def itp_index():
                            itp_types=list(ITP_DEFINITIONS.keys()),
                            itp_defs=ITP_DEFINITIONS,
                            by_key=by_key)
+
+
+# ─── Project-specific ITP (new-style, any project) ───────────────────────────
+
+@app.route('/projects/<int:pid>/itp')
+@login_required
+def project_itp_index(pid):
+    """Landing page for project-specific ITPs — welcome screen or grid if ITPs exist."""
+    proj = Project.query.get_or_404(pid)
+    from flask import session as fsession
+    fsession['active_project_id'] = pid
+
+    templates = (ProjectITPTemplate.query
+                 .filter_by(project_id=pid, is_active=True)
+                 .order_by(ProjectITPTemplate.id).all())
+
+    # All records for this project's templates
+    tid_list = [t.id for t in templates]
+    records_all = (ITPRecord.query
+                   .filter(ITPRecord.project_itp_template_id.in_(tid_list)).all()
+                   if tid_list else [])
+    by_key = {(r.wtg_id, r.project_itp_template_id): r for r in records_all}
+
+    # Hierarchy for the welcome mini-tree
+    elements      = WTG.query.filter_by(project_id=pid).order_by(WTG.name).all()
+    groups        = WTGGroup.query.filter_by(project_id=pid).order_by(WTGGroup.sort_order, WTGGroup.name).all()
+    work_packages = WorkPackage.query.filter_by(project_id=pid).order_by(WorkPackage.sort_order, WorkPackage.name).all()
+
+    return render_template('project_itp_index.html',
+                           proj=proj, templates=templates,
+                           by_key=by_key,
+                           elements=elements, groups=groups, work_packages=work_packages)
+
+
+@app.route('/projects/<int:pid>/itp/create', methods=['GET', 'POST'])
+@login_required
+def project_itp_create(pid):
+    """3-step ITP creation wizard."""
+    proj = Project.query.get_or_404(pid)
+    from flask import session as fsession
+    fsession['active_project_id'] = pid
+
+    if request.method == 'POST':
+        data = request.get_json(silent=True) or {}
+        t = ProjectITPTemplate(
+            project_id   = pid,
+            itp_number   = data.get('itp_number', '01').strip(),
+            name         = data.get('name', 'Untitled ITP').strip(),
+            revision     = data.get('revision', 'A').strip(),
+            date         = data.get('date', '').strip(),
+            works        = data.get('works', '').strip(),
+            spec         = data.get('spec', '').strip(),
+            scope        = data.get('scope', '').strip(),
+            prepared_by  = data.get('prepared_by', '').strip(),
+            approved_by  = data.get('approved_by', '').strip(),
+            items_json   = json.dumps(data.get('items', [])),
+            applicable_scope_json = json.dumps(data.get('scope_selection', [])),
+            created_by_id = current_user.id,
+        )
+        db.session.add(t)
+        db.session.commit()
+        return jsonify({'ok': True, 'id': t.id,
+                        'redirect': url_for('project_itp_index', pid=pid)})
+
+    elements      = WTG.query.filter_by(project_id=pid).order_by(WTG.name).all()
+    groups        = WTGGroup.query.filter_by(project_id=pid).order_by(WTGGroup.sort_order, WTGGroup.name).all()
+    work_packages = WorkPackage.query.filter_by(project_id=pid).order_by(WorkPackage.sort_order, WorkPackage.name).all()
+    existing_count = ProjectITPTemplate.query.filter_by(project_id=pid).count()
+    suggested_no   = str(existing_count + 1).zfill(2)
+
+    return render_template('project_itp_wizard.html',
+                           proj=proj, elements=elements,
+                           groups=groups, work_packages=work_packages,
+                           suggested_no=suggested_no)
+
+
+@app.route('/projects/<int:pid>/itp/<int:tid>/element/<int:eid>', methods=['GET', 'POST'])
+@login_required
+def project_itp_detail(pid, tid, eid):
+    """Full ITP checklist for a project-specific template + element."""
+    proj     = Project.query.get_or_404(pid)
+    template = ProjectITPTemplate.query.filter_by(id=tid, project_id=pid).first_or_404()
+    wtg      = WTG.query.filter_by(id=eid, project_id=pid).first_or_404()
+    defn     = template.to_dict()
+    itp_type = template.itp_type_key
+
+    # Get or create ITPRecord
+    record = ITPRecord.query.filter_by(wtg_id=eid, itp_type=itp_type).first()
+    if not record:
+        record = ITPRecord(
+            wtg_id=eid, itp_type=itp_type,
+            project_itp_template_id=tid,
+            created_by=current_user.id, status='draft',
+            engineer_company='TCS',
+        )
+        db.session.add(record)
+        db.session.flush()
+
+    # Ensure per-criterion rows exist
+    existing_keys = {(s.item_no, s.criterion_index) for s in record.item_statuses}
+    for item in defn['items']:
+        for ci, crit in enumerate(item.get('criteria', [])):
+            if (item['no'], ci) not in existing_keys:
+                row = item.get('rows', [])[ci] if ci < len(item.get('rows', [])) else {}
+                db.session.add(ITPItemStatus(
+                    itp_record_id=record.id, item_no=item['no'],
+                    criterion_index=ci, activity=item['activity'],
+                    criterion_text=crit,
+                    inspection_code=row.get('inspection', ''),
+                    frequency=row.get('frequency', ''),
+                ))
+    db.session.commit()
+
+    statuses = {(s.item_no, s.criterion_index): s for s in record.item_statuses}
+
+    if request.method == 'POST':
+        action = request.form.get('action')
+        if action == 'save_meta':
+            record.lot_number       = request.form.get('lot_number', '').strip()
+            record.location         = request.form.get('location', '').strip()
+            record.engineer_name    = request.form.get('engineer_name', '').strip()
+            record.engineer_company = request.form.get('engineer_company', 'TCS').strip()
+            db.session.commit()
+            flash('ITP details saved.', 'success')
+            return redirect(url_for('project_itp_detail', pid=pid, tid=tid, eid=eid))
+
+        elif action == 'invite_client':
+            client_id    = request.form.get('client_id', '')
+            client_email = request.form.get('client_email', '').strip()
+            client_info  = next((c for c in CLIENTS if c['id'] == client_id), None)
+            if not client_info:
+                flash('Please select a client.', 'danger')
+                return redirect(url_for('project_itp_detail', pid=pid, tid=tid, eid=eid))
+            token = uuid.uuid4().hex
+            record.client_name       = client_info['name']
+            record.client_company    = client_info['company']
+            record.client_email      = client_email
+            record.client_token      = token
+            record.client_invited_at = datetime.now(timezone.utc)
+            record.engineer_signed_at = record.engineer_signed_at or datetime.now(timezone.utc)
+            record.status            = 'client_invited'
+            db.session.commit()
+            sign_url = url_for('itp_client_sign', token=token, _external=True)
+            if client_email:
+                sent = email_client_invitation(
+                    record=record, wtg_name=wtg.name, sign_url=sign_url,
+                    client_name=client_info['name'], client_email=client_email)
+                flash(f'Invitation sent to {client_email}!' if sent else
+                      f'Link generated for {client_info["name"]} — copy below.', 'success' if sent else 'warning')
+            else:
+                flash(f'Client link generated for {client_info["name"]}!', 'success')
+            return redirect(url_for('project_itp_detail', pid=pid, tid=tid, eid=eid))
+
+    now_dt = datetime.now().strftime('%Y-%m-%dT%H:%M')
+    itp_links = DocumentLink.query.filter_by(link_type='itp_record', link_id=record.id).all()
+    itp_doc_ids = [lnk.document_id for lnk in itp_links]
+    itp_linked_docs = Document.query.filter(
+        Document.id.in_(itp_doc_ids), Document.is_active == True).all() if itp_doc_ids else []
+
+    return render_template('project_itp_detail.html',
+                           proj=proj, template=template,
+                           wtg=wtg, itp_type=itp_type,
+                           defn=defn, record=record, statuses=statuses,
+                           clients=CLIENTS, today=date.today().isoformat(),
+                           now_dt=now_dt, linked_docs=itp_linked_docs,
+                           pid=pid, tid=tid, eid=eid)
+
+
+@app.route('/projects/<int:pid>/itp/<int:tid>', methods=['GET', 'POST'])
+@login_required
+def project_itp_template_view(pid, tid):
+    """View/manage a single ITP template — shows applicable elements as cards."""
+    proj     = Project.query.get_or_404(pid)
+    template = ProjectITPTemplate.query.filter_by(id=tid, project_id=pid).first_or_404()
+    from flask import session as fsession
+    fsession['active_project_id'] = pid
+
+    itp_type = template.itp_type_key
+    scope    = template.applicable_scope   # [{type, id, name}]
+
+    # Collect applicable elements
+    scope_eids = [s['id'] for s in scope if s.get('type') == 'element']
+    # If no explicit element scope, fall back to all project elements
+    if not scope_eids:
+        elements = WTG.query.filter_by(project_id=pid).order_by(WTG.name).all()
+    else:
+        elements = WTG.query.filter(WTG.id.in_(scope_eids)).order_by(WTG.name).all()
+
+    records  = ITPRecord.query.filter_by(itp_type=itp_type).all()
+    by_eid   = {r.wtg_id: r for r in records}
+
+    return render_template('project_itp_template_view.html',
+                           proj=proj, template=template,
+                           elements=elements, by_eid=by_eid,
+                           pid=pid, tid=tid)
+
+
+@app.route('/projects/<int:pid>/itp/<int:tid>/delete', methods=['POST'])
+@login_required
+def project_itp_delete(pid, tid):
+    """Soft-delete an ITP template."""
+    t = ProjectITPTemplate.query.filter_by(id=tid, project_id=pid).first_or_404()
+    t.is_active = False
+    db.session.commit()
+    flash('ITP template deleted.', 'success')
+    return redirect(url_for('project_itp_index', pid=pid))
 
 
 @app.route('/itp/<int:wtg_id>/<itp_type>', methods=['GET', 'POST'])

@@ -1,0 +1,292 @@
+{% extends 'base.html' %}
+{% block title %}ITPs — {{ proj.name }}{% endblock %}
+{% block page_title %}Inspection & Test Plans{% endblock %}
+{% block page_sub %}{{ proj.name }}{% endblock %}
+
+{% block head %}
+<style>
+@keyframes fadeUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+.itp-card { transition:all .2s;cursor:pointer;text-decoration:none; }
+.itp-card:hover { transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.1); }
+.status-pill { font-size:10px;font-weight:700;letter-spacing:.05em;padding:2px 8px;border-radius:999px;text-transform:uppercase; }
+.step-circle {
+  width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-size:16px;font-weight:900;flex-shrink:0;
+}
+.hier-mini-node {
+  display:inline-flex;align-items:center;gap:6px;padding:4px 11px;border-radius:8px;
+  font-size:11px;font-weight:700;white-space:nowrap;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="max-width:1060px;margin:0 auto;">
+
+  <!-- Breadcrumb -->
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:20px;font-size:13px;">
+    <a href="{{ url_for('dashboard') }}" style="color:#94a3b8;text-decoration:none;font-weight:600;">Home</a>
+    <span style="color:#cbd5e1;">›</span>
+    <span style="color:#0f172a;font-weight:700;">ITPs</span>
+    <div style="flex:1;"></div>
+    {% if templates %}
+    <a href="{{ url_for('project_itp_create', pid=proj.id) }}"
+       style="display:inline-flex;align-items:center;gap:7px;padding:8px 18px;border-radius:10px;
+              background:linear-gradient(135deg,#7c3aed,#6d28d9);color:white;font-size:12px;
+              font-weight:700;text-decoration:none;box-shadow:0 4px 12px rgba(124,58,237,.25);">
+      <i class="fa-solid fa-plus"></i> New ITP
+    </a>
+    {% endif %}
+  </div>
+
+  {% if not templates %}
+  {# ════════════ WELCOME / SETUP SCREEN ════════════ #}
+
+  <!-- Hero banner -->
+  <div style="background:linear-gradient(135deg,#1e1b4b,#312e81,#4c1d95);border-radius:24px;
+              padding:40px 40px 36px;margin-bottom:28px;position:relative;overflow:hidden;
+              animation:fadeUp .5s ease both;">
+    <!-- Background pattern -->
+    <div style="position:absolute;inset:0;background-image:radial-gradient(circle,rgba(167,139,250,.15) 1px,transparent 1px);
+                background-size:24px 24px;pointer-events:none;"></div>
+    <div style="position:relative;z-index:1;">
+      <div style="display:flex;align-items:flex-start;gap:20px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:280px;">
+          <div style="display:inline-flex;align-items:center;gap:8px;background:rgba(167,139,250,.2);
+                      border:1px solid rgba(167,139,250,.3);border-radius:20px;padding:4px 14px;
+                      font-size:11px;font-weight:700;color:#c4b5fd;margin-bottom:14px;">
+            <i class="fa-solid fa-clipboard-list"></i> ITP SETUP
+          </div>
+          <h2 style="font-size:26px;font-weight:900;color:white;margin-bottom:8px;line-height:1.2;">
+            Let's set up your<br>Project ITPs 📋
+          </h2>
+          <p style="color:rgba(255,255,255,.7);font-size:14px;line-height:1.6;max-width:460px;">
+            Inspection & Test Plans keep your quality process traceable and client-ready.
+            Create project-specific ITPs, link them to your hierarchy, and sign off criteria as you go.
+          </p>
+          <div style="margin-top:20px;">
+            <a href="{{ url_for('project_itp_create', pid=proj.id) }}"
+               style="display:inline-flex;align-items:center;gap:8px;padding:12px 28px;
+                      background:white;color:#7c3aed;border-radius:12px;font-size:14px;
+                      font-weight:800;text-decoration:none;box-shadow:0 4px 14px rgba(0,0,0,.2);">
+              <i class="fa-solid fa-plus"></i> Create Your First ITP
+            </a>
+          </div>
+        </div>
+        <div style="flex-shrink:0;">
+          <div style="width:90px;height:90px;border-radius:24px;background:rgba(255,255,255,.12);
+                      display:flex;align-items:center;justify-content:center;">
+            <i class="fa-solid fa-clipboard-check" style="font-size:40px;color:rgba(255,255,255,.8);"></i>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- How it works -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;margin-bottom:28px;
+              animation:fadeUp .5s ease .1s both;">
+    {% for step_n, step_icon, step_title, step_desc, step_color in [
+      (1, 'fa-pen-to-square', 'Define ITP Basics', 'Name your ITP, set the spec reference, scope description, revision and dates.', '#7c3aed'),
+      (2, 'fa-sitemap', 'Select Scope', 'Pick which Groups, Work Packages, or Elements this ITP applies to from your project hierarchy.', '#0ea5e9'),
+      (3, 'fa-list-check', 'Add Activities', 'Define inspection activities, criteria rows, hold/witness points and inspection codes.', '#10b981'),
+    ] %}
+    <div style="background:white;border-radius:18px;padding:20px;border:1.5px solid #f1f5f9;
+                box-shadow:0 1px 4px rgba(0,0,0,.04);">
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:12px;">
+        <div class="step-circle" style="background:{{ step_color }}18;color:{{ step_color }};">
+          <i class="fa-solid {{ step_icon }}"></i>
+        </div>
+        <div style="width:24px;height:24px;border-radius:50%;background:{{ step_color }};
+                    display:flex;align-items:center;justify-content:center;font-size:11px;
+                    font-weight:900;color:white;flex-shrink:0;">{{ step_n }}</div>
+      </div>
+      <p style="font-weight:800;color:#0f172a;font-size:14px;margin-bottom:6px;">{{ step_title }}</p>
+      <p style="font-size:12px;color:#64748b;line-height:1.5;">{{ step_desc }}</p>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Project hierarchy preview (mini read-only) -->
+  {% if groups or elements %}
+  <div style="background:white;border-radius:18px;padding:22px;border:1.5px solid #f1f5f9;
+              box-shadow:0 1px 4px rgba(0,0,0,.04);margin-bottom:24px;
+              animation:fadeUp .5s ease .2s both;">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+      <div style="width:32px;height:32px;border-radius:9px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;">
+        <i class="fa-solid fa-sitemap" style="color:#7c3aed;font-size:13px;"></i>
+      </div>
+      <div>
+        <p style="font-weight:800;color:#0f172a;font-size:14px;margin:0;">Your Project Hierarchy</p>
+        <p style="font-size:11px;color:#94a3b8;margin:0;">ITPs will be linked to these nodes</p>
+      </div>
+      <a href="{{ url_for('project_hierarchy', pid=proj.id) }}"
+         style="margin-left:auto;font-size:11px;font-weight:700;color:#7c3aed;text-decoration:none;">
+        Full tree view →
+      </a>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+      {% for g in groups %}
+      <div class="hier-mini-node" style="background:{{ g.color }}18;border:1px solid {{ g.color }}44;color:{{ g.color }};">
+        <div style="width:7px;height:7px;border-radius:50%;background:{{ g.color }};"></div>
+        {{ g.name }}
+      </div>
+      {% endfor %}
+      {% for wp in work_packages %}
+      <div class="hier-mini-node" style="background:{{ wp.color }}18;border:1px solid {{ wp.color }}44;color:{{ wp.color }};">
+        <i class="fa-solid fa-{{ wp.icon }}" style="font-size:9px;"></i>
+        {{ wp.name }}
+      </div>
+      {% endfor %}
+      {% if elements %}
+      <div class="hier-mini-node" style="background:#f1f5f9;border:1px solid #e2e8f0;color:#475569;">
+        <i class="fa-solid fa-tower-broadcast" style="font-size:9px;"></i>
+        {{ elements|length }} Element{{ 's' if elements|length != 1 }}
+      </div>
+      {% endif %}
+    </div>
+    {% if not groups and not work_packages %}
+    <div style="padding:16px 0;text-align:center;">
+      <p style="font-size:13px;color:#94a3b8;">No hierarchy defined yet. </p>
+      <a href="{{ url_for('project_setup', pid=proj.id) }}" style="color:#7c3aed;font-weight:700;font-size:13px;">
+        Set up your project structure →
+      </a>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% else %}
+  {# ════════════ ITP LIST (templates exist) ════════════ #}
+
+  <!-- Header bar -->
+  <div style="background:linear-gradient(135deg,#7c3aed,#6d28d9);border-radius:20px;
+              padding:24px 28px;margin-bottom:24px;display:flex;align-items:center;gap:18px;">
+    <div style="width:52px;height:52px;border-radius:16px;background:rgba(255,255,255,.15);
+                display:flex;align-items:center;justify-content:center;">
+      <i class="fa-solid fa-clipboard-check" style="font-size:22px;color:white;"></i>
+    </div>
+    <div style="flex:1;">
+      <p style="color:rgba(255,255,255,.7);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px;">
+        {{ proj.name }}
+      </p>
+      <h2 style="color:white;font-size:20px;font-weight:900;margin:0;">
+        Inspection & Test Plans
+      </h2>
+      <p style="color:rgba(255,255,255,.6);font-size:12px;margin:4px 0 0;">
+        {{ templates|length }} ITP{{ 's' if templates|length != 1 }} defined for this project
+      </p>
+    </div>
+    <a href="{{ url_for('project_hierarchy', pid=proj.id) }}"
+       style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;
+              background:rgba(255,255,255,.15);color:white;border-radius:10px;
+              font-size:12px;font-weight:700;text-decoration:none;border:1px solid rgba(255,255,255,.2);">
+      <i class="fa-solid fa-sitemap"></i> Hierarchy
+    </a>
+  </div>
+
+  <!-- ITP cards -->
+  {% for t in templates %}
+  {% set t_records = [] %}
+  {% for el in elements %}
+    {% set r = by_key.get((el.id, t.id)) %}
+    {% if r %}{% set _ = t_records.append(r) %}{% endif %}
+  {% endfor %}
+  {% set done_count = t_records|selectattr('status', 'equalto', 'complete')|list|length %}
+
+  <div style="background:white;border-radius:20px;border:1.5px solid #f1f5f9;
+              box-shadow:0 1px 4px rgba(0,0,0,.04);overflow:hidden;margin-bottom:20px;">
+    <!-- Template header -->
+    <div style="padding:18px 22px 14px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;gap:14px;">
+      <div style="width:44px;height:44px;border-radius:13px;background:#f5f3ff;
+                  display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <i class="fa-solid fa-clipboard-check" style="color:#7c3aed;font-size:17px;"></i>
+      </div>
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <span style="font-size:10px;font-weight:800;color:#7c3aed;background:#f5f3ff;
+                       padding:2px 8px;border-radius:6px;">ITP #{{ t.itp_number }}</span>
+          <h3 style="font-size:15px;font-weight:900;color:#0f172a;margin:0;">{{ t.name }}</h3>
+        </div>
+        <p style="font-size:11px;color:#94a3b8;margin:3px 0 0;">
+          Rev {{ t.revision }}
+          {% if t.spec %} · Spec: {{ t.spec }}{% endif %}
+          {% if t.date %} · {{ t.date }}{% endif %}
+        </p>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <a href="{{ url_for('project_itp_template_view', pid=proj.id, tid=t.id) }}"
+           style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;
+                  background:#7c3aed;color:white;border-radius:9px;font-size:11px;
+                  font-weight:700;text-decoration:none;">
+          <i class="fa-solid fa-arrow-right"></i> Open
+        </a>
+        <form method="POST" action="{{ url_for('project_itp_delete', pid=proj.id, tid=t.id) }}"
+              onsubmit="return confirm('Delete this ITP template?')" style="margin:0;">
+          <button type="submit" style="padding:7px 10px;background:#fef2f2;color:#dc2626;
+                  border:1px solid #fecaca;border-radius:9px;font-size:11px;font-weight:700;cursor:pointer;">
+            <i class="fa-solid fa-trash"></i>
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Applicable scope chips -->
+    {% if t.applicable_scope %}
+    <div style="padding:10px 22px;border-bottom:1px solid #f8fafc;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+      <span style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;">Applies to:</span>
+      {% for s in t.applicable_scope %}
+      <span style="font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;
+                   background:#f8fafc;border:1px solid #e2e8f0;color:#475569;">
+        <i class="fa-solid fa-{% if s.type == 'group' %}circle{% elif s.type == 'wp' %}boxes-stacked{% elif s.type == 'element' %}tower-broadcast{% else %}map-pin{% endif %}"
+           style="font-size:9px;opacity:.6;"></i>
+        {{ s.name }}
+      </span>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Element grid -->
+    {% if elements %}
+    <div style="padding:14px 22px;">
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;">
+        {% for el in elements %}
+        {% set rec = by_key.get((el.id, t.id)) %}
+        <a href="{{ url_for('project_itp_detail', pid=proj.id, tid=t.id, eid=el.id) }}"
+           class="itp-card block">
+          <div class="bg-white border rounded-xl p-3
+            {% if rec and rec.status == 'complete' %}border-green-300 bg-green-50
+            {% elif rec and rec.status == 'client_invited' %}border-blue-300 bg-blue-50
+            {% elif rec and rec.status == 'engineer_signed' %}border-violet-300 bg-violet-50
+            {% elif rec %}border-yellow-200 bg-yellow-50
+            {% else %}border-slate-200{% endif %}">
+            <p style="font-weight:800;color:#1e293b;font-size:12px;margin-bottom:4px;">{{ el.name }}</p>
+            {% if rec %}
+              {% if rec.status == 'complete' %}
+                <span class="status-pill bg-green-100 text-green-700">Complete</span>
+              {% elif rec.status == 'client_invited' %}
+                <span class="status-pill bg-blue-100 text-blue-700">Client Invited</span>
+              {% elif rec.status == 'engineer_signed' %}
+                <span class="status-pill bg-violet-100 text-violet-700">Eng. Signed</span>
+              {% else %}
+                <span class="status-pill bg-yellow-100 text-yellow-700">In Progress</span>
+              {% endif %}
+              <p style="font-size:10px;color:#94a3b8;margin-top:3px;">
+                {{ rec.items_complete_count }}/{{ t.items|length }} items
+              </p>
+            {% else %}
+              <span class="status-pill bg-slate-100 text-slate-500">Not Started</span>
+            {% endif %}
+          </div>
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+
+  {% endif %}
+
+</div>
+{% endblock %}

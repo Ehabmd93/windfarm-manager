@@ -1,0 +1,640 @@
+{% extends 'base.html' %}
+{% block title %}Create ITP — {{ proj.name }}{% endblock %}
+{% block page_title %}Create New ITP{% endblock %}
+{% block page_sub %}{{ proj.name }} · Step-by-step setup{% endblock %}
+
+{% block head %}
+<style>
+@keyframes fadeUp { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+
+/* ── Step indicator ── */
+.step-bar { display:flex;align-items:center;gap:0;margin-bottom:28px; }
+.step-item { display:flex;align-items:center;gap:8px;flex:1; }
+.step-item:last-child { flex:none; }
+.step-dot {
+  width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-size:14px;font-weight:900;flex-shrink:0;transition:all .3s;
+  border:2.5px solid #e2e8f0;background:white;color:#94a3b8;
+}
+.step-dot.active { border-color:#7c3aed;background:#7c3aed;color:white;box-shadow:0 0 16px rgba(124,58,237,.3); }
+.step-dot.done   { border-color:#10b981;background:#10b981;color:white; }
+.step-line { flex:1;height:2px;background:#e2e8f0;transition:background .3s;margin:0 8px; }
+.step-line.done  { background:#10b981; }
+.step-label { font-size:11px;font-weight:700;color:#94a3b8;white-space:nowrap;margin-top:4px; }
+.step-label.active { color:#7c3aed; }
+.step-label.done   { color:#10b981; }
+
+/* ── Panel ── */
+.wizard-panel { display:none;animation:fadeUp .35s ease both; }
+.wizard-panel.active { display:block; }
+
+/* ── Form elements ── */
+.wiz-label { display:block;font-size:11px;font-weight:700;color:#64748b;margin-bottom:5px;text-transform:uppercase;letter-spacing:.05em; }
+.wiz-input {
+  width:100%;padding:10px 13px;border-radius:10px;border:1.5px solid #e2e8f0;
+  font-size:13px;outline:none;transition:border-color .15s;box-sizing:border-box;
+}
+.wiz-input:focus { border-color:#7c3aed;box-shadow:0 0 0 3px rgba(124,58,237,.08); }
+.wiz-textarea { resize:vertical;min-height:80px; }
+
+/* ── Scope tree ── */
+.scope-group {
+  border:1.5px solid #e2e8f0;border-radius:14px;overflow:hidden;margin-bottom:10px;
+}
+.scope-group-hdr {
+  display:flex;align-items:center;gap:10px;padding:11px 16px;
+  background:#f8fafc;cursor:pointer;user-select:none;
+}
+.scope-group-hdr:hover { background:#f1f5f9; }
+.scope-group-body { padding:10px 16px 12px; }
+.scope-node {
+  display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:9px;
+  cursor:pointer;transition:background .1s;margin-bottom:3px;
+}
+.scope-node:hover { background:#f8fafc; }
+.scope-node input[type=checkbox] { width:16px;height:16px;accent-color:#7c3aed;cursor:pointer;flex-shrink:0; }
+.scope-node-label { font-size:13px;font-weight:600;color:#1e293b; }
+.scope-node-sub   { font-size:11px;color:#94a3b8; }
+
+/* ── Activity builder ── */
+.activity-block {
+  border:1.5px solid #e2e8f0;border-radius:14px;overflow:hidden;margin-bottom:12px;
+}
+.activity-block-hdr {
+  display:flex;align-items:center;gap:10px;padding:12px 16px;
+  background:#f8fafc;border-bottom:1px solid #e2e8f0;
+}
+.activity-block-body { padding:14px 16px; }
+.criteria-row {
+  display:grid;grid-template-columns:1fr 120px 100px;gap:8px;margin-bottom:8px;align-items:start;
+}
+.code-btn {
+  font-size:10px;font-weight:800;padding:3px 8px;border-radius:5px;border:1.5px solid #e2e8f0;
+  background:white;cursor:pointer;transition:all .15s;
+}
+.code-btn.sel { border-color:#7c3aed;background:#7c3aed;color:white; }
+.code-btn.sel-h  { border-color:#dc2626;background:#dc2626;color:white; }
+.code-btn.sel-w  { border-color:#2563eb;background:#2563eb;color:white; }
+.code-btn.sel-t  { border-color:#7c3aed;background:#7c3aed;color:white; }
+.code-btn.sel-c  { border-color:#16a34a;background:#16a34a;color:white; }
+.code-btn.sel-m  { border-color:#ea580c;background:#ea580c;color:white; }
+
+/* ── Nav buttons ── */
+.wiz-btn-primary {
+  display:inline-flex;align-items:center;gap:8px;padding:11px 28px;
+  background:linear-gradient(135deg,#7c3aed,#6d28d9);color:white;border-radius:11px;
+  font-size:13px;font-weight:800;border:none;cursor:pointer;
+  box-shadow:0 4px 12px rgba(124,58,237,.25);transition:all .15s;
+}
+.wiz-btn-primary:hover { box-shadow:0 6px 18px rgba(124,58,237,.35);transform:translateY(-1px); }
+.wiz-btn-secondary {
+  display:inline-flex;align-items:center;gap:8px;padding:11px 22px;
+  background:#f1f5f9;color:#475569;border-radius:11px;font-size:13px;font-weight:700;
+  border:1.5px solid #e2e8f0;cursor:pointer;transition:all .15s;
+}
+.wiz-btn-secondary:hover { background:#e2e8f0; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="max-width:780px;margin:0 auto;">
+
+  <!-- Breadcrumb -->
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:24px;font-size:13px;">
+    <a href="{{ url_for('dashboard') }}" style="color:#94a3b8;text-decoration:none;font-weight:600;">Home</a>
+    <span style="color:#cbd5e1;">›</span>
+    <a href="{{ url_for('project_itp_index', pid=proj.id) }}"
+       style="color:#94a3b8;text-decoration:none;font-weight:600;">ITPs</a>
+    <span style="color:#cbd5e1;">›</span>
+    <span style="color:#0f172a;font-weight:700;">Create New ITP</span>
+  </div>
+
+  <!-- Step bar -->
+  <div class="step-bar" id="step-bar">
+    <div style="display:flex;flex-direction:column;align-items:center;">
+      <div class="step-dot active" id="sdot-1"><i class="fa-solid fa-pen-to-square"></i></div>
+      <span class="step-label active" id="slbl-1">ITP Basics</span>
+    </div>
+    <div class="step-line" id="sline-1"></div>
+    <div style="display:flex;flex-direction:column;align-items:center;">
+      <div class="step-dot" id="sdot-2"><i class="fa-solid fa-sitemap"></i></div>
+      <span class="step-label" id="slbl-2">Select Scope</span>
+    </div>
+    <div class="step-line" id="sline-2"></div>
+    <div style="display:flex;flex-direction:column;align-items:center;">
+      <div class="step-dot" id="sdot-3"><i class="fa-solid fa-list-check"></i></div>
+      <span class="step-label" id="slbl-3">Add Activities</span>
+    </div>
+  </div>
+
+  <!-- ═══ STEP 1: ITP Basics ═══ -->
+  <div class="wizard-panel active" id="panel-1">
+    <div style="background:white;border-radius:20px;padding:28px;border:1.5px solid #f1f5f9;
+                box-shadow:0 2px 8px rgba(0,0,0,.04);">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:22px;">
+        <div style="width:40px;height:40px;border-radius:12px;background:#f5f3ff;
+                    display:flex;align-items:center;justify-content:center;">
+          <i class="fa-solid fa-pen-to-square" style="color:#7c3aed;font-size:16px;"></i>
+        </div>
+        <div>
+          <h3 style="font-size:16px;font-weight:900;color:#0f172a;margin:0;">ITP Basics</h3>
+          <p style="font-size:12px;color:#94a3b8;margin:0;">Give your ITP a name, number and specification reference</p>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:120px 1fr;gap:16px;margin-bottom:16px;">
+        <div>
+          <label class="wiz-label">ITP No.</label>
+          <input class="wiz-input" id="f-number" value="{{ suggested_no }}" placeholder="01">
+        </div>
+        <div>
+          <label class="wiz-label">ITP Name / Title *</label>
+          <input class="wiz-input" id="f-name" placeholder="e.g. Access Road Construction" required>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+        <div>
+          <label class="wiz-label">Works Category</label>
+          <input class="wiz-input" id="f-works" placeholder="e.g. Civil Works, Earthworks">
+        </div>
+        <div>
+          <label class="wiz-label">Specification Ref.</label>
+          <input class="wiz-input" id="f-spec" placeholder="e.g. PROJ-SPE-CIV-3000">
+        </div>
+      </div>
+      <div style="margin-bottom:16px;">
+        <label class="wiz-label">Scope Description</label>
+        <textarea class="wiz-input wiz-textarea" id="f-scope"
+          placeholder="Brief description of what this ITP covers..."></textarea>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 100px 100px;gap:16px;margin-bottom:16px;">
+        <div>
+          <label class="wiz-label">Prepared By</label>
+          <input class="wiz-input" id="f-prep" placeholder="Your name">
+        </div>
+        <div>
+          <label class="wiz-label">Approved By</label>
+          <input class="wiz-input" id="f-appr" placeholder="Approver name">
+        </div>
+        <div>
+          <label class="wiz-label">Revision</label>
+          <input class="wiz-input" id="f-rev" value="A" placeholder="A">
+        </div>
+        <div>
+          <label class="wiz-label">Date</label>
+          <input class="wiz-input" id="f-date" type="date">
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;margin-top:16px;">
+      <button class="wiz-btn-primary" onclick="goStep(2)">
+        Next: Select Scope <i class="fa-solid fa-arrow-right"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- ═══ STEP 2: Select Scope ═══ -->
+  <div class="wizard-panel" id="panel-2">
+    <div style="background:white;border-radius:20px;padding:28px;border:1.5px solid #f1f5f9;
+                box-shadow:0 2px 8px rgba(0,0,0,.04);">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
+        <div style="width:40px;height:40px;border-radius:12px;background:#e0f2fe;
+                    display:flex;align-items:center;justify-content:center;">
+          <i class="fa-solid fa-sitemap" style="color:#0ea5e9;font-size:16px;"></i>
+        </div>
+        <div>
+          <h3 style="font-size:16px;font-weight:900;color:#0f172a;margin:0;">Select Scope</h3>
+          <p style="font-size:12px;color:#94a3b8;margin:0;">Where does this ITP apply? Tick Groups, Work Packages or individual Elements</p>
+        </div>
+      </div>
+      <p style="font-size:12px;color:#64748b;background:#f8fafc;border-radius:10px;padding:10px 14px;margin-bottom:18px;border-left:3px solid #0ea5e9;">
+        <i class="fa-solid fa-lightbulb" style="color:#0ea5e9;margin-right:6px;"></i>
+        Selecting a <strong>Group</strong> means this ITP covers all elements in that group.
+        Selecting a <strong>Work Package</strong> narrows it to that WP's elements.
+        Or pick individual <strong>Elements</strong> for precise control.
+      </p>
+
+      <div id="scope-tree">
+        {% if not groups and not elements %}
+        <div style="text-align:center;padding:32px;color:#94a3b8;">
+          <i class="fa-solid fa-sitemap" style="font-size:32px;display:block;margin-bottom:10px;opacity:.3;"></i>
+          <p style="font-weight:700;">No project hierarchy defined</p>
+          <a href="{{ url_for('project_setup', pid=proj.id) }}" style="color:#7c3aed;font-weight:700;font-size:13px;">
+            Set up your project structure →
+          </a>
+        </div>
+        {% else %}
+
+        {% for g in groups %}
+        {% set g_wps = [] %}
+        {% for wp in work_packages %}
+          {% if wp.group_id == g.id %}{% set _ = g_wps.append(wp) %}{% endif %}
+        {% endfor %}
+        {% set g_els = [] %}
+        {% for el in elements %}
+          {% if el.group_id == g.id %}{% set _ = g_els.append(el) %}{% endif %}
+        {% endfor %}
+
+        <div class="scope-group">
+          <div class="scope-group-hdr" onclick="toggleScopeGroup(this)">
+            <input type="checkbox" class="scope-cb" data-type="group" data-id="{{ g.id }}" data-name="{{ g.name }}"
+                   onclick="event.stopPropagation();cbChanged(this)"
+                   style="width:16px;height:16px;accent-color:{{ g.color }};flex-shrink:0;cursor:pointer;">
+            <div style="width:10px;height:10px;border-radius:50%;background:{{ g.color }};box-shadow:0 0 6px {{ g.color }}66;flex-shrink:0;"></div>
+            <span style="font-weight:800;color:{{ g.color }};font-size:13px;">{{ g.name }}</span>
+            <span style="font-size:11px;color:#94a3b8;font-weight:600;">Group</span>
+            <i class="fa-solid fa-chevron-down" style="margin-left:auto;font-size:10px;color:#94a3b8;transition:transform .2s;" class="scope-arr"></i>
+          </div>
+          <div class="scope-group-body" style="display:none;">
+            {% for wp in g_wps %}
+            {% set wp_els = [] %}
+            {% for el in elements %}
+              {% if el.work_package_id == wp.id %}{% set _ = wp_els.append(el) %}{% endif %}
+            {% endfor %}
+            {% if wp_els %}
+            <div style="margin-bottom:10px;">
+              <div class="scope-node" style="padding-left:8px;">
+                <input type="checkbox" class="scope-cb" data-type="wp" data-id="{{ wp.id }}" data-name="{{ wp.name }}"
+                       onclick="cbChanged(this)" style="accent-color:{{ wp.color }};">
+                <div style="width:22px;height:22px;border-radius:7px;background:{{ wp.color }}18;
+                            display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                  <i class="fa-solid fa-{{ wp.icon }}" style="color:{{ wp.color }};font-size:9px;"></i>
+                </div>
+                <span class="scope-node-label">{{ wp.name }}</span>
+                <span class="scope-node-sub">{{ wp_els|length }} elements</span>
+              </div>
+              {% for el in wp_els %}
+              <div class="scope-node" style="padding-left:32px;">
+                <input type="checkbox" class="scope-cb el-cb" data-type="element" data-id="{{ el.id }}" data-name="{{ el.name }}"
+                       onclick="cbChanged(this)">
+                <i class="fa-solid fa-tower-broadcast" style="color:#94a3b8;font-size:10px;flex-shrink:0;"></i>
+                <span class="scope-node-label" style="color:#475569;">{{ el.name }}</span>
+                <span class="scope-node-sub">{{ el.areas|length }} areas</span>
+              </div>
+              {% endfor %}
+            </div>
+            {% endif %}
+            {% endfor %}
+
+            {% for el in g_els %}
+              {% if not el.work_package_id %}
+              <div class="scope-node">
+                <input type="checkbox" class="scope-cb el-cb" data-type="element" data-id="{{ el.id }}" data-name="{{ el.name }}"
+                       onclick="cbChanged(this)">
+                <i class="fa-solid fa-tower-broadcast" style="color:#94a3b8;font-size:10px;flex-shrink:0;"></i>
+                <span class="scope-node-label" style="color:#475569;">{{ el.name }}</span>
+                <span class="scope-node-sub">{{ el.areas|length }} areas</span>
+              </div>
+              {% endif %}
+            {% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+
+        {# Elements with no group #}
+        {% set unassigned = [] %}
+        {% for el in elements %}
+          {% if not el.group_id %}{% set _ = unassigned.append(el) %}{% endif %}
+        {% endfor %}
+        {% if unassigned %}
+        <div class="scope-group">
+          <div class="scope-group-hdr" onclick="toggleScopeGroup(this)">
+            <span style="font-weight:800;color:#94a3b8;font-size:13px;font-style:italic;">Unassigned Elements</span>
+            <i class="fa-solid fa-chevron-down" style="margin-left:auto;font-size:10px;color:#94a3b8;transition:transform .2s;"></i>
+          </div>
+          <div class="scope-group-body" style="display:none;">
+            {% for el in unassigned %}
+            <div class="scope-node">
+              <input type="checkbox" class="scope-cb el-cb" data-type="element" data-id="{{ el.id }}" data-name="{{ el.name }}"
+                     onclick="cbChanged(this)">
+              <i class="fa-solid fa-tower-broadcast" style="color:#94a3b8;font-size:10px;flex-shrink:0;"></i>
+              <span class="scope-node-label" style="color:#475569;">{{ el.name }}</span>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+        {% endif %}
+      </div>
+
+      <!-- Selected scope summary -->
+      <div id="scope-summary" style="display:none;margin-top:14px;padding:12px 14px;
+           background:#f5f3ff;border-radius:10px;border:1px solid #e9d5ff;">
+        <p style="font-size:11px;font-weight:700;color:#7c3aed;margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em;">
+          Selected:</p>
+        <div id="scope-chips" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+      </div>
+      <p style="font-size:11px;color:#94a3b8;margin-top:10px;font-style:italic;">
+        💡 You can skip this step and add scope later by editing the ITP.
+      </p>
+    </div>
+    <div style="display:flex;justify-content:space-between;margin-top:16px;">
+      <button class="wiz-btn-secondary" onclick="goStep(1)">
+        <i class="fa-solid fa-arrow-left"></i> Back
+      </button>
+      <button class="wiz-btn-primary" onclick="goStep(3)">
+        Next: Add Activities <i class="fa-solid fa-arrow-right"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- ═══ STEP 3: Add Activities ═══ -->
+  <div class="wizard-panel" id="panel-3">
+    <div style="background:white;border-radius:20px;padding:28px;border:1.5px solid #f1f5f9;
+                box-shadow:0 2px 8px rgba(0,0,0,.04);">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
+        <div style="width:40px;height:40px;border-radius:12px;background:#d1fae5;
+                    display:flex;align-items:center;justify-content:center;">
+          <i class="fa-solid fa-list-check" style="color:#10b981;font-size:16px;"></i>
+        </div>
+        <div>
+          <h3 style="font-size:16px;font-weight:900;color:#0f172a;margin:0;">Add Activities</h3>
+          <p style="font-size:12px;color:#94a3b8;margin:0;">Define each inspection activity and its criteria rows</p>
+        </div>
+      </div>
+      <p style="font-size:12px;color:#64748b;background:#f0fdf4;border-radius:10px;padding:10px 14px;margin-bottom:18px;border-left:3px solid #10b981;">
+        <i class="fa-solid fa-lightbulb" style="color:#10b981;margin-right:6px;"></i>
+        Each <strong>Activity</strong> (e.g. "Earthworks") has multiple <strong>criteria rows</strong>
+        — each with a criterion description, inspection code and frequency.
+        You can add/remove rows and mark hold/witness points.
+      </p>
+
+      <div id="activities-container"></div>
+
+      <button onclick="addActivity()"
+              style="display:inline-flex;align-items:center;gap:7px;padding:9px 18px;
+                     border:2px dashed #e2e8f0;border-radius:11px;background:#f8fafc;
+                     color:#64748b;font-size:12px;font-weight:700;cursor:pointer;margin-top:4px;
+                     width:100%;justify-content:center;transition:all .15s;">
+        <i class="fa-solid fa-plus" style="color:#10b981;"></i> Add Activity
+      </button>
+    </div>
+    <div style="display:flex;justify-content:space-between;margin-top:16px;">
+      <button class="wiz-btn-secondary" onclick="goStep(2)">
+        <i class="fa-solid fa-arrow-left"></i> Back
+      </button>
+      <button class="wiz-btn-primary" id="finish-btn" onclick="submitITP()">
+        <i class="fa-solid fa-check"></i> Create ITP
+      </button>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Step navigation ───────────────────────────────────────────────────────────
+let currentStep = 1;
+const INSPECTION_CODES = ['H','W','T','C','M','DR','SS','S'];
+
+function goStep(n) {
+  if (n === 2 && !validate1()) return;
+  if (n === 3 && currentStep < 3) { /* allow skip scope */ }
+
+  // Update panel visibility
+  document.querySelectorAll('.wizard-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-' + n).classList.add('active');
+
+  // Update step indicators
+  for (let i = 1; i <= 3; i++) {
+    const dot = document.getElementById('sdot-' + i);
+    const lbl = document.getElementById('slbl-' + i);
+    dot.classList.remove('active','done');
+    lbl.classList.remove('active','done');
+    if (i < n)     { dot.classList.add('done');   lbl.classList.add('done'); }
+    else if (i===n){ dot.classList.add('active'); lbl.classList.add('active'); }
+  }
+  for (let i = 1; i <= 2; i++) {
+    const line = document.getElementById('sline-' + i);
+    if (line) line.classList.toggle('done', i < n);
+  }
+  currentStep = n;
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+function validate1() {
+  const name = document.getElementById('f-name').value.trim();
+  if (!name) {
+    document.getElementById('f-name').focus();
+    document.getElementById('f-name').style.borderColor = '#dc2626';
+    setTimeout(() => document.getElementById('f-name').style.borderColor = '', 2000);
+    alert('Please enter an ITP name.');
+    return false;
+  }
+  return true;
+}
+
+// ── Scope tree ────────────────────────────────────────────────────────────────
+function toggleScopeGroup(hdr) {
+  const body = hdr.nextElementSibling;
+  const arr  = hdr.querySelector('.fa-chevron-down');
+  const open = body.style.display !== 'none';
+  body.style.display = open ? 'none' : 'block';
+  if (arr) arr.style.transform = open ? '' : 'rotate(180deg)';
+}
+
+let selectedScope = [];
+
+function cbChanged(cb) {
+  const type = cb.dataset.type;
+  const id   = parseInt(cb.dataset.id);
+  const name = cb.dataset.name;
+  if (cb.checked) {
+    if (!selectedScope.find(s => s.type===type && s.id===id))
+      selectedScope.push({type, id, name});
+  } else {
+    selectedScope = selectedScope.filter(s => !(s.type===type && s.id===id));
+  }
+  renderScopeChips();
+}
+
+function renderScopeChips() {
+  const wrap = document.getElementById('scope-summary');
+  const chips = document.getElementById('scope-chips');
+  if (!selectedScope.length) { wrap.style.display='none'; return; }
+  wrap.style.display = 'block';
+  chips.innerHTML = selectedScope.map(s => `
+    <span style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;
+                 background:white;border:1.5px solid #7c3aed;font-size:11px;font-weight:700;color:#7c3aed;">
+      <i class="fa-solid fa-${s.type==='group'?'circle':s.type==='wp'?'boxes-stacked':s.type==='element'?'tower-broadcast':'map-pin'}"
+         style="font-size:8px;"></i>
+      ${s.name}
+    </span>`).join('');
+}
+
+// ── Activity builder ──────────────────────────────────────────────────────────
+let activityCount = 0;
+
+function addActivity(data) {
+  activityCount++;
+  const idx = activityCount;
+  const d = data || {};
+  const container = document.getElementById('activities-container');
+  const div = document.createElement('div');
+  div.className = 'activity-block';
+  div.id = 'act-block-' + idx;
+  div.innerHTML = `
+    <div class="activity-block-hdr">
+      <div style="width:26px;height:26px;border-radius:7px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;color:#475569;flex-shrink:0;">${idx}</div>
+      <input class="wiz-input" style="flex:1;border:none;background:transparent;padding:0;font-size:14px;font-weight:800;color:#0f172a;"
+             placeholder="Activity name, e.g. Earthworks" value="${escHtml(d.activity||'')}">
+      <button onclick="removeActivity(${idx})" style="padding:4px 8px;background:#fef2f2;border:1px solid #fecaca;border-radius:7px;color:#dc2626;font-size:11px;cursor:pointer;">
+        <i class="fa-solid fa-trash"></i>
+      </button>
+    </div>
+    <div class="activity-block-body">
+      <p style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">
+        Criteria Rows
+        <span style="font-weight:500;font-style:italic;text-transform:none;">— each row is one inspection criterion</span>
+      </p>
+      <div id="criteria-${idx}"></div>
+      <button onclick="addCriterion(${idx})" style="display:inline-flex;align-items:center;gap:5px;padding:6px 13px;
+              border:1.5px dashed #d1d5db;border-radius:8px;background:white;color:#64748b;font-size:11px;
+              font-weight:700;cursor:pointer;margin-top:4px;">
+        <i class="fa-solid fa-plus" style="color:#7c3aed;"></i> Add Criterion Row
+      </button>
+
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid #f1f5f9;">
+        <p style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">Inspection Codes</p>
+        <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start;">
+          <div>
+            <p style="font-size:10px;color:#94a3b8;margin-bottom:5px;">Our Team (Lucas)</p>
+            <div style="display:flex;flex-wrap:wrap;gap:4px;" id="lucas-codes-${idx}">
+              ${INSPECTION_CODES.map(c => `<button type="button" class="code-btn" data-code="${c}"
+                onclick="toggleCode(this,'lucas-codes-${idx}')">${c}</button>`).join('')}
+            </div>
+          </div>
+          <div>
+            <p style="font-size:10px;color:#94a3b8;margin-bottom:5px;">Client</p>
+            <div style="display:flex;flex-wrap:wrap;gap:4px;" id="client-codes-${idx}">
+              ${INSPECTION_CODES.map(c => `<button type="button" class="code-btn" data-code="${c}"
+                onclick="toggleCode(this,'client-codes-${idx}')">${c}</button>`).join('')}
+            </div>
+          </div>
+          <div>
+            <p style="font-size:10px;color:#94a3b8;margin-bottom:5px;">Hold / Witness</p>
+            <input class="wiz-input" id="hw-${idx}" style="width:130px;" placeholder="e.g. H&amp;W">
+          </div>
+        </div>
+      </div>
+    </div>`;
+  container.appendChild(div);
+
+  // Pre-fill if editing
+  if (d.criteria) d.criteria.forEach((c, ci) => addCriterion(idx, {text: c, row: (d.rows||[])[ci]}));
+  if (d.lucas_codes) d.lucas_codes.forEach(c => {
+    const btn = document.querySelector(`#lucas-codes-${idx} [data-code="${c}"]`);
+    if (btn) btn.classList.add('sel');
+  });
+  if (d.client_codes) d.client_codes.forEach(c => {
+    const btn = document.querySelector(`#client-codes-${idx} [data-code="${c}"]`);
+    if (btn) btn.classList.add('sel');
+  });
+  if (d.hold_witness) document.getElementById('hw-'+idx).value = d.hold_witness;
+}
+
+function removeActivity(idx) {
+  const el = document.getElementById('act-block-' + idx);
+  if (el) el.remove();
+}
+
+let criterionCount = {};
+function addCriterion(actIdx, data) {
+  criterionCount[actIdx] = (criterionCount[actIdx] || 0) + 1;
+  const cIdx = criterionCount[actIdx];
+  const d = data || {};
+  const row = d.row || {};
+  const container = document.getElementById('criteria-' + actIdx);
+  const div = document.createElement('div');
+  div.className = 'criteria-row';
+  div.id = `crit-${actIdx}-${cIdx}`;
+  div.innerHTML = `
+    <input class="wiz-input crit-text" placeholder="Inspection criterion description..." value="${escHtml(d.text||'')}">
+    <select class="wiz-input" style="padding:10px 8px;">
+      ${['DR','C','M','T','H','W','H&W','T&W','C&W','SS','S','I'].map(c =>
+        `<option ${row.inspection===c?'selected':''}>${c}</option>`).join('')}
+    </select>
+    <div style="display:flex;gap:4px;">
+      <input class="wiz-input crit-freq" placeholder="Frequency" value="${escHtml(row.frequency||'')}" style="flex:1;">
+      <button onclick="this.closest('.criteria-row').remove()"
+              style="padding:0 8px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;color:#dc2626;font-size:11px;cursor:pointer;">✕</button>
+    </div>`;
+  container.appendChild(div);
+}
+
+function toggleCode(btn, groupId) {
+  btn.classList.toggle('sel');
+}
+
+function escHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Build + submit ────────────────────────────────────────────────────────────
+function buildItems() {
+  const items = [];
+  document.querySelectorAll('.activity-block').forEach((block, bi) => {
+    const actName  = block.querySelector('.activity-block-hdr input').value.trim();
+    if (!actName) return;
+    const no       = String(bi + 1);
+    const criteria = [], rows = [];
+    block.querySelectorAll('.criteria-row').forEach(row => {
+      const text  = row.querySelector('.crit-text').value.trim();
+      const code  = row.querySelector('select').value;
+      const freq  = row.querySelector('.crit-freq').value.trim();
+      if (text) { criteria.push(text); rows.push({inspection: code, frequency: freq}); }
+    });
+    const lucasCodes  = [...block.querySelectorAll(`[id^="lucas-codes-"] .sel`)].map(b => b.dataset.code);
+    const clientCodes = [...block.querySelectorAll(`[id^="client-codes-"] .sel`)].map(b => b.dataset.code);
+    const hw          = block.querySelector('[id^="hw-"]')?.value.trim() || null;
+    items.push({no, activity: actName, criteria, rows, lucas_codes: lucasCodes, client_codes: clientCodes, hold_witness: hw || null});
+  });
+  return items;
+}
+
+async function submitITP() {
+  const btn = document.getElementById('finish-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Creating...';
+
+  const payload = {
+    itp_number:      document.getElementById('f-number').value.trim(),
+    name:            document.getElementById('f-name').value.trim(),
+    revision:        document.getElementById('f-rev').value.trim(),
+    date:            document.getElementById('f-date').value,
+    works:           document.getElementById('f-works').value.trim(),
+    spec:            document.getElementById('f-spec').value.trim(),
+    scope:           document.getElementById('f-scope').value.trim(),
+    prepared_by:     document.getElementById('f-prep').value.trim(),
+    approved_by:     document.getElementById('f-appr').value.trim(),
+    items:           buildItems(),
+    scope_selection: selectedScope,
+  };
+
+  if (!payload.name) {
+    alert('Please enter an ITP name (Step 1).');
+    btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-check"></i> Create ITP';
+    goStep(1); return;
+  }
+
+  try {
+    const r = await fetch('{{ url_for("project_itp_create", pid=proj.id) }}', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload),
+    });
+    const data = await r.json();
+    if (data.ok) { window.location.href = data.redirect; }
+    else { alert('Error: ' + (data.error || 'Unknown')); btn.disabled=false; btn.innerHTML='<i class="fa-solid fa-check"></i> Create ITP'; }
+  } catch(e) {
+    alert('Network error. Please try again.');
+    btn.disabled=false; btn.innerHTML='<i class="fa-solid fa-check"></i> Create ITP';
+  }
+}
+
+// Start with one activity added
+document.addEventListener('DOMContentLoaded', () => addActivity());
+</script>
+{% endblock %}
