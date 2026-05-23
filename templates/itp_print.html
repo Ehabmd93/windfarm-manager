@@ -552,14 +552,25 @@ td.sig-cell { padding:2pt; }
 
       {# Client sign-off cell #}
       <td class="sig-cell">
-        {% if s and s.client_complete %}
-        <div class="sig-signed" style="border-color:#93c5fd;background:#eff6ff;">
-          {% if s.client_signature %}<img src="{{ s.client_signature }}" alt="client sig"/>{% endif %}
-          <div class="sig-who" style="color:#1d4ed8;">✓ {{ record.client_name or 'Client' }}</div>
-          <div class="sig-when" style="color:#60a5fa;">
-            {% if s.client_signed_at %}{{ s.client_signed_at.strftime('%d %b %Y %H:%M') }}{% endif %}
+        {% if s and s.client_reviewed %}
+          {% if s.client_accepted %}
+          <div class="sig-signed" style="border-color:#93c5fd;background:#eff6ff;">
+            <div class="sig-who" style="color:#1d4ed8;">✓ Accepted</div>
+            <div class="sig-who" style="color:#1d4ed8;font-weight:normal;">{{ record.client_name or 'Client' }}</div>
+            <div class="sig-when" style="color:#60a5fa;">
+              {% if s.client_signed_at %}{{ s.client_signed_at.strftime('%d %b %Y %H:%M') }}{% endif %}
+            </div>
           </div>
-        </div>
+          {% else %}
+          <div class="sig-signed" style="border-color:#fbbf24;background:#fffbeb;min-height:14mm;">
+            <div class="sig-who" style="color:#d97706;">⚠ Concern</div>
+            <div class="sig-who" style="color:#92400e;font-weight:normal;">{{ record.client_name or 'Client' }}</div>
+            {% if s.client_comments %}<div class="sig-when" style="color:#b45309;font-style:italic;font-size:5pt;word-break:break-word;">{{ s.client_comments }}</div>{% endif %}
+            <div class="sig-when" style="color:#d97706;">
+              {% if s.client_signed_at %}{{ s.client_signed_at.strftime('%d %b %Y %H:%M') }}{% endif %}
+            </div>
+          </div>
+          {% endif %}
         {% else %}
         <div class="sig-empty">–</div>
         {% endif %}
@@ -604,12 +615,21 @@ td.sig-cell { padding:2pt; }
         {% endif %}
       </td>
       <td class="sig-cell">
-        {% if s and s.client_complete %}
-        <div class="sig-signed" style="border-color:#93c5fd;background:#eff6ff;">
-          {% if s.client_signature %}<img src="{{ s.client_signature }}" alt="client sig"/>{% endif %}
-          <div class="sig-who" style="color:#1d4ed8;">✓ {{ record.client_name or 'Client' }}</div>
-          <div class="sig-when" style="color:#60a5fa;">{% if s.client_signed_at %}{{ s.client_signed_at.strftime('%d %b %Y %H:%M') }}{% endif %}</div>
-        </div>
+        {% if s and s.client_reviewed %}
+          {% if s.client_accepted %}
+          <div class="sig-signed" style="border-color:#93c5fd;background:#eff6ff;">
+            <div class="sig-who" style="color:#1d4ed8;">✓ Accepted</div>
+            <div class="sig-who" style="color:#1d4ed8;font-weight:normal;">{{ record.client_name or 'Client' }}</div>
+            <div class="sig-when" style="color:#60a5fa;">{% if s.client_signed_at %}{{ s.client_signed_at.strftime('%d %b %Y %H:%M') }}{% endif %}</div>
+          </div>
+          {% else %}
+          <div class="sig-signed" style="border-color:#fbbf24;background:#fffbeb;min-height:14mm;">
+            <div class="sig-who" style="color:#d97706;">⚠ Concern</div>
+            <div class="sig-who" style="color:#92400e;font-weight:normal;">{{ record.client_name or 'Client' }}</div>
+            {% if s.client_comments %}<div class="sig-when" style="color:#b45309;font-style:italic;font-size:5pt;word-break:break-word;">{{ s.client_comments }}</div>{% endif %}
+            <div class="sig-when" style="color:#d97706;">{% if s.client_signed_at %}{{ s.client_signed_at.strftime('%d %b %Y %H:%M') }}{% endif %}</div>
+          </div>
+          {% endif %}
         {% else %}
         <div class="sig-empty">–</div>
         {% endif %}
@@ -701,9 +721,18 @@ td.sig-cell { padding:2pt; }
   <!-- Sign-off status summary -->
   {% set done = record.items_complete_count %}
   {% set total = record.items_total_count %}
+  {% set ns2 = namespace(c_accepted=0, c_concern=0, c_pending=0) %}
+  {% for s in record.item_statuses %}
+    {% if s.lucas_complete %}
+      {% if s.client_reviewed and s.client_accepted %}{% set ns2.c_accepted = ns2.c_accepted + 1 %}
+      {% elif s.client_reviewed %}{% set ns2.c_concern = ns2.c_concern + 1 %}
+      {% else %}{% set ns2.c_pending = ns2.c_pending + 1 %}{% endif %}
+    {% endif %}
+  {% endfor %}
   <div style="margin-top:8pt;padding:5pt 8pt;background:#f8fafc;border:0.75pt solid #e2e8f0;border-radius:3pt;font-size:7.5pt;color:#475569;">
     <strong style="color:#1e293b;">Summary:</strong>
     {{ done }}/{{ total }} criteria signed by engineer ·
+    Client review: <strong style="color:#16a34a;">{{ ns2.c_accepted }} accepted</strong>{% if ns2.c_concern %}, <strong style="color:#d97706;">{{ ns2.c_concern }} concern(s)</strong>{% endif %}{% if ns2.c_pending %}, {{ ns2.c_pending }} pending{% endif %} ·
     Status: <strong>{{ record.status.replace('_',' ').title() }}</strong>
     {% if record.client_name %} · Client: {{ record.client_name }}{% endif %}
   </div>
