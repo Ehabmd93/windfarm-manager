@@ -1,0 +1,423 @@
+{% extends 'base.html' %}
+{% block title %}Project Hierarchy — {{ proj.name }}{% endblock %}
+{% block page_title %}Project Hierarchy{% endblock %}
+{% block page_sub %}{{ proj.name }} · Full structure tree{% endblock %}
+
+{% block head %}
+<style>
+@keyframes fadeInUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+
+/* ── Stat pills ─────────────────────────────────────────────── */
+.h-stat {
+  display:flex;flex-direction:column;align-items:center;
+  padding:12px 18px;border-radius:14px;background:#f8fafc;
+  border:1.5px solid #e2e8f0;min-width:80px;
+}
+.h-stat-n  { font-size:22px;font-weight:900;color:#0f172a; }
+.h-stat-lbl{ font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-top:2px; }
+
+/* ── View toggle ────────────────────────────────────────────── */
+.view-tab {
+  padding:7px 18px;border-radius:8px;font-size:12px;font-weight:700;
+  cursor:pointer;border:1.5px solid #e2e8f0;background:#f8fafc;color:#64748b;
+  transition:all .15s;display:inline-flex;align-items:center;gap:6px;
+}
+.view-tab.active { background:#0f2942;color:#fff;border-color:#0f2942; }
+
+/* ── Tree wrapper ───────────────────────────────────────────── */
+#tree-wrap { animation:fadeInUp .4s ease .05s both; }
+
+/* ── Tree connectors ────────────────────────────────────────── */
+.t-children {
+  position:relative;
+  padding-left:28px;
+  margin-left:14px;
+}
+.t-children::before {
+  content:'';position:absolute;left:0;top:0;bottom:12px;
+  width:2px;background:#e2e8f0;border-radius:2px;
+}
+
+/* ── Node row ───────────────────────────────────────────────── */
+.t-row {
+  display:flex;align-items:center;gap:8px;
+  padding:7px 10px;border-radius:10px;
+  cursor:pointer;transition:background .12s;
+  position:relative;
+  margin-bottom:2px;
+  user-select:none;
+}
+.t-row::before {
+  content:'';position:absolute;left:-28px;top:50%;
+  width:20px;height:2px;background:#e2e8f0;
+}
+.t-root-row { margin-left:0; }
+.t-root-row::before { display:none; }
+.t-row:hover { background:#f1f5f9; }
+.t-row.open  { background:#f8fafc; }
+
+/* ── Chevron ────────────────────────────────────────────────── */
+.t-chev {
+  width:18px;height:18px;border-radius:5px;background:#e2e8f0;
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
+  transition:transform .2s;
+}
+.t-chev i { font-size:8px;color:#64748b; }
+.t-chev.open { transform:rotate(90deg); }
+.t-chev.leaf { background:transparent; cursor:default; }
+
+/* ── Level-specific colours ─────────────────────────────────── */
+.lvl-group   { font-size:14px;font-weight:800;color:#1e293b; }
+.lvl-wp      { font-size:13px;font-weight:700;color:#334155; }
+.lvl-element { font-size:13px;font-weight:600;color:#475569; }
+.lvl-area    { font-size:12px;font-weight:700;color:#0f172a; }
+.lvl-act     { font-size:11px;font-weight:600;color:#475569; }
+
+/* ── Badges ─────────────────────────────────────────────────── */
+.t-badge {
+  font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;
+  white-space:nowrap;flex-shrink:0;
+}
+.t-count {
+  margin-left:auto;font-size:10px;font-weight:600;color:#cbd5e1;
+  white-space:nowrap;
+}
+
+/* ── Icon bubbles ───────────────────────────────────────────── */
+.t-icon {
+  width:26px;height:26px;border-radius:7px;
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
+}
+.t-dot { width:10px;height:10px;border-radius:50%;flex-shrink:0; }
+
+/* ── Activity status dot ─────────────────────────────────────── */
+.act-dot { width:8px;height:8px;border-radius:50%;flex-shrink:0; }
+
+/* ── Empty placeholder ──────────────────────────────────────── */
+.t-empty {
+  padding:6px 12px;font-size:11px;color:#cbd5e1;font-style:italic;
+}
+
+/* ── Graph placeholder ──────────────────────────────────────── */
+#graph-wrap {
+  display:none;
+  background:#0d1f35;border-radius:18px;padding:60px 40px;
+  text-align:center;min-height:320px;
+  flex-direction:column;align-items:center;justify-content:center;
+}
+
+/* ── Node count summary bar ─────────────────────────────────── */
+.hier-flow {
+  display:flex;align-items:center;gap:6px;flex-wrap:wrap;
+  background:linear-gradient(135deg,#0f172a,#1e293b);
+  border-radius:16px;padding:16px 22px;margin-bottom:22px;
+  border:1px solid #1e3a5f;
+}
+.hf-step { display:flex;flex-direction:column;align-items:center;gap:2px; }
+.hf-pill {
+  padding:4px 12px;border-radius:20px;font-size:11px;font-weight:800;
+}
+.hf-n { color:white;font-size:15px;font-weight:900; }
+.hf-lbl { color:#475569;font-size:9px;font-weight:700;text-transform:uppercase; }
+.hf-arrow { color:#334155;font-size:13px; }
+
+/* ── Expand/collapse all ────────────────────────────────────── */
+.ctrl-btn {
+  font-size:11px;font-weight:700;padding:5px 12px;border-radius:7px;
+  border:1.5px solid #e2e8f0;background:#f8fafc;color:#64748b;
+  cursor:pointer;transition:all .12s;
+}
+.ctrl-btn:hover { background:#e2e8f0; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="max-width:900px;margin:0 auto;">
+
+  <!-- Breadcrumb -->
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:20px;font-size:13px;flex-wrap:wrap;">
+    <a href="{{ url_for('dashboard') }}" style="color:#94a3b8;text-decoration:none;font-weight:600;">Home</a>
+    <span style="color:#cbd5e1;">›</span>
+    <a href="{{ url_for('project_setup', pid=proj.id) }}" style="color:#94a3b8;text-decoration:none;font-weight:600;">Project Setup</a>
+    <span style="color:#cbd5e1;">›</span>
+    <span style="color:#0f172a;font-weight:700;">Project Hierarchy</span>
+    <div style="flex:1;"></div>
+    <a href="{{ url_for('project_setup', pid=proj.id) }}"
+       style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:9px;
+              background:#f1f5f9;color:#475569;text-decoration:none;font-size:12px;font-weight:700;border:1.5px solid #e2e8f0;">
+      <i class="fa-solid fa-sliders" style="font-size:10px;"></i> Edit Setup
+    </a>
+  </div>
+
+  <!-- Stats flow bar -->
+  <div class="hier-flow">
+    {% for label, count, color in [
+      ('Groups',     groups|length,      '#818cf8'),
+      ('Work Pkgs',  work_packages|length,'#a78bfa'),
+      ('Elements',   elements|length,    '#c084fc'),
+      ('Areas',      total_areas,        '#e879f9'),
+      ('Activities', total_activities,   '#f0abfc'),
+    ] %}
+    <div class="hf-step">
+      <div class="hf-pill" style="background:{{ color }}22;border:1px solid {{ color }}44;color:{{ color }};">{{ label }}</div>
+      <div class="hf-n">{{ count }}</div>
+    </div>
+    {% if not loop.last %}
+    <div class="hf-arrow"><i class="fa-solid fa-arrow-right"></i></div>
+    {% endif %}
+    {% endfor %}
+  </div>
+
+  <!-- View tabs + controls -->
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap;">
+    <div style="display:flex;gap:6px;">
+      <button class="view-tab active" id="tab-tree" onclick="switchView('tree')">
+        <i class="fa-solid fa-sitemap"></i> Tree View
+      </button>
+      <button class="view-tab" id="tab-graph" onclick="switchView('graph')"
+              style="opacity:.6;" title="Coming soon">
+        <i class="fa-solid fa-circle-nodes"></i> Graph View
+        <span style="font-size:9px;background:#e2e8f0;color:#94a3b8;padding:1px 6px;border-radius:20px;font-weight:800;letter-spacing:.05em;">SOON</span>
+      </button>
+    </div>
+    <div style="flex:1;"></div>
+    <button class="ctrl-btn" onclick="expandAll()"><i class="fa-solid fa-expand mr-1" style="font-size:9px;"></i> Expand All</button>
+    <button class="ctrl-btn" onclick="collapseAll()"><i class="fa-solid fa-compress mr-1" style="font-size:9px;"></i> Collapse All</button>
+  </div>
+
+  <!-- ══ TREE VIEW ════════════════════════════════════════════════ -->
+  <div id="tree-wrap" class="card" style="border-radius:18px;padding:22px;">
+    {% if not groups and not elements %}
+    <div style="text-align:center;padding:50px 20px;color:#94a3b8;">
+      <i class="fa-solid fa-sitemap" style="font-size:40px;opacity:.3;display:block;margin-bottom:12px;"></i>
+      <p style="font-weight:700;font-size:15px;">No structure defined yet</p>
+      <p style="font-size:12px;margin-top:4px;">Go to <a href="{{ url_for('project_setup', pid=proj.id) }}" style="color:#4f46e5;font-weight:700;">Project Setup</a> to build your hierarchy.</p>
+    </div>
+
+    {% else %}
+
+    <!-- ── GROUPS WITH THEIR WPs ─────────────────────────────── -->
+    {% for group in groups %}
+    <div class="t-block" id="g-block-{{ group.id }}">
+
+      <!-- Group row (level 1) -->
+      <div class="t-row t-root-row" onclick="toggleNode('g-{{ group.id }}', this)">
+        <div class="t-chev open" id="chev-g-{{ group.id }}"><i class="fa-solid fa-chevron-right"></i></div>
+        <div class="t-dot" style="background:{{ group.color }};box-shadow:0 0 6px {{ group.color }}88;"></div>
+        <span class="lvl-group" style="color:{{ group.color }};">{{ group.name }}</span>
+        <span class="t-badge" style="background:{{ group.color }}15;color:{{ group.color }};border:1px solid {{ group.color }}30;">Group</span>
+        <span class="t-count">
+          {{ group.work_packages|length }} WP{{ 's' if group.work_packages|length != 1 }}
+          &nbsp;·&nbsp;
+          {% set el_n = namespace(v=0) %}{% for wp in group.work_packages %}{% set el_n.v = el_n.v + wp.elements|length %}{% endfor %}
+          {{ el_n.v }} elem.
+        </span>
+      </div>
+
+      <!-- Group children -->
+      <div class="t-children" id="g-{{ group.id }}">
+
+        {% for wp in group.work_packages %}
+        <!-- Work Package row (level 2) -->
+        <div class="t-row" onclick="toggleNode('wp-{{ wp.id }}', this)">
+          <div class="t-chev {% if wp.elements %}open{% else %}leaf{% endif %}" id="chev-wp-{{ wp.id }}">
+            {% if wp.elements %}<i class="fa-solid fa-chevron-right"></i>
+            {% else %}<i class="fa-solid fa-minus" style="opacity:.3;font-size:6px;"></i>{% endif %}
+          </div>
+          <div class="t-icon" style="background:{{ wp.color }}18;border:1px solid {{ wp.color }}30;">
+            <i class="fa-solid fa-{{ wp.icon }}" style="color:{{ wp.color }};font-size:11px;"></i>
+          </div>
+          <span class="lvl-wp">{{ wp.name }}</span>
+          <span class="t-badge" style="background:{{ wp.color }}15;color:{{ wp.color }};border:1px solid {{ wp.color }}25;">Work Package</span>
+          <span class="t-count">{{ wp.elements|length }} elem.</span>
+        </div>
+
+        <!-- WP children (elements) -->
+        {% if wp.elements %}
+        <div class="t-children" id="wp-{{ wp.id }}">
+          {% for el in wp.elements %}
+          {% set el_area_count = el.areas|length %}
+          {% set el_act_count  = namespace(v=0) %}{% for a in el.areas %}{% set el_act_count.v = el_act_count.v + a.activities|length %}{% endfor %}
+
+          <!-- Element row (level 3) -->
+          <div class="t-row" onclick="toggleNode('el-{{ el.id }}', this)">
+            <div class="t-chev {% if el.areas %}open{% else %}leaf{% endif %}" id="chev-el-{{ el.id }}">
+              {% if el.areas %}<i class="fa-solid fa-chevron-right"></i>
+              {% else %}<i class="fa-solid fa-minus" style="opacity:.3;font-size:6px;"></i>{% endif %}
+            </div>
+            <div class="t-icon" style="background:#f1f5f9;">
+              <i class="fa-solid fa-tower-broadcast" style="color:#64748b;font-size:10px;"></i>
+            </div>
+            <span class="lvl-element">{{ el.name }}</span>
+            <span class="t-badge" style="background:#f1f5f9;color:#64748b;">{{ el.element_type_label }}</span>
+            <span class="t-count">{{ el_area_count }} area{{ 's' if el_area_count != 1 }}&nbsp;·&nbsp;{{ el_act_count.v }} act.</span>
+          </div>
+
+          <!-- Element children (areas) -->
+          {% if el.areas %}
+          <div class="t-children" id="el-{{ el.id }}">
+            {% for area in el.areas %}
+            {% set act_count = area.activities|length %}
+
+            <!-- Area row (level 4) -->
+            <div class="t-row" onclick="toggleNode('area-{{ area.id }}', this)">
+              <div class="t-chev {% if area.activities %}open{% else %}leaf{% endif %}" id="chev-area-{{ area.id }}">
+                {% if area.activities %}<i class="fa-solid fa-chevron-right"></i>
+                {% else %}<i class="fa-solid fa-minus" style="opacity:.3;font-size:6px;"></i>{% endif %}
+              </div>
+              <i class="fa-solid fa-map-pin" style="color:#f59e0b;font-size:12px;width:16px;text-align:center;flex-shrink:0;"></i>
+              <span class="lvl-area">{{ area.label }}</span>
+              {% if act_count %}
+              <span class="t-badge" style="background:#fef3c7;color:#d97706;border:1px solid #fde68a;">{{ act_count }} act.</span>
+              {% endif %}
+            </div>
+
+            <!-- Area children (activities) -->
+            {% if area.activities %}
+            <div class="t-children" id="area-{{ area.id }}">
+              {% for act in area.activities %}
+              <div class="t-row" style="cursor:default;" onclick="event.stopPropagation()">
+                <div class="t-chev leaf"><i class="fa-solid fa-minus" style="opacity:.3;font-size:6px;"></i></div>
+                <div class="act-dot" style="background:{{ act.status_color }};box-shadow:0 0 4px {{ act.status_color }};"></div>
+                <span class="lvl-act">{{ act.name }}</span>
+                <span class="t-badge" style="background:#f1f5f9;color:#94a3b8;">{{ act.type_label }}</span>
+                <span class="t-count" style="font-size:10px;color:{{ act.status_color }};">{{ act.status_label }}</span>
+              </div>
+              {% endfor %}
+            </div>
+            {% endif %}
+            {% endfor %}
+          </div>
+          {% endif %}
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="t-children">
+          <div class="t-empty"><i class="fa-solid fa-circle-info mr-1" style="font-size:10px;"></i>No elements assigned to this work package yet</div>
+        </div>
+        {% endif %}
+        {% endfor %}
+
+        {% if not group.work_packages %}
+        <div class="t-empty"><i class="fa-solid fa-circle-info mr-1" style="font-size:10px;"></i>No work packages in this group</div>
+        {% endif %}
+
+      </div>
+    </div>
+    {% endfor %}
+
+    <!-- ── UNASSIGNED ELEMENTS (no WP) ───────────────────────── -->
+    {% set unassigned = [] %}
+    {% for el in elements %}{% if not el.work_package_id %}{% set _ = unassigned.append(el) %}{% endif %}{% endfor %}
+    {% if unassigned %}
+    <div class="t-block" id="g-block-unassigned" style="margin-top:8px;">
+      <div class="t-row t-root-row" onclick="toggleNode('unassigned-els', this)">
+        <div class="t-chev open" id="chev-unassigned-els"><i class="fa-solid fa-chevron-right"></i></div>
+        <div class="t-dot" style="background:#94a3b8;"></div>
+        <span class="lvl-group" style="color:#94a3b8;font-style:italic;">Unassigned Elements</span>
+        <span class="t-badge" style="background:#f1f5f9;color:#94a3b8;">{{ unassigned|length }} elem.</span>
+      </div>
+      <div class="t-children" id="unassigned-els">
+        {% for el in unassigned %}
+        {% set el_area_count = el.areas|length %}
+        <div class="t-row" onclick="toggleNode('el-u-{{ el.id }}', this)">
+          <div class="t-chev {% if el.areas %}open{% else %}leaf{% endif %}" id="chev-el-u-{{ el.id }}">
+            {% if el.areas %}<i class="fa-solid fa-chevron-right"></i>
+            {% else %}<i class="fa-solid fa-minus" style="opacity:.3;font-size:6px;"></i>{% endif %}
+          </div>
+          <div class="t-icon" style="background:#f1f5f9;">
+            <i class="fa-solid fa-tower-broadcast" style="color:#94a3b8;font-size:10px;"></i>
+          </div>
+          <span class="lvl-element" style="color:#94a3b8;">{{ el.name }}</span>
+          <span class="t-badge" style="background:#f8fafc;color:#94a3b8;">{{ el.element_type_label }}</span>
+          <span class="t-count">{{ el_area_count }} area{{ 's' if el_area_count != 1 }}</span>
+        </div>
+        {% if el.areas %}
+        <div class="t-children" id="el-u-{{ el.id }}">
+          {% for area in el.areas %}
+          <div class="t-row" onclick="toggleNode('area-u-{{ area.id }}', this)">
+            <div class="t-chev {% if area.activities %}open{% else %}leaf{% endif %}" id="chev-area-u-{{ area.id }}">
+              {% if area.activities %}<i class="fa-solid fa-chevron-right"></i>
+              {% else %}<i class="fa-solid fa-minus" style="opacity:.3;font-size:6px;"></i>{% endif %}
+            </div>
+            <i class="fa-solid fa-map-pin" style="color:#f59e0b;font-size:12px;width:16px;text-align:center;flex-shrink:0;"></i>
+            <span class="lvl-area">{{ area.label }}</span>
+            {% if area.activities %}<span class="t-badge" style="background:#fef3c7;color:#d97706;">{{ area.activities|length }} act.</span>{% endif %}
+          </div>
+          {% if area.activities %}
+          <div class="t-children" id="area-u-{{ area.id }}">
+            {% for act in area.activities %}
+            <div class="t-row" style="cursor:default;">
+              <div class="t-chev leaf"><i class="fa-solid fa-minus" style="opacity:.3;font-size:6px;"></i></div>
+              <div class="act-dot" style="background:{{ act.status_color }};"></div>
+              <span class="lvl-act">{{ act.name }}</span>
+              <span class="t-badge" style="background:#f1f5f9;color:#94a3b8;">{{ act.type_label }}</span>
+            </div>
+            {% endfor %}
+          </div>
+          {% endif %}
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% endif %}{# end if not groups #}
+  </div>
+
+  <!-- ══ GRAPH VIEW PLACEHOLDER ══════════════════════════════════ -->
+  <div id="graph-wrap" style="display:none;animation:fadeInUp .4s ease both;">
+    <div style="background:#0d1f35;border-radius:18px;padding:70px 40px;text-align:center;border:1px solid #1e3a5f;">
+      <i class="fa-solid fa-circle-nodes" style="font-size:48px;color:#4f46e5;opacity:.5;display:block;margin-bottom:16px;"></i>
+      <p style="color:#94a3b8;font-size:16px;font-weight:700;">Graph View</p>
+      <p style="color:#475569;font-size:13px;margin-top:6px;">Interactive node graph — coming soon</p>
+      <p style="color:#334155;font-size:11px;margin-top:10px;">Will visualise Groups, WPs, Elements and Areas as connected nodes</p>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Toggle a tree node ───────────────────────────────────────────────────────
+function toggleNode(id, rowEl) {
+  const children = document.getElementById(id);
+  if (!children) return;
+  const chev    = rowEl.querySelector('.t-chev');
+  const isOpen  = children.style.display !== 'none';
+  children.style.display = isOpen ? 'none' : '';
+  if (chev && !chev.classList.contains('leaf')) {
+    chev.classList.toggle('open', !isOpen);
+    rowEl.classList.toggle('open', !isOpen);
+  }
+}
+
+// ── Expand / collapse all ─────────────────────────────────────────────────────
+function expandAll() {
+  document.querySelectorAll('.t-children').forEach(el => el.style.display = '');
+  document.querySelectorAll('.t-chev:not(.leaf)').forEach(c => c.classList.add('open'));
+}
+function collapseAll() {
+  // Keep top-level groups visible but collapse everything inside
+  document.querySelectorAll('.t-children').forEach(el => {
+    const isTopLevel = el.id.startsWith('g-') || el.id === 'unassigned-els';
+    el.style.display = isTopLevel ? 'none' : 'none';
+  });
+  document.querySelectorAll('.t-chev:not(.leaf)').forEach(c => c.classList.remove('open'));
+}
+
+// ── View toggle ───────────────────────────────────────────────────────────────
+function switchView(v) {
+  document.getElementById('tree-wrap').style.display  = v === 'tree'  ? '' : 'none';
+  document.getElementById('graph-wrap').style.display = v === 'graph' ? 'block' : 'none';
+  document.getElementById('tab-tree').classList.toggle('active',  v === 'tree');
+  document.getElementById('tab-graph').classList.toggle('active', v === 'graph');
+}
+
+// Start with all top-level groups expanded (already rendered open)
+// Children at level 2+ start expanded too — user can collapse
+</script>
+{% endblock %}

@@ -164,8 +164,8 @@
   <span class="text-slate-600 font-semibold text-sm">{{ proj.name }}</span>
   <div style="flex:1;"></div>
   <button onclick="openModal('modal-deploy')"
-          style="background:linear-gradient(135deg,#16a34a,#22c55e);color:#fff;border:none;padding:8px 20px;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:7px;box-shadow:0 3px 12px rgba(22,163,74,0.3);">
-    <i class="fa-solid fa-rocket"></i> Deploy to QA
+          style="background:linear-gradient(135deg,#4f46e5,#6366f1);color:#fff;border:none;padding:8px 20px;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:7px;box-shadow:0 3px 12px rgba(79,70,229,0.35);">
+    <i class="fa-solid fa-sitemap"></i> Deploy Structure
   </button>
   <button onclick="openModal('modal-reset-setup')"
           style="background:#fff1f2;color:#dc2626;border:1.5px solid #fecaca;padding:8px 16px;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:7px;">
@@ -1317,44 +1317,92 @@
   </div>
 </div>
 
-<!-- Deploy to QA Modal -->
-<div id="modal-deploy" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:300;align-items:center;justify-content:center;">
-  <div style="background:#fff;border-radius:16px;padding:24px;width:460px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.2);">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
-      <div style="width:38px;height:38px;border-radius:10px;background:#f0fdf4;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-        <i class="fa-solid fa-rocket" style="color:#16a34a;font-size:16px;"></i>
+<!-- Deploy Project Structure Modal -->
+<div id="modal-deploy" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:300;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:20px;padding:28px;width:500px;max-width:95vw;box-shadow:0 24px 70px rgba(0,0,0,0.22);">
+
+    <!-- Header -->
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;">
+      <div style="width:44px;height:44px;border-radius:13px;background:linear-gradient(135deg,#4f46e5,#6366f1);
+                  display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 4px 14px rgba(79,70,229,.4);">
+        <i class="fa-solid fa-sitemap" style="color:#fff;font-size:18px;"></i>
       </div>
       <div>
-        <p class="font-bold text-slate-800 text-base">Deploy to QA Modules</p>
-        <p class="text-xs text-slate-400">Creates QA test records from your Activity setup</p>
+        <p style="font-weight:900;font-size:16px;color:#0f172a;margin:0;">Deploy Project Structure</p>
+        <p style="font-size:12px;color:#94a3b8;margin:0;">Your hierarchy is ready — choose how to view it</p>
       </div>
     </div>
-    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:10px 14px;margin:14px 0;font-size:12px;color:#166534;">
-      <i class="fa-solid fa-circle-info mr-1.5"></i>
-      For each matching Activity in your hierarchy, a QA test record will be created (skipping any that already exist).
+
+    <!-- Stats summary -->
+    <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:14px;padding:14px 18px;margin:18px 0;
+                display:flex;align-items:center;gap:0;flex-wrap:wrap;">
+      {% for label, count, color in [
+        ('Groups',     groups|length,      '#818cf8'),
+        ('Work Pkgs',  work_packages|length,'#a78bfa'),
+        ('Elements',   elements|length,    '#c084fc'),
+      ] %}
+      <div style="flex:1;text-align:center;padding:6px 0;{% if not loop.first %}border-left:1px solid #e2e8f0;{% endif %}">
+        <div style="font-size:20px;font-weight:900;color:{{ color }};">{{ count }}</div>
+        <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;">{{ label }}</div>
+      </div>
+      {% endfor %}
     </div>
-    <div>
-      <label class="text-xs font-semibold text-slate-500 block mb-2">Select QA Modules to Deploy <span style="color:#ef4444;">*</span>
-        <span onclick="document.querySelectorAll('.deploy-module-cb').forEach(c=>{c.checked=true;c.closest('label').style.background='#f0fdf420';c.closest('label').style.borderColor='#16a34a';})"
-              style="cursor:pointer;color:#16a34a;font-weight:700;margin-left:8px;">Select all</span>
+
+    <!-- View options -->
+    <p style="font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">Choose View</p>
+    <div style="display:flex;flex-direction:column;gap:10px;" id="deploy-options">
+
+      <!-- Tree View option -->
+      <label id="opt-tree"
+             style="display:flex;align-items:center;gap:14px;padding:14px 16px;
+                    border:2px solid #4f46e5;border-radius:13px;cursor:pointer;
+                    background:#f5f3ff;transition:all .15s;">
+        <input type="radio" name="deploy-view" value="tree" checked
+               style="width:16px;height:16px;accent-color:#4f46e5;flex-shrink:0;"
+               onchange="highlightOpt()">
+        <div style="width:38px;height:38px;border-radius:10px;background:#ede9fe;
+                    display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <i class="fa-solid fa-sitemap" style="color:#4f46e5;font-size:16px;"></i>
+        </div>
+        <div>
+          <div style="font-size:13px;font-weight:800;color:#1e1b4b;">Project Hierarchy</div>
+          <div style="font-size:11px;color:#6366f1;margin-top:2px;">Interactive collapsible tree — Groups → WPs → Elements → Areas → Activities</div>
+        </div>
       </label>
-      <div style="display:flex;flex-wrap:wrap;gap:6px;">
-        {% for key, lbl in activity_types %}
-        <label style="display:flex;align-items:center;gap:6px;padding:6px 11px;border:1.5px solid #e2e8f0;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;color:#334155;background:#fff;transition:all .1s;">
-          <input type="checkbox" value="{{ key }}" class="deploy-module-cb" style="width:13px;height:13px;accent-color:#16a34a;"
-                 onchange="this.closest('label').style.background=this.checked?'#f0fdf420':'#fff';this.closest('label').style.borderColor=this.checked?'#16a34a':'#e2e8f0';">
-          {{ lbl }}
-        </label>
-        {% endfor %}
-      </div>
+
+      <!-- Graph View option (coming soon) -->
+      <label id="opt-graph"
+             style="display:flex;align-items:center;gap:14px;padding:14px 16px;
+                    border:2px solid #e2e8f0;border-radius:13px;cursor:not-allowed;
+                    background:#f8fafc;opacity:.55;transition:all .15s;">
+        <input type="radio" name="deploy-view" value="graph" disabled
+               style="width:16px;height:16px;accent-color:#7c3aed;flex-shrink:0;">
+        <div style="width:38px;height:38px;border-radius:10px;background:#f1f5f9;
+                    display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <i class="fa-solid fa-circle-nodes" style="color:#94a3b8;font-size:16px;"></i>
+        </div>
+        <div>
+          <div style="font-size:13px;font-weight:800;color:#94a3b8;display:flex;align-items:center;gap:8px;">
+            Graph View
+            <span style="font-size:9px;font-weight:800;background:#e2e8f0;color:#94a3b8;
+                         padding:2px 8px;border-radius:20px;letter-spacing:.06em;">COMING SOON</span>
+          </div>
+          <div style="font-size:11px;color:#cbd5e1;margin-top:2px;">Visual node graph of your entire project network</div>
+        </div>
+      </label>
+
     </div>
-    <div class="flex gap-2 mt-5 justify-end">
+
+    <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end;">
       <button onclick="closeModal('modal-deploy')" class="btn-sm btn-ghost">Cancel</button>
       <button onclick="submitDeploy()" id="deploy-btn"
-              style="background:linear-gradient(135deg,#16a34a,#22c55e);color:#fff;border:none;padding:8px 22px;border-radius:9px;font-weight:700;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:7px;">
-        <i class="fa-solid fa-rocket"></i> Deploy
+              style="background:linear-gradient(135deg,#4f46e5,#6366f1);color:#fff;border:none;
+                     padding:10px 26px;border-radius:11px;font-weight:800;font-size:13px;cursor:pointer;
+                     display:flex;align-items:center;gap:8px;box-shadow:0 4px 16px rgba(79,70,229,.4);">
+        <i class="fa-solid fa-sitemap"></i> Open Hierarchy
       </button>
     </div>
+
   </div>
 </div>
 
@@ -2473,24 +2521,21 @@ function toggleBulkActEl(elId, checked) {
   });
 }
 
-// ── Deploy to QA ─────────────────────────────────────────────────────────────
-async function submitDeploy() {
-  const modules = [...document.querySelectorAll('.deploy-module-cb:checked')].map(c => c.value);
-  if (!modules.length) { showToast('Select at least one module','error'); return; }
-  const btn = document.getElementById('deploy-btn');
-  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Deploying…';
-  btn.disabled  = true;
-  const res  = await fetch(`/api/projects/${PID}/deploy`, {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({modules})
-  });
-  const data = await res.json();
-  btn.innerHTML = '<i class="fa-solid fa-rocket"></i> Deploy';
-  btn.disabled  = false;
-  if (!res.ok) { showToast(data.error || 'Deploy failed','error'); return; }
+// ── Deploy / View Hierarchy ───────────────────────────────────────────────────
+function highlightOpt() {
+  const tree  = document.getElementById('opt-tree');
+  const graph = document.getElementById('opt-graph');
+  const sel   = document.querySelector('input[name="deploy-view"]:checked')?.value;
+  if (tree)  { tree.style.borderColor  = sel==='tree'  ? '#4f46e5' : '#e2e8f0'; tree.style.background  = sel==='tree'  ? '#f5f3ff' : '#fff'; }
+  if (graph) { graph.style.borderColor = sel==='graph' ? '#7c3aed' : '#e2e8f0'; graph.style.background = sel==='graph' ? '#f5f3ff' : '#f8fafc'; }
+}
+function submitDeploy() {
+  const view = document.querySelector('input[name="deploy-view"]:checked')?.value || 'tree';
   closeModal('modal-deploy');
-  showToast(`Deployed! ${data.created} QA test record(s) created`, 'success');
-  if (data.created > 0) setTimeout(() => location.reload(), 1500);
+  if (view === 'tree') {
+    window.location.href = `/projects/${PID}/hierarchy`;
+  }
+  // graph view: coming soon — no navigation
 }
 </script>
 {% endblock %}

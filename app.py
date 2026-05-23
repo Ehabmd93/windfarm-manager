@@ -886,6 +886,26 @@ def project_setup(pid):
                            activity_types=ACTIVITY_TYPES)
 
 
+@app.route('/projects/<int:pid>/hierarchy')
+@login_required
+def project_hierarchy(pid):
+    proj          = Project.query.get_or_404(pid)
+    from flask import session as fsession
+    fsession['active_project_id'] = pid
+    elements      = WTG.query.filter_by(project_id=pid).order_by(WTG.name).all()
+    groups        = WTGGroup.query.filter_by(project_id=pid).order_by(WTGGroup.sort_order, WTGGroup.name).all()
+    work_packages = WorkPackage.query.filter_by(project_id=pid).order_by(WorkPackage.sort_order, WorkPackage.name).all()
+    total_areas       = sum(len(el.areas) for el in elements)
+    total_activities  = sum(len(area.activities) for el in elements for area in el.areas)
+    return render_template('hierarchy.html',
+                           proj=proj,
+                           groups=groups,
+                           work_packages=work_packages,
+                           elements=elements,
+                           total_areas=total_areas,
+                           total_activities=total_activities)
+
+
 @app.route('/api/projects/<int:pid>/elements', methods=['POST'])
 @login_required
 def api_add_element(pid):

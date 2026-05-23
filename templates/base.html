@@ -216,6 +216,11 @@
         <i class="fa-solid fa-sliders" style="width:16px;color:#a78bfa;"></i>
         <span>Project Setup</span>
       </a>
+      <a href="{{ url_for('project_hierarchy', pid=active_project.id) }}"
+         class="sidebar-link {% if request.endpoint=='project_hierarchy' %}active{% endif %}" style="margin-top:3px;">
+        <i class="fa-solid fa-sitemap" style="width:16px;color:#818cf8;"></i>
+        <span>Project Hierarchy</span>
+      </a>
       {% endif %}
 
       <a href="{{ url_for('documents_list') }}" class="sidebar-link {% if request.endpoint in ['documents_list','document_upload','document_detail'] %}active{% endif %}" style="margin-top:3px;">

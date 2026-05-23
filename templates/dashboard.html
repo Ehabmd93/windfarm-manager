@@ -261,19 +261,27 @@
     </div>
 
     <div style="display:flex;flex-direction:column;gap:10px;align-items:flex-end;">
-      <a href="{{ url_for('project_setup', pid=proj.id) }}"
+      <a href="{{ url_for('project_hierarchy', pid=proj.id) }}"
          style="display:inline-flex;align-items:center;gap:8px;padding:12px 22px;
                 background:linear-gradient(135deg,#4f46e5,#6366f1);color:white;
                 border:none;border-radius:13px;font-size:13px;font-weight:800;
                 text-decoration:none;cursor:pointer;white-space:nowrap;
                 box-shadow:0 4px 16px rgba(79,70,229,.45);
                 transition:all .2s;">
+        <i class="fa-solid fa-sitemap"></i> View Hierarchy
+      </a>
+      <a href="{{ url_for('project_setup', pid=proj.id) }}"
+         style="display:inline-flex;align-items:center;gap:8px;padding:10px 18px;
+                background:rgba(255,255,255,.08);color:rgba(255,255,255,.8);
+                border:1px solid rgba(255,255,255,.15);border-radius:13px;
+                font-size:12px;font-weight:700;text-decoration:none;
+                transition:all .2s;">
         <i class="fa-solid fa-sliders"></i> Configure Setup
       </a>
       <a href="{{ url_for('project_map', pid=proj.id) }}"
          style="display:inline-flex;align-items:center;gap:8px;padding:10px 18px;
-                background:rgba(255,255,255,.08);color:rgba(255,255,255,.8);
-                border:1px solid rgba(255,255,255,.15);border-radius:13px;
+                background:rgba(255,255,255,.06);color:rgba(255,255,255,.6);
+                border:1px solid rgba(255,255,255,.1);border-radius:13px;
                 font-size:12px;font-weight:700;text-decoration:none;
                 transition:all .2s;">
         <i class="fa-solid fa-map-location-dot"></i> Project Map
