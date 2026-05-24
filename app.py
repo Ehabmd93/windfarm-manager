@@ -1,4 +1,4 @@
-import os, json, base64, uuid, unicodedata, re
+import os, json, base64, uuid, unicodedata, re, secrets, hashlib
 import urllib.request, urllib.parse
 from urllib.parse import quote as _urlquote
 from datetime import datetime, date, timezone, timedelta
@@ -34,7 +34,7 @@ import kml_parser
 from project_config import (PROJECT_TYPE_PROFILES, get_profile,
                              is_wind_farm, GENERIC_ELEMENT_TYPE_LABELS)
 from kml_parser import get_geojson
-from email_utils import email_client_invitation, email_client_signed
+from email_utils import email_client_invitation, email_client_signed, email_project_invitation
 import r2_storage
 
 # ─── App setup ──────────────────────────────────────────────────────────────
@@ -68,6 +68,25 @@ def _content_disposition(disposition, filename):
     # RFC 5987 UTF-8 encoded version (modern browsers prefer this)
     utf8_enc   = _urlquote(filename, safe='')
     return f"{disposition}; filename=\"{ascii_name}\"; filename*=UTF-8''{utf8_enc}"
+
+
+# ── Invite token helpers ──────────────────────────────────────────────────────
+
+def _make_raw_token():
+    """Generate a cryptographically random URL-safe token (43 chars)."""
+    return secrets.token_urlsafe(32)
+
+
+def _hash_token(raw_token):
+    """SHA-256 hex digest of raw_token — only this digest is stored in the DB."""
+    return hashlib.sha256(raw_token.encode()).hexdigest()
+
+
+def _project_role_label(role_key):
+    """Human-readable label for a PROJECT_ROLES key."""
+    return next((lbl for k, lbl, *_ in PROJECT_ROLES if k == role_key),
+                role_key.replace('_', ' ').title())
+
 
 app = Flask(__name__)
 
@@ -925,12 +944,23 @@ def project_people(pid):
                .filter_by(project_id=pid, is_active=True)
                .order_by(ProjectTeamMember.name)
                .all())
+    # Invite index: team_member_id → UserInvite (one active invite per member)
+    invites_by_member = {}
+    for inv in UserInvite.query.filter_by(project_id=pid).all():
+        if inv.project_team_member_id is not None:
+            # Keep the most-recently-created invite if duplicates somehow exist
+            existing = invites_by_member.get(inv.project_team_member_id)
+            if existing is None or inv.id > existing.id:
+                invites_by_member[inv.project_team_member_id] = inv
+    can_manage = current_user.role in ('manager', 'admin')
     return render_template('project_people.html',
                            proj=proj,
                            companies=companies,
                            members=members,
                            company_types=COMPANY_TYPES,
-                           project_roles=PROJECT_ROLES)
+                           project_roles=PROJECT_ROLES,
+                           invites_by_member=invites_by_member,
+                           can_manage=can_manage)
 
 
 @app.route('/projects/<int:pid>/companies', methods=['POST'])
@@ -984,43 +1014,114 @@ def api_delete_company(pid, cid):
 @app.route('/projects/<int:pid>/team', methods=['POST'])
 @login_required
 def api_add_team_member(pid):
-    """AJAX — add a team member to the project."""
+    """AJAX — add a team member to the project, creating a UserInvite if email is provided."""
     if current_user.role not in ('engineer', 'manager', 'admin'):
         return jsonify({'error': 'Forbidden'}), 403
-    Project.query.get_or_404(pid)
+    proj = Project.query.get_or_404(pid)
     data = request.get_json(silent=True) or {}
     name = (data.get('name') or '').strip()
     if not name:
         return jsonify({'error': 'Name is required'}), 400
+
+    # Normalise email to lowercase; empty string if not provided
+    email_norm = (data.get('email') or '').strip().lower()
+
+    # Resolve company name now (before flush/commit) to avoid lazy-load timing issues
+    company_id_raw = data.get('company_id') or None
+    company_id     = int(company_id_raw) if company_id_raw else None
+    company_name   = ''
+    if company_id:
+        _co = ProjectCompany.query.filter_by(id=company_id, project_id=pid).first()
+        company_name = _co.name if _co else ''
+
+    # Check whether a registered User with this email already exists — link if so
+    linked_user = User.query.filter_by(email=email_norm).first() if email_norm else None
+
     m = ProjectTeamMember(
         project_id   = pid,
-        company_id   = data.get('company_id') or None,
+        company_id   = company_id,
         name         = name,
-        email        = (data.get('email')    or '').strip(),
+        email        = email_norm,
         position     = (data.get('position') or '').strip(),
         phone        = (data.get('phone')    or '').strip(),
         project_role = data.get('project_role', 'site_engineer'),
         can_sign     = bool(data.get('can_sign', True)),
         added_by     = current_user.id,
+        user_id      = linked_user.id if linked_user else None,
     )
     db.session.add(m)
+    db.session.flush()   # assign m.id before referencing it in the invite
+
+    raw_token  = None
+    invite_url = None
+    invite_obj = None
+
+    if email_norm:
+        # Create a UserInvite — only the SHA-256 hash is stored; raw token is e-mailed only
+        raw_token  = _make_raw_token()
+        now        = datetime.now(timezone.utc)
+        invite_obj = UserInvite(
+            project_id             = pid,
+            project_team_member_id = m.id,
+            email                  = email_norm,
+            name                   = name,
+            company                = company_name,
+            role                   = m.project_role,
+            can_sign               = m.can_sign,
+            token_hash             = _hash_token(raw_token),
+            invited_by_id          = current_user.id,
+            invited_at             = now,
+            expires_at             = now + timedelta(days=14),
+            status                 = 'pending',
+        )
+        db.session.add(invite_obj)
+        db.session.flush()   # assign invite_obj.id
+
+        _base      = (os.environ.get('APP_URL') or request.host_url.rstrip('/')).rstrip('/')
+        invite_url = f"{_base}/invite/{raw_token}"
+
+        log_audit('user_invite_sent', project_id=pid, actor=current_user,
+                  entity_type='user_invite', entity_id=invite_obj.id,
+                  entity_label=email_norm,
+                  detail={'name': name, 'role': m.project_role})
+
     log_audit('member_added', project_id=pid, actor=current_user,
-              entity_type='member', entity_label=name,
-              detail={'role': m.project_role, 'email': m.email})
+              entity_type='member', entity_id=m.id, entity_label=name,
+              detail={'role': m.project_role, 'email': email_norm})
+
     db.session.commit()
-    company_name = m.company.name if m.company else ''
+
+    # Send invitation email after commit so DB is safe even if email fails
+    if email_norm and invite_url and invite_obj:
+        try:
+            email_project_invitation(
+                to_email     = email_norm,
+                invitee_name = name,
+                inviter_name = current_user.name,
+                project_name = proj.name,
+                role_label   = _project_role_label(m.project_role),
+                invite_url   = invite_url,
+                expires_at   = invite_obj.expires_at,
+                company_name = company_name,
+            )
+        except Exception:
+            pass   # email failure is non-fatal
+
     return jsonify({
-        'ok':          True,
-        'id':          m.id,
-        'name':        m.name,
-        'email':       m.email,
-        'position':    m.position,
-        'project_role': m.project_role,
-        'role_label':  m.role_label,
-        'role_color':  m.role_color,
-        'role_icon':   m.role_icon,
-        'can_sign':    m.can_sign,
-        'company_name': company_name,
+        'ok':            True,
+        'id':            m.id,
+        'name':          m.name,
+        'email':         m.email,
+        'position':      m.position,
+        'project_role':  m.project_role,
+        'role_label':    m.role_label,
+        'role_color':    m.role_color,
+        'role_icon':     m.role_icon,
+        'can_sign':      m.can_sign,
+        'company_name':  company_name,
+        'invite_status': 'pending' if invite_obj else None,
+        'invite_url':    invite_url,
+        'linked_user':   bool(linked_user),
     })
 
 
@@ -1036,6 +1137,111 @@ def api_delete_team_member(pid, mid):
               entity_type='member', entity_id=mid, entity_label=m.name)
     db.session.commit()
     return jsonify({'ok': True})
+
+
+@app.route('/projects/<int:pid>/team/invites/<int:invite_id>/resend', methods=['POST'])
+@login_required
+def api_resend_invite(pid, invite_id):
+    """AJAX — rotate token and re-send an invite email."""
+    if current_user.role not in ('manager', 'admin'):
+        return jsonify({'error': 'Only project managers or admins can resend invites.'}), 403
+    invite = UserInvite.query.filter_by(id=invite_id, project_id=pid).first_or_404()
+    if invite.status == 'accepted':
+        return jsonify({'error': 'Cannot resend an already-accepted invite.'}), 400
+    if invite.status == 'revoked':
+        return jsonify({'error': 'Cannot resend a revoked invite. Create a new member entry instead.'}), 400
+
+    # Rotate token — raw tokens are never stored so we must generate a fresh one
+    raw_token = _make_raw_token()
+    now = datetime.now(timezone.utc)
+    invite.token_hash = _hash_token(raw_token)
+    invite.invited_at = now
+    invite.expires_at = now + timedelta(days=14)
+    invite.status     = 'pending'
+
+    _base      = (os.environ.get('APP_URL') or request.host_url.rstrip('/')).rstrip('/')
+    invite_url = f"{_base}/invite/{raw_token}"
+
+    log_audit('user_invite_resent', project_id=pid, actor=current_user,
+              entity_type='user_invite', entity_id=invite.id,
+              entity_label=invite.email,
+              detail={'name': invite.name, 'role': invite.role})
+    db.session.commit()
+
+    # Send email after commit — failure is non-fatal
+    try:
+        proj = Project.query.get(pid)
+        email_project_invitation(
+            to_email     = invite.email,
+            invitee_name = invite.name,
+            inviter_name = current_user.name,
+            project_name = proj.name if proj else '',
+            role_label   = _project_role_label(invite.role),
+            invite_url   = invite_url,
+            expires_at   = invite.expires_at,
+            company_name = invite.company or '',
+        )
+    except Exception:
+        pass
+
+    return jsonify({'ok': True, 'invite_url': invite_url})
+
+
+@app.route('/projects/<int:pid>/team/invites/<int:invite_id>/revoke', methods=['POST'])
+@login_required
+def api_revoke_invite(pid, invite_id):
+    """AJAX — permanently revoke an invite."""
+    if current_user.role not in ('manager', 'admin'):
+        return jsonify({'error': 'Only project managers or admins can revoke invites.'}), 403
+    invite = UserInvite.query.filter_by(id=invite_id, project_id=pid).first_or_404()
+    if invite.status == 'revoked':
+        return jsonify({'error': 'Invite is already revoked.'}), 400
+    if invite.status == 'accepted':
+        return jsonify({'error': 'Cannot revoke an accepted invite.'}), 400
+
+    now = datetime.now(timezone.utc)
+    invite.status     = 'revoked'
+    invite.revoked_at = now
+
+    log_audit('user_invite_revoked', project_id=pid, actor=current_user,
+              entity_type='user_invite', entity_id=invite.id,
+              entity_label=invite.email,
+              detail={'name': invite.name})
+    db.session.commit()
+    return jsonify({'ok': True})
+
+
+@app.route('/projects/<int:pid>/team/invites/<int:invite_id>/copy-link', methods=['POST'])
+@login_required
+def api_copy_invite_link(pid, invite_id):
+    """AJAX — rotate token and return a fresh invite URL for copying.
+
+    Raw tokens are never stored, so we must rotate to produce a new link.
+    The old token (wherever it was) becomes invalid immediately.
+    """
+    if current_user.role not in ('manager', 'admin'):
+        return jsonify({'error': 'Only project managers or admins can generate invite links.'}), 403
+    invite = UserInvite.query.filter_by(id=invite_id, project_id=pid).first_or_404()
+    if invite.status == 'accepted':
+        return jsonify({'error': 'Cannot generate a new link for an accepted invite.'}), 400
+    if invite.status == 'revoked':
+        return jsonify({'error': 'Cannot generate a new link for a revoked invite.'}), 400
+
+    raw_token = _make_raw_token()
+    now = datetime.now(timezone.utc)
+    invite.token_hash = _hash_token(raw_token)
+    invite.invited_at = now
+    invite.expires_at = now + timedelta(days=14)
+    invite.status     = 'pending'
+
+    _base      = (os.environ.get('APP_URL') or request.host_url.rstrip('/')).rstrip('/')
+    invite_url = f"{_base}/invite/{raw_token}"
+
+    log_audit('user_invite_link_copied', project_id=pid, actor=current_user,
+              entity_type='user_invite', entity_id=invite.id,
+              entity_label=invite.email)
+    db.session.commit()
+    return jsonify({'ok': True, 'invite_url': invite_url})
 
 
 @app.route('/projects/<int:pid>/audit')

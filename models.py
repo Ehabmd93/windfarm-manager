@@ -927,6 +927,7 @@ COMPANY_TYPES = [
 
 PROJECT_ROLES = [
     ('project_admin',          'Project Admin',       'fa-shield-halved',      '#ef4444'),
+    ('project_manager',        'Project Manager',     'fa-user-tie',           '#7c3aed'),
     ('qa_manager',             'QA Manager',          'fa-clipboard-check',    '#4f46e5'),
     ('site_engineer',          'Site Engineer',       'fa-screwdriver-wrench', '#22c55e'),
     ('supervisor',             'Supervisor',          'fa-hard-hat',           '#f59e0b'),

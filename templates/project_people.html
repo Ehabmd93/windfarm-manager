@@ -18,20 +18,51 @@
     border-radius:99px;font-size:11px;font-weight:700;
   }
   .member-row {
-    display:flex;align-items:center;gap:12px;padding:12px 20px;
-    border-bottom:1px solid #f8fafc;transition:background .12s;
+    padding:12px 20px;border-bottom:1px solid #f8fafc;transition:background .12s;
   }
   .member-row:last-child { border-bottom:none; }
   .member-row:hover { background:#f8fafc; }
-  .role-dot {
-    width:28px;height:28px;border-radius:50%;
-    display:inline-flex;align-items:center;justify-content:center;
-    font-size:11px;flex-shrink:0;
+  .member-top {
+    display:flex;align-items:flex-start;gap:12px;
   }
+  .role-dot {
+    width:28px;height:28px;border-radius:50%;flex-shrink:0;margin-top:2px;
+    display:inline-flex;align-items:center;justify-content:center;font-size:11px;
+  }
+  .member-body { flex:1;min-width:0; }
   .tag-pill {
     display:inline-flex;align-items:center;gap:4px;padding:2px 8px;
     border-radius:99px;font-size:10px;font-weight:700;
   }
+  .invite-badge {
+    display:inline-flex;align-items:center;gap:4px;padding:2px 9px;
+    border-radius:99px;font-size:10px;font-weight:700;
+  }
+  .invite-badge.pending  { background:#fef3c7;color:#d97706; }
+  .invite-badge.accepted { background:#dcfce7;color:#16a34a; }
+  .invite-badge.revoked  { background:#f1f5f9;color:#64748b; }
+  .invite-badge.expired  { background:#fee2e2;color:#dc2626; }
+  .user-badge {
+    display:inline-flex;align-items:center;gap:4px;padding:2px 9px;
+    border-radius:99px;font-size:10px;font-weight:700;
+    background:#eff6ff;color:#2563eb;
+  }
+  .member-actions {
+    display:flex;align-items:center;gap:6px;margin-top:8px;flex-wrap:wrap;
+  }
+  .btn-xs {
+    display:inline-flex;align-items:center;gap:4px;padding:4px 10px;
+    border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;
+    border:1.5px solid;transition:background .12s,color .12s;
+  }
+  .btn-xs-primary { background:#eff6ff;color:#2563eb;border-color:#bfdbfe; }
+  .btn-xs-primary:hover { background:#dbeafe; }
+  .btn-xs-amber  { background:#fffbeb;color:#d97706;border-color:#fde68a; }
+  .btn-xs-amber:hover  { background:#fef3c7; }
+  .btn-xs-danger { background:#fef2f2;color:#dc2626;border-color:#fecaca; }
+  .btn-xs-danger:hover { background:#fee2e2; }
+  .btn-xs-gray   { background:#f8fafc;color:#64748b;border-color:#e2e8f0; }
+  .btn-xs-gray:hover   { background:#f1f5f9; }
   .modal-overlay {
     display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);
     backdrop-filter:blur(3px);z-index:1000;align-items:center;justify-content:center;
@@ -64,11 +95,113 @@
   .empty-state {
     padding:32px 20px;text-align:center;color:#94a3b8;font-size:13px;
   }
+  /* copy-link toast */
+  #link-toast {
+    display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+    background:#1e293b;color:#fff;padding:10px 20px;border-radius:10px;
+    font-size:13px;font-weight:600;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,.25);
+  }
 </style>
 {% endblock %}
 
 {% block content %}
-<div style="max-width:900px;margin:0 auto;padding:24px 20px;">
+{# ── Member row macro — defined first so calls below are valid ── #}
+{% macro _member_row(m, inv, eff_status, can_manage) %}
+<div class="member-row" id="member-{{ m.id }}">
+  <div class="member-top">
+    <!-- Role icon -->
+    <div class="role-dot" style="background:{{ m.role_color }}18;">
+      <i class="fa-solid {{ m.role_icon }}" style="color:{{ m.role_color }};font-size:11px;"></i>
+    </div>
+
+    <div class="member-body">
+      <!-- Name / position / role / can-sign -->
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <span style="font-weight:700;color:#1e293b;font-size:13px;">{{ m.name }}</span>
+        {% if m.position %}<span style="font-size:11px;color:#94a3b8;">· {{ m.position }}</span>{% endif %}
+        <span class="tag-pill" style="background:{{ m.role_color }}15;color:{{ m.role_color }};">
+          {{ m.role_label }}
+        </span>
+        {% if m.can_sign %}
+        <span class="tag-pill" style="background:#dcfce7;color:#16a34a;">
+          <i class="fa-solid fa-signature" style="font-size:8px;"></i> Can Sign
+        </span>
+        {% endif %}
+      </div>
+
+      <!-- Email / phone -->
+      {% if m.email %}
+      <div style="font-size:11px;color:#64748b;margin-top:3px;">
+        <a href="mailto:{{ m.email }}" style="color:#2563eb;text-decoration:none;">{{ m.email }}</a>
+        {% if m.phone %} · {{ m.phone }}{% endif %}
+      </div>
+      {% endif %}
+
+      <!-- Status badges: linked user + invite -->
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:5px;">
+        {% if m.user_id %}
+        <span class="user-badge">
+          <i class="fa-solid fa-circle-check" style="font-size:9px;"></i> Active User
+        </span>
+        {% endif %}
+
+        {% if eff_status == 'pending' %}
+        <span class="invite-badge pending">
+          <i class="fa-solid fa-clock" style="font-size:9px;"></i>
+          Pending Invite
+          {% if inv and inv.expires_at %}
+          · expires {{ inv.expires_at.strftime('%d %b %Y') }}
+          {% endif %}
+        </span>
+        {% elif eff_status == 'accepted' %}
+        <span class="invite-badge accepted">
+          <i class="fa-solid fa-envelope-open-text" style="font-size:9px;"></i> Accepted
+        </span>
+        {% elif eff_status == 'revoked' %}
+        <span class="invite-badge revoked">
+          <i class="fa-solid fa-ban" style="font-size:9px;"></i> Invite Revoked
+        </span>
+        {% elif eff_status == 'expired' %}
+        <span class="invite-badge expired">
+          <i class="fa-solid fa-triangle-exclamation" style="font-size:9px;"></i> Invite Expired
+        </span>
+        {% elif m.email and not inv %}
+        <span style="font-size:10px;color:#94a3b8;font-style:italic;">No invite sent</span>
+        {% endif %}
+      </div>
+
+      <!-- Action buttons (managers/admins only) -->
+      {% if can_manage %}
+      <div class="member-actions">
+        {% if inv and eff_status in ('pending', 'expired') %}
+        <button class="btn-xs btn-xs-primary" onclick="resendInvite({{ inv.id }}, '{{ m.name|e }}')">
+          <i class="fa-solid fa-paper-plane" style="font-size:9px;"></i> Resend Invite
+        </button>
+        <button class="btn-xs btn-xs-amber" onclick="copyInviteLink({{ inv.id }})">
+          <i class="fa-solid fa-link" style="font-size:9px;"></i> Copy New Link
+        </button>
+        <button class="btn-xs btn-xs-danger" onclick="revokeInvite({{ inv.id }}, '{{ m.name|e }}')">
+          <i class="fa-solid fa-ban" style="font-size:9px;"></i> Revoke
+        </button>
+        {% endif %}
+        <button class="btn-xs btn-xs-gray" onclick="deleteMember({{ m.id }}, '{{ m.name|e }}')">
+          <i class="fa-solid fa-times" style="font-size:9px;"></i> Remove
+        </button>
+      </div>
+      {% else %}
+      <div class="member-actions">
+        <button class="btn-xs btn-xs-gray" onclick="deleteMember({{ m.id }}, '{{ m.name|e }}')">
+          <i class="fa-solid fa-times" style="font-size:9px;"></i> Remove
+        </button>
+      </div>
+      {% endif %}
+
+    </div><!-- /member-body -->
+  </div><!-- /member-top -->
+</div>
+{% endmacro %}
+
+<div style="max-width:960px;margin:0 auto;padding:24px 20px;">
 
   <!-- Header -->
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
@@ -96,6 +229,7 @@
   </div>
 
   <!-- Summary chips -->
+  {% set pending_count = invites_by_member.values()|selectattr('status','equalto','pending')|list|length %}
   <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:24px;">
     <div style="background:#f0f7ff;border:1px solid #bfdbfe;border-radius:12px;padding:10px 16px;">
       <div style="font-size:20px;font-weight:800;color:#1d4ed8;">{{ companies|length }}</div>
@@ -109,6 +243,12 @@
       <div style="font-size:20px;font-weight:800;color:#d97706;">{{ members|selectattr('can_sign')|list|length }}</div>
       <div style="font-size:11px;color:#f59e0b;font-weight:600;">Can Sign</div>
     </div>
+    {% if pending_count %}
+    <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:10px 16px;">
+      <div style="font-size:20px;font-weight:800;color:#d97706;">{{ pending_count }}</div>
+      <div style="font-size:11px;color:#f59e0b;font-weight:600;">Pending Invites</div>
+    </div>
+    {% endif %}
   </div>
 
   <!-- Companies -->
@@ -144,38 +284,18 @@
         </button>
       </div>
 
-      <!-- Members in this company -->
       {% set comp_members = members|selectattr('company_id', 'equalto', company.id)|list %}
       {% if comp_members %}
         {% for m in comp_members %}
-        <div class="member-row" id="member-{{ m.id }}">
-          <div class="role-dot" style="background:{{ m.role_color }}18;">
-            <i class="fa-solid {{ m.role_icon }}" style="color:{{ m.role_color }};font-size:11px;"></i>
-          </div>
-          <div style="flex:1;min-width:0;">
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-              <span style="font-weight:700;color:#1e293b;font-size:13px;">{{ m.name }}</span>
-              {% if m.position %}<span style="font-size:11px;color:#94a3b8;">· {{ m.position }}</span>{% endif %}
-              <span class="tag-pill" style="background:{{ m.role_color }}15;color:{{ m.role_color }};">
-                {{ m.role_label }}
-              </span>
-              {% if m.can_sign %}
-              <span class="tag-pill" style="background:#dcfce7;color:#16a34a;">
-                <i class="fa-solid fa-signature" style="font-size:8px;"></i> Can Sign
-              </span>
-              {% endif %}
-            </div>
-            {% if m.email %}
-            <div style="font-size:11px;color:#64748b;margin-top:2px;">
-              <a href="mailto:{{ m.email }}" style="color:#2563eb;text-decoration:none;">{{ m.email }}</a>
-              {% if m.phone %} · {{ m.phone }}{% endif %}
-            </div>
-            {% endif %}
-          </div>
-          <button onclick="deleteMember({{ m.id }}, '{{ m.name|e }}')" class="btn-danger">
-            <i class="fa-solid fa-times"></i>
-          </button>
-        </div>
+          {% set inv = invites_by_member.get(m.id) %}
+          {% if inv and inv.status == 'pending' and not inv.is_usable %}
+            {% set eff_status = 'expired' %}
+          {% elif inv %}
+            {% set eff_status = inv.status %}
+          {% else %}
+            {% set eff_status = None %}
+          {% endif %}
+          {{ _member_row(m, inv, eff_status, can_manage) }}
         {% endfor %}
       {% else %}
         <div class="empty-state">
@@ -214,26 +334,20 @@
       </div>
     </div>
     {% for m in unassigned %}
-    <div class="member-row" id="member-{{ m.id }}">
-      <div class="role-dot" style="background:{{ m.role_color }}18;">
-        <i class="fa-solid {{ m.role_icon }}" style="color:{{ m.role_color }};font-size:11px;"></i>
-      </div>
-      <div style="flex:1;min-width:0;">
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-          <span style="font-weight:700;color:#1e293b;font-size:13px;">{{ m.name }}</span>
-          {% if m.position %}<span style="font-size:11px;color:#94a3b8;">· {{ m.position }}</span>{% endif %}
-          <span class="tag-pill" style="background:{{ m.role_color }}15;color:{{ m.role_color }};">{{ m.role_label }}</span>
-          {% if m.can_sign %}<span class="tag-pill" style="background:#dcfce7;color:#16a34a;"><i class="fa-solid fa-signature" style="font-size:8px;"></i> Can Sign</span>{% endif %}
-        </div>
-        {% if m.email %}<div style="font-size:11px;color:#64748b;margin-top:2px;"><a href="mailto:{{ m.email }}" style="color:#2563eb;text-decoration:none;">{{ m.email }}</a></div>{% endif %}
-      </div>
-      <button onclick="deleteMember({{ m.id }}, '{{ m.name|e }}')" class="btn-danger"><i class="fa-solid fa-times"></i></button>
-    </div>
+      {% set inv = invites_by_member.get(m.id) %}
+      {% if inv and inv.status == 'pending' and not inv.is_usable %}
+        {% set eff_status = 'expired' %}
+      {% elif inv %}
+        {% set eff_status = inv.status %}
+      {% else %}
+        {% set eff_status = None %}
+      {% endif %}
+      {{ _member_row(m, inv, eff_status, can_manage) }}
     {% endfor %}
   </div>
   {% endif %}
 
-</div>
+</div><!-- /container -->
 
 <!-- ── Add Company Modal ─────────────────────────────── -->
 <div class="modal-overlay" id="add-company-modal">
@@ -265,11 +379,11 @@
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
         <div>
           <label class="form-label">Primary Contact Name</label>
-          <input id="c-contact" type="text" class="form-input" placeholder="John Smith">
+          <input id="c-contact" type="text" class="form-input" placeholder="Jane Smith">
         </div>
         <div>
           <label class="form-label">Contact Email</label>
-          <input id="c-email" type="email" class="form-input" placeholder="john@company.com">
+          <input id="c-email" type="email" class="form-input" placeholder="jane@company.com">
         </div>
       </div>
       <div>
@@ -292,7 +406,7 @@
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
         <div>
           <label class="form-label">Full Name <span style="color:#ef4444;">*</span></label>
-          <input id="m-name" type="text" class="form-input" placeholder="John Smith">
+          <input id="m-name" type="text" class="form-input" placeholder="Jane Smith">
         </div>
         <div>
           <label class="form-label">Job Title / Position</label>
@@ -302,7 +416,8 @@
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
         <div>
           <label class="form-label">Email</label>
-          <input id="m-email" type="email" class="form-input" placeholder="john@company.com">
+          <input id="m-email" type="email" class="form-input" placeholder="jane@company.com">
+          <p style="font-size:10px;color:#94a3b8;margin:4px 0 0;">An invite will be sent if email is provided.</p>
         </div>
         <div>
           <label class="form-label">Phone</label>
@@ -341,6 +456,9 @@
     </div>
   </div>
 </div>
+
+<!-- Copy-link toast -->
+<div id="link-toast">Link copied to clipboard</div>
 
 <script>
 const PID = {{ proj.id }};
@@ -432,7 +550,49 @@ async function deleteMember(id, name) {
   else alert(d.error);
 }
 
-/* ── Close on backdrop click ── */
+/* ── Resend invite ── */
+async function resendInvite(inviteId, memberName) {
+  if (!confirm(`Resend invite to ${memberName}? A new invitation email will be sent and the previous link will stop working.`)) return;
+  const r = await fetch(`/projects/${PID}/team/invites/${inviteId}/resend`, { method: 'POST' });
+  const d = await r.json();
+  if (!d.ok) { alert(d.error); return; }
+  alert('Invite resent successfully.');
+  location.reload();
+}
+
+/* ── Revoke invite ── */
+async function revokeInvite(inviteId, memberName) {
+  if (!confirm(`Revoke the invite for ${memberName}? They will no longer be able to accept it.`)) return;
+  const r = await fetch(`/projects/${PID}/team/invites/${inviteId}/revoke`, { method: 'POST' });
+  const d = await r.json();
+  if (!d.ok) { alert(d.error); return; }
+  location.reload();
+}
+
+/* ── Copy new invite link ── */
+async function copyInviteLink(inviteId) {
+  const r = await fetch(`/projects/${PID}/team/invites/${inviteId}/copy-link`, { method: 'POST' });
+  const d = await r.json();
+  if (!d.ok) { alert(d.error); return; }
+  try {
+    await navigator.clipboard.writeText(d.invite_url);
+    showToast('Link copied to clipboard');
+  } catch (_) {
+    // Fallback: prompt so user can copy manually
+    prompt('Copy this invite link:', d.invite_url);
+  }
+  location.reload();   // reload so the UI reflects the rotated expiry
+}
+
+/* ── Toast helper ── */
+function showToast(msg) {
+  const el = document.getElementById('link-toast');
+  el.textContent = msg;
+  el.style.display = 'block';
+  setTimeout(() => { el.style.display = 'none'; }, 3000);
+}
+
+/* ── Close modals on backdrop click ── */
 document.querySelectorAll('.modal-overlay').forEach(el => {
   el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
 });
