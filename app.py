@@ -202,6 +202,60 @@ def logout():
     logout_user()
     return redirect(url_for('login'))
 
+
+# ─── Public invite landing (Phase 4A — read-only) ────────────────────────────
+@app.route('/invite/<token>')
+def invite_accept(token):
+    """Public invite landing page.
+
+    Hashes the raw URL token and looks up UserInvite by token_hash.
+    Renders the correct state page; auto-marks pending-but-expired invites.
+    No user creation, no login, no form submission in Phase 4A.
+    """
+    token_hash = _hash_token(token)
+    invite     = UserInvite.query.filter_by(token_hash=token_hash).first()
+
+    # ── Determine display state ──────────────────────────────────────────────
+    if invite is None:
+        # Unknown hash — either never issued or already rotated
+        return render_template('invite_accept.html',
+                               state='invalid',
+                               invite=None,
+                               proj=None,
+                               role_label='')
+
+    proj = invite.project   # may be None if project was deleted
+
+    if invite.status == 'revoked':
+        state = 'revoked'
+
+    elif invite.status == 'accepted':
+        state = 'accepted'
+
+    elif invite.status == 'expired':
+        # Already marked expired by a previous visit or scheduled job
+        state = 'expired'
+
+    else:
+        # status == 'pending' — check whether it has since expired
+        if invite.expires_at and invite.expires_at < datetime.now(timezone.utc):
+            try:
+                invite.status = 'expired'
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+            state = 'expired'
+        else:
+            state = 'valid'
+
+    role_label = _project_role_label(invite.role) if invite.role else ''
+
+    return render_template('invite_accept.html',
+                           state=state,
+                           invite=invite,
+                           proj=proj,
+                           role_label=role_label)
+
 # ─── Projects ────────────────────────────────────────────────────────────────
 @app.route('/projects')
 @login_required

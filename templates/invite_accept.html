@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>
+    {% if state == 'valid' %}
+      You're invited — {{ proj.name if proj else 'QA Manager' }}
+    {% elif state == 'accepted' %}
+      Already Accepted — QA Manager
+    {% elif state == 'expired' %}
+      Invite Expired — QA Manager
+    {% elif state == 'revoked' %}
+      Invite Revoked — QA Manager
+    {% else %}
+      Invite Not Found — QA Manager
+    {% endif %}
+  </title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+      background: #f0f4f8;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+      color: #1e293b;
+    }
+
+    /* ── Card shell ──────────────────────────────────────────────── */
+    .card {
+      background: #fff;
+      border-radius: 20px;
+      box-shadow: 0 8px 40px rgba(0, 0, 0, .12);
+      overflow: hidden;
+      width: 100%;
+      max-width: 480px;
+    }
+
+    /* ── Header bar ──────────────────────────────────────────────── */
+    .card-header {
+      background: #1e2d3d;
+      padding: 28px 32px 24px;
+      text-align: center;
+      position: relative;
+    }
+    .card-header::before {
+      content: '';
+      display: block;
+      height: 4px;
+      background: #2563eb;
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      border-radius: 20px 20px 0 0;
+    }
+    .app-name {
+      color: #fff;
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: -.3px;
+    }
+    .app-sub {
+      color: #94a3b8;
+      font-size: 11px;
+      font-weight: 500;
+      margin-top: 3px;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+    }
+
+    /* ── Body ────────────────────────────────────────────────────── */
+    .card-body {
+      padding: 32px;
+    }
+
+    /* ── State icon ──────────────────────────────────────────────── */
+    .state-icon {
+      width: 64px; height: 64px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 26px;
+      margin: 0 auto 20px;
+    }
+    .state-icon.valid    { background: #eff6ff; color: #2563eb; }
+    .state-icon.accepted { background: #f0fdf4; color: #16a34a; }
+    .state-icon.expired  { background: #fff7ed; color: #d97706; }
+    .state-icon.revoked  { background: #fef2f2; color: #dc2626; }
+    .state-icon.invalid  { background: #f1f5f9; color: #94a3b8; }
+
+    .state-title {
+      font-size: 20px;
+      font-weight: 800;
+      text-align: center;
+      margin-bottom: 8px;
+    }
+    .state-message {
+      font-size: 13px;
+      color: #64748b;
+      text-align: center;
+      line-height: 1.6;
+      margin-bottom: 24px;
+    }
+
+    /* ── Detail card ─────────────────────────────────────────────── */
+    .detail-card {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      overflow: hidden;
+      margin-bottom: 24px;
+    }
+    .detail-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 11px 16px;
+      border-bottom: 1px solid #f1f5f9;
+      font-size: 13px;
+    }
+    .detail-row:last-child { border-bottom: none; }
+    .detail-label {
+      color: #94a3b8;
+      font-weight: 700;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      flex-shrink: 0;
+      width: 88px;
+      padding-top: 1px;
+    }
+    .detail-value {
+      color: #1e293b;
+      font-weight: 600;
+      flex: 1;
+      min-width: 0;
+      word-break: break-word;
+    }
+
+    /* ── Expiry note ─────────────────────────────────────────────── */
+    .expiry-note {
+      font-size: 12px;
+      color: #64748b;
+      text-align: center;
+      padding: 10px 14px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      margin-bottom: 20px;
+    }
+
+    /* ── Alert blocks ────────────────────────────────────────────── */
+    .alert {
+      padding: 14px 16px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      line-height: 1.5;
+    }
+    .alert-red    { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+    .alert-amber  { background: #fffbeb; color: #d97706; border: 1px solid #fde68a; }
+    .alert-green  { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+    .alert-gray   { background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; }
+
+    /* ── Footer ──────────────────────────────────────────────────── */
+    .card-footer {
+      padding: 16px 32px 24px;
+      text-align: center;
+      font-size: 11px;
+      color: #94a3b8;
+      border-top: 1px solid #f1f5f9;
+    }
+    .card-footer a {
+      color: #2563eb;
+      text-decoration: none;
+    }
+    .card-footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+<div class="card">
+
+  <!-- ── Header ──────────────────────────────────────────────────── -->
+  <div class="card-header">
+    <div class="app-name">QA Manager</div>
+    <div class="app-sub">Construction Quality Management Platform</div>
+  </div>
+
+  <!-- ── Body ────────────────────────────────────────────────────── -->
+  <div class="card-body">
+
+    {# ════════════════════════════════════════════════════
+       STATE: invalid — token not found or already rotated
+       ════════════════════════════════════════════════════ #}
+    {% if state == 'invalid' %}
+    <div class="state-icon invalid">
+      <i class="fa-solid fa-question"></i>
+    </div>
+    <div class="state-title" style="color:#64748b;">Invite Not Found</div>
+    <div class="state-message">
+      This invite link is not valid. It may have been replaced by a newer link,
+      or it was never issued by this system.
+    </div>
+    <div class="alert alert-gray">
+      <i class="fa-solid fa-circle-info" style="margin-top:1px;flex-shrink:0;"></i>
+      <span>
+        If you believe this is an error, ask the project administrator to send
+        you a new invitation.
+      </span>
+    </div>
+
+    {# ════════════════════════════════════════════════════
+       STATE: revoked
+       ════════════════════════════════════════════════════ #}
+    {% elif state == 'revoked' %}
+    <div class="state-icon revoked">
+      <i class="fa-solid fa-ban"></i>
+    </div>
+    <div class="state-title" style="color:#dc2626;">Invite Revoked</div>
+    <div class="state-message">
+      This invitation has been revoked by a project administrator and can no
+      longer be accepted.
+    </div>
+    {% if invite %}
+    <div class="detail-card">
+      {% if proj %}
+      <div class="detail-row">
+        <div class="detail-label">Project</div>
+        <div class="detail-value">{{ proj.name }}</div>
+      </div>
+      {% endif %}
+      <div class="detail-row">
+        <div class="detail-label">Invited</div>
+        <div class="detail-value">{{ invite.name }}</div>
+      </div>
+      {% if invite.revoked_at %}
+      <div class="detail-row">
+        <div class="detail-label">Revoked</div>
+        <div class="detail-value">{{ invite.revoked_at.strftime('%d %b %Y') }}</div>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+    <div class="alert alert-red">
+      <i class="fa-solid fa-ban" style="margin-top:1px;flex-shrink:0;"></i>
+      <span>
+        Contact the project administrator if you think this was revoked in error.
+      </span>
+    </div>
+
+    {# ════════════════════════════════════════════════════
+       STATE: accepted — already used
+       ════════════════════════════════════════════════════ #}
+    {% elif state == 'accepted' %}
+    <div class="state-icon accepted">
+      <i class="fa-solid fa-circle-check"></i>
+    </div>
+    <div class="state-title" style="color:#16a34a;">Already Accepted</div>
+    <div class="state-message">
+      This invitation has already been accepted. Your account is active.
+    </div>
+    {% if invite %}
+    <div class="detail-card">
+      {% if proj %}
+      <div class="detail-row">
+        <div class="detail-label">Project</div>
+        <div class="detail-value">{{ proj.name }}</div>
+      </div>
+      {% endif %}
+      <div class="detail-row">
+        <div class="detail-label">Name</div>
+        <div class="detail-value">{{ invite.name }}</div>
+      </div>
+      {% if invite.accepted_at %}
+      <div class="detail-row">
+        <div class="detail-label">Accepted</div>
+        <div class="detail-value">{{ invite.accepted_at.strftime('%d %b %Y') }}</div>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+    <div class="alert alert-green">
+      <i class="fa-solid fa-circle-check" style="margin-top:1px;flex-shrink:0;"></i>
+      <span>
+        <a href="/login">Sign in to QA Manager</a> to access your project.
+      </span>
+    </div>
+
+    {# ════════════════════════════════════════════════════
+       STATE: expired
+       ════════════════════════════════════════════════════ #}
+    {% elif state == 'expired' %}
+    <div class="state-icon expired">
+      <i class="fa-solid fa-clock"></i>
+    </div>
+    <div class="state-title" style="color:#d97706;">Invite Expired</div>
+    <div class="state-message">
+      This invitation link has expired and can no longer be used to create
+      an account.
+    </div>
+    {% if invite %}
+    <div class="detail-card">
+      {% if proj %}
+      <div class="detail-row">
+        <div class="detail-label">Project</div>
+        <div class="detail-value">{{ proj.name }}</div>
+      </div>
+      {% endif %}
+      <div class="detail-row">
+        <div class="detail-label">Invited</div>
+        <div class="detail-value">{{ invite.name }}</div>
+      </div>
+      {% if invite.expires_at %}
+      <div class="detail-row">
+        <div class="detail-label">Expired</div>
+        <div class="detail-value">{{ invite.expires_at.strftime('%d %b %Y') }}</div>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+    <div class="alert alert-amber">
+      <i class="fa-solid fa-triangle-exclamation" style="margin-top:1px;flex-shrink:0;"></i>
+      <span>
+        Ask the project administrator to resend the invitation — they can
+        generate a fresh link from the People &amp; Companies page.
+      </span>
+    </div>
+
+    {# ════════════════════════════════════════════════════
+       STATE: valid — pending invite, not yet expired
+       ════════════════════════════════════════════════════ #}
+    {% else %}
+    <div class="state-icon valid">
+      <i class="fa-solid fa-envelope-open-text"></i>
+    </div>
+    <div class="state-title" style="color:#1e293b;">You've been invited</div>
+    <div class="state-message">
+      {% if proj %}
+        You have been invited to join <strong>{{ proj.name }}</strong> on
+        QA Manager.
+      {% else %}
+        You have been invited to join a project on QA Manager.
+      {% endif %}
+    </div>
+
+    <!-- Invite detail card -->
+    <div class="detail-card">
+      {% if proj %}
+      <div class="detail-row">
+        <div class="detail-label">Project</div>
+        <div class="detail-value">{{ proj.name }}</div>
+      </div>
+      {% endif %}
+      <div class="detail-row">
+        <div class="detail-label">Name</div>
+        <div class="detail-value">{{ invite.name }}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Email</div>
+        <div class="detail-value" style="color:#2563eb;">{{ invite.email }}</div>
+      </div>
+      {% if invite.company %}
+      <div class="detail-row">
+        <div class="detail-label">Company</div>
+        <div class="detail-value">{{ invite.company }}</div>
+      </div>
+      {% endif %}
+      {% if role_label %}
+      <div class="detail-row">
+        <div class="detail-label">Role</div>
+        <div class="detail-value">{{ role_label }}</div>
+      </div>
+      {% endif %}
+      {% if invite.expires_at %}
+      <div class="detail-row">
+        <div class="detail-label">Expires</div>
+        <div class="detail-value">{{ invite.expires_at.strftime('%d %b %Y') }}</div>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Coming next: account setup form (Phase 4B) -->
+    <div class="alert alert-gray" style="margin-bottom:0;">
+      <i class="fa-solid fa-circle-info" style="margin-top:1px;flex-shrink:0;"></i>
+      <span>
+        Account setup will be available shortly.
+        If you already have a QA Manager account, <a href="/login" style="color:#2563eb;">sign in here</a>.
+      </span>
+    </div>
+
+    {% endif %}
+
+  </div><!-- /card-body -->
+
+  <!-- ── Footer ──────────────────────────────────────────────────── -->
+  <div class="card-footer">
+    QA Manager &mdash; Construction Quality Management Platform<br>
+    <a href="/login">Back to sign-in</a>
+  </div>
+
+</div><!-- /card -->
+
+</body>
+</html>
