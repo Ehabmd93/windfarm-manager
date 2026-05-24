@@ -349,6 +349,150 @@ def forgot_password():
     return render_template('forgot_password.html', submitted=True)
 
 
+# ─── Password reset token helper (Phase 5B) ──────────────────────────────────
+
+def _resolve_reset_token(raw_token):
+    """Hash raw_token, look up PasswordResetToken, return (token_or_None, state).
+
+    State values: 'invalid' | 'used' | 'revoked' | 'expired' | 'valid'
+    Normalises expires_at for SQLite naive-datetime compatibility.
+    """
+    rt = PasswordResetToken.query.filter_by(
+        token_hash=_hash_token(raw_token)
+    ).first()
+
+    if rt is None:
+        return None, 'invalid'
+
+    # used_at checked before revoked_at so a single-use token shows the right state
+    if rt.used_at is not None:
+        return rt, 'used'
+
+    if rt.revoked_at is not None:
+        return rt, 'revoked'
+
+    # Expiry — normalise to UTC-aware (SQLite returns naive datetimes)
+    now = datetime.now(timezone.utc)
+    expires_at = rt.expires_at
+    if expires_at is not None and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at is not None and expires_at < now:
+        return rt, 'expired'
+
+    return rt, 'valid'
+
+
+# ─── Reset password (Phase 5B) ────────────────────────────────────────────────
+
+@app.route('/reset-password/<token>', methods=['GET', 'POST'])
+def reset_password(token):
+    """Phase 5B: Accept the reset token from email and set a new password.
+
+    GET:  Resolve token state; show form or informational error page.
+    POST: Validate new password; apply change; mark token used; login if active.
+
+    Security:
+      - Raw token never stored.
+      - Used / revoked / expired tokens cannot be reused.
+      - After successful reset, all other unused tokens for the same user
+        are revoked.
+      - Inactive users cannot be logged in even after password change.
+    """
+    from flask import session as flask_session
+
+    def _render(state, *, form_error=None, user_email='', expires_at=None):
+        return render_template('reset_password.html',
+                               state=state,
+                               form_error=form_error,
+                               user_email=user_email,
+                               expires_at=expires_at,
+                               token=token)
+
+    rt, state = _resolve_reset_token(token)
+
+    # ── Non-valid token states (GET or POST) ──────────────────────────────────
+    if state != 'valid':
+        user_email = (rt.user.email if rt and rt.user else '')
+        return _render(state, user_email=user_email)
+
+    user = rt.user
+
+    # Normalise expires_at once for display and for the POST re-render
+    expires_at = rt.expires_at
+    if expires_at is not None and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+    # ── GET ───────────────────────────────────────────────────────────────────
+    if request.method == 'GET':
+        return _render('valid', user_email=user.email, expires_at=expires_at)
+
+    # ── POST ──────────────────────────────────────────────────────────────────
+    password  = (request.form.get('password')  or '').strip()
+    password2 = (request.form.get('password2') or '').strip()
+
+    # Validation
+    form_error = None
+    if not password:
+        form_error = 'Password is required.'
+    elif len(password) < 8:
+        form_error = 'Password must be at least 8 characters.'
+    elif password != password2:
+        form_error = 'Passwords do not match.'
+
+    if form_error:
+        return _render('valid', form_error=form_error,
+                       user_email=user.email, expires_at=expires_at)
+
+    # ── Apply password change ─────────────────────────────────────────────────
+    now = datetime.now(timezone.utc)
+
+    user.password            = generate_password_hash(password)
+    user.password_changed_at = now
+    user.failed_login_count  = 0
+    user.locked_until        = None
+    user.email_verified      = True
+    if user.email_verified_at is None:
+        user.email_verified_at = now
+
+    # Mark this token used (single-use)
+    rt.used_at = now
+
+    # Revoke all other unused tokens for this user
+    PasswordResetToken.query.filter(
+        PasswordResetToken.user_id == user.id,
+        PasswordResetToken.id     != rt.id,
+        PasswordResetToken.used_at.is_(None),
+        PasswordResetToken.revoked_at.is_(None),
+    ).update({'revoked_at': now}, synchronize_session=False)
+
+    # Audit — no raw token, no password hash
+    log_audit('password_changed',
+              project_id=None,
+              actor=None,
+              entity_type='user',
+              entity_id=user.id,
+              entity_label=user.email,
+              detail={'user_id':    user.id,
+                      'user_email': user.email,
+                      'token_id':   rt.id})
+
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        return _render('valid',
+                       form_error='An unexpected error occurred. Please try again.',
+                       user_email=user.email, expires_at=expires_at)
+
+    # ── Login or blocked ──────────────────────────────────────────────────────
+    if not user.is_active:
+        return _render('disabled', user_email=user.email)
+
+    login_user(user)
+    flash('Your password has been reset. You are now signed in.', 'success')
+    return redirect(url_for('projects_list'))
+
+
 # ─── Public invite landing (Phase 4B — new-user acceptance) ─────────────────
 
 def _resolve_invite_state(token):
