@@ -88,6 +88,26 @@ def _project_role_label(role_key):
                 role_key.replace('_', ' ').title())
 
 
+def _is_safe_local_next(next_url):
+    """Return True iff next_url is safe for a local post-login redirect.
+
+    Allows only paths starting with a single '/'.
+    Rejects empty values, '//' (protocol-relative), and absolute URLs.
+    Prevents open-redirect attacks.
+    """
+    if not next_url or not isinstance(next_url, str):
+        return False
+    s = next_url.strip()
+    if not s or not s.startswith('/'):
+        return False
+    if s.startswith('//'):
+        return False
+    lo = s.lower()
+    if lo.startswith('http:') or lo.startswith('https:'):
+        return False
+    return True
+
+
 # ── Invite role → User/ProjectMember role mappings (Phase 4B) ─────────────────
 
 _INVITE_TO_USER_ROLE = {
@@ -234,10 +254,8 @@ def login():
         if user and check_password_hash(user.password, request.form['password']):
             login_user(user)
             # Respect ?next= for invite accept-flow redirects.
-            # Only follow local paths (must start with / but not //) to prevent
-            # open-redirect attacks.
-            next_url = request.args.get('next', '').strip()
-            if next_url and next_url.startswith('/') and not next_url.startswith('//'):
+            next_url = request.args.get('next', '')
+            if _is_safe_local_next(next_url):
                 return redirect(next_url)
             return redirect(url_for('dashboard'))
         flash('Invalid email or password', 'danger')
@@ -292,31 +310,44 @@ def _resolve_invite_state(token):
             db.session.rollback()
         return invite, proj, 'expired'
 
+    # Project was deleted after the invite was issued — cannot accept
+    if proj is None:
+        return invite, None, 'project_unavailable'
+
     return invite, proj, 'valid'
 
 
 @app.route('/invite/<token>', methods=['GET', 'POST'])
 def invite_accept(token):
-    """Public invite landing page — Phase 4B (new user) + 4C (existing user).
+    """Public invite landing page — Phase 4B/4C/4D.
 
     GET:
-      Non-valid state          → informational error page (invalid/revoked/
-                                 accepted/expired — unchanged from 4A)
+      project_unavailable      → friendly page, no action (4D)
+      invalid/revoked/accepted/expired → informational page (4A)
+      invalid_data             → empty/missing email on invite (4D)
       Valid + no account       → password-setup form (4B)
       Valid + existing account:
+        disabled               → blocked disabled page (checked first)
         not authenticated      → sign-in prompt with ?next= (4C)
         wrong logged-in user   → blocked wrong-user page (4C)
-        correct user, disabled → blocked disabled page (4C)
         correct user, active   → Accept invite button (4C)
 
     POST:
       New user   → validate password → create User → link → login → redirect
-      Existing user:
+      Existing user (disabled check before auth check — 4D):
+        disabled               → blocked disabled page, no redirect
         not authenticated      → redirect /login?next=/invite/<token>
         wrong email            → blocked wrong-user page
-        account disabled       → blocked disabled page
-        correct + active       → link ProjectTeamMember, create ProjectMember,
-                                  mark accepted, set session, redirect
+        correct + active       → link, create ProjectMember, mark accepted
+
+    Hardening (4D):
+      - _is_safe_local_next used for ?next= redirect
+      - project_unavailable handled in _resolve_invite_state
+      - invite_email normalised once and reused throughout
+      - ProjectTeamMember already linked to a different user → skip + audit
+      - ProjectMember flush before audit so entity_id is populated
+      - project_member_created logged for both new and existing users
+      - db.session.commit wrapped in try/except; rollback on failure
     """
     from flask import session as flask_session
 
@@ -333,30 +364,33 @@ def invite_accept(token):
                                existing_sub_state=existing_sub_state,
                                token=token)
 
-    # ── Resolve invite state (same for GET and POST) ─────────────────────────
+    # ── Resolve invite state ─────────────────────────────────────────────────
     invite, proj, state = _resolve_invite_state(token)
 
     if state != 'valid':
         role_label = _project_role_label(invite.role) if invite else ''
         return _render(state, invite, proj, role_label)
 
+    # ── Validate invite email ────────────────────────────────────────────────
+    invite_email = (invite.email or '').strip().lower()
+    if not invite_email:
+        return _render('invalid_data', invite, proj, '')
+
     role_label    = _project_role_label(invite.role) if invite.role else ''
-    existing_user = User.query.filter_by(
-        email=invite.email.strip().lower()
-    ).first()
+    existing_user = User.query.filter_by(email=invite_email).first()
 
     # ════════════════════════════════════════════════════════════════════════
-    # BRANCH A — existing user (Phase 4C)
+    # BRANCH A — existing user (Phase 4C + 4D hardening)
     # ════════════════════════════════════════════════════════════════════════
     if existing_user:
 
         def _get_existing_sub_state():
-            """Determine display sub-state for an existing-user invite."""
+            """Sub-state for GET display. Disabled is checked before auth."""
             if not existing_user.is_active:
                 return 'disabled'
             if not current_user.is_authenticated:
                 return 'not_logged_in'
-            if current_user.email.strip().lower() != invite.email.strip().lower():
+            if current_user.email.strip().lower() != invite_email:
                 return 'wrong_user'
             return 'ready'
 
@@ -368,21 +402,19 @@ def invite_accept(token):
 
         # ── POST ─────────────────────────────────────────────────────────────
 
+        # Disabled FIRST — do not redirect a disabled user to the login page
+        if not existing_user.is_active:
+            return _render('valid', invite, proj, role_label,
+                           user_exists=True, existing_sub_state='disabled')
+
         # Not authenticated → send to login with next= so they return here
         if not current_user.is_authenticated:
             return redirect(url_for('login', next=f'/invite/{token}'))
 
         # Wrong email → blocked (no DB changes)
-        if current_user.email.strip().lower() != invite.email.strip().lower():
+        if current_user.email.strip().lower() != invite_email:
             return _render('valid', invite, proj, role_label,
-                           user_exists=True,
-                           existing_sub_state='wrong_user')
-
-        # Disabled account → blocked (no DB changes)
-        if not existing_user.is_active:
-            return _render('valid', invite, proj, role_label,
-                           user_exists=True,
-                           existing_sub_state='disabled')
+                           user_exists=True, existing_sub_state='wrong_user')
 
         # ── Accept ────────────────────────────────────────────────────────────
         now = datetime.now(timezone.utc)
@@ -394,24 +426,38 @@ def invite_accept(token):
             existing_user.email_verified_at = now
 
         # Link ProjectTeamMember → existing User
+        # Only link if unlinked; skip + audit if already linked to a different user.
         if invite.project_team_member_id is not None:
             team_member = ProjectTeamMember.query.filter_by(
                 id=invite.project_team_member_id,
                 project_id=invite.project_id,
             ).first()
-            if team_member and team_member.user_id is None:
-                team_member.user_id = existing_user.id
-                log_audit('project_member_linked',
-                          project_id=invite.project_id,
-                          actor=current_user,
-                          entity_type='team_member',
-                          entity_id=team_member.id,
-                          entity_label=existing_user.name,
-                          detail={'user_id': existing_user.id,
-                                  'role': invite.role,
-                                  'invite_id': invite.id})
+            if team_member:
+                if team_member.user_id is None:
+                    team_member.user_id = existing_user.id
+                    log_audit('project_member_linked',
+                              project_id=invite.project_id,
+                              actor=current_user,
+                              entity_type='team_member',
+                              entity_id=team_member.id,
+                              entity_label=existing_user.name,
+                              detail={'user_id': existing_user.id,
+                                      'role': invite.role,
+                                      'invite_id': invite.id})
+                elif team_member.user_id != existing_user.id:
+                    # Already linked to a different user — do not overwrite
+                    log_audit('project_member_link_skipped',
+                              project_id=invite.project_id,
+                              actor=current_user,
+                              entity_type='team_member',
+                              entity_id=team_member.id,
+                              entity_label=existing_user.name,
+                              detail={'existing_user_id': team_member.user_id,
+                                      'invite_user_id': existing_user.id,
+                                      'invite_id': invite.id})
+                # else: user_id already matches — correct link, no action needed
 
-        # Create ProjectMember if not already present
+        # Create ProjectMember if not already present; flush before audit
         if invite.project_id is not None:
             already = ProjectMember.query.filter_by(
                 project_id=invite.project_id,
@@ -425,11 +471,12 @@ def invite_accept(token):
                     added_at=now,
                 )
                 db.session.add(pm)
+                db.session.flush()  # populate pm.id before log_audit
                 log_audit('project_member_created',
                           project_id=invite.project_id,
                           actor=current_user,
                           entity_type='project_member',
-                          entity_id=None,
+                          entity_id=pm.id,
                           entity_label=existing_user.name,
                           detail={'user_id': existing_user.id,
                                   'proj_role': _invite_role_to_proj_role(invite.role),
@@ -451,7 +498,11 @@ def invite_accept(token):
                           'invite_role': invite.role,
                           'proj_role': _invite_role_to_proj_role(invite.role)})
 
-        db.session.commit()
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            return _render('acceptance_error', invite, proj, role_label)
 
         if invite.project_id is not None:
             flask_session['active_project_id'] = invite.project_id
@@ -460,13 +511,12 @@ def invite_accept(token):
         return redirect(url_for('projects_list'))
 
     # ════════════════════════════════════════════════════════════════════════
-    # BRANCH B — new user (Phase 4B, unchanged)
+    # BRANCH B — new user (Phase 4B + 4D hardening)
     # ════════════════════════════════════════════════════════════════════════
 
     # ── GET ──────────────────────────────────────────────────────────────────
     if request.method == 'GET':
-        return _render('valid', invite, proj, role_label,
-                       user_exists=False)
+        return _render('valid', invite, proj, role_label, user_exists=False)
 
     # ── POST: new-user account creation ──────────────────────────────────────
     password  = (request.form.get('password')  or '').strip()
@@ -485,11 +535,11 @@ def invite_accept(token):
         return _render('valid', invite, proj, role_label,
                        user_exists=False, form_error=form_error)
 
-    # Create User
+    # Create User (use invite_email — already normalised)
     now = datetime.now(timezone.utc)
     new_user = User(
         name=invite.name,
-        email=invite.email.strip().lower(),
+        email=invite_email,
         password=generate_password_hash(password),
         role=_invite_role_to_user_role(invite.role),
         company=invite.company or '',
@@ -504,23 +554,36 @@ def invite_accept(token):
     db.session.flush()  # get new_user.id before FK references
 
     # Link ProjectTeamMember → new User
+    # Only link if unlinked; skip + audit if already linked to a different user.
     if invite.project_team_member_id is not None:
         team_member = ProjectTeamMember.query.filter_by(
             id=invite.project_team_member_id,
             project_id=invite.project_id,
         ).first()
-        if team_member and team_member.user_id is None:
-            team_member.user_id = new_user.id
-            log_audit('project_member_linked',
-                      project_id=invite.project_id,
-                      actor=None,
-                      entity_type='team_member',
-                      entity_id=team_member.id,
-                      entity_label=new_user.name,
-                      detail={'user_id': new_user.id,
-                              'role': invite.role})
+        if team_member:
+            if team_member.user_id is None:
+                team_member.user_id = new_user.id
+                log_audit('project_member_linked',
+                          project_id=invite.project_id,
+                          actor=None,
+                          entity_type='team_member',
+                          entity_id=team_member.id,
+                          entity_label=new_user.name,
+                          detail={'user_id': new_user.id,
+                                  'role': invite.role})
+            elif team_member.user_id != new_user.id:
+                # Already linked to a different user — do not overwrite
+                log_audit('project_member_link_skipped',
+                          project_id=invite.project_id,
+                          actor=None,
+                          entity_type='team_member',
+                          entity_id=team_member.id,
+                          entity_label=new_user.name,
+                          detail={'existing_user_id': team_member.user_id,
+                                  'invite_user_id': new_user.id})
+            # else: user_id already matches — no action needed
 
-    # Create ProjectMember if not already present
+    # Create ProjectMember if not already present; flush before audit
     if invite.project_id is not None:
         already = ProjectMember.query.filter_by(
             project_id=invite.project_id,
@@ -534,6 +597,16 @@ def invite_accept(token):
                 added_at=now,
             )
             db.session.add(pm)
+            db.session.flush()  # populate pm.id before log_audit
+            log_audit('project_member_created',
+                      project_id=invite.project_id,
+                      actor=None,
+                      entity_type='project_member',
+                      entity_id=pm.id,
+                      entity_label=new_user.name,
+                      detail={'user_id': new_user.id,
+                              'proj_role': _invite_role_to_proj_role(invite.role),
+                              'invite_id': invite.id})
 
     # Mark invite accepted
     invite.status      = 'accepted'
@@ -558,7 +631,11 @@ def invite_accept(token):
               entity_label=invite.email,
               detail={'new_user_id': new_user.id})
 
-    db.session.commit()
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        return _render('acceptance_error', invite, proj, role_label)
 
     # Login & redirect
     login_user(new_user)

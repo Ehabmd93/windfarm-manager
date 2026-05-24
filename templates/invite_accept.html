@@ -385,6 +385,93 @@
     </div>
 
     {# ════════════════════════════════════════════════════
+       STATE: project_unavailable — project deleted after invite was issued
+       ════════════════════════════════════════════════════ #}
+    {% elif state == 'project_unavailable' %}
+    <div class="state-icon expired">
+      <i class="fa-solid fa-folder-open"></i>
+    </div>
+    <div class="state-title" style="color:#d97706;">Project Unavailable</div>
+    <div class="state-message">
+      This invite is no longer valid because the project it was associated
+      with has been removed.
+    </div>
+    {% if invite %}
+    <div class="detail-card">
+      <div class="detail-row">
+        <div class="detail-label">Invited</div>
+        <div class="detail-value">{{ invite.name }}</div>
+      </div>
+      {% if invite.email %}
+      <div class="detail-row">
+        <div class="detail-label">Email</div>
+        <div class="detail-value" style="color:#2563eb;">{{ invite.email }}</div>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+    <div class="alert alert-amber">
+      <i class="fa-solid fa-triangle-exclamation" style="margin-top:1px;flex-shrink:0;"></i>
+      <span>
+        Contact the person who sent you this invitation for assistance.
+      </span>
+    </div>
+
+    {# ════════════════════════════════════════════════════
+       STATE: invalid_data — invite email is missing or blank
+       ════════════════════════════════════════════════════ #}
+    {% elif state == 'invalid_data' %}
+    <div class="state-icon invalid">
+      <i class="fa-solid fa-triangle-exclamation"></i>
+    </div>
+    <div class="state-title" style="color:#64748b;">Invalid Invite Data</div>
+    <div class="state-message">
+      This invite link cannot be used because it contains missing or
+      invalid data.
+    </div>
+    <div class="alert alert-gray">
+      <i class="fa-solid fa-circle-info" style="margin-top:1px;flex-shrink:0;"></i>
+      <span>
+        Ask the project administrator to resend the invitation with the
+        correct details.
+      </span>
+    </div>
+
+    {# ════════════════════════════════════════════════════
+       STATE: acceptance_error — commit failed unexpectedly
+       ════════════════════════════════════════════════════ #}
+    {% elif state == 'acceptance_error' %}
+    <div class="state-icon revoked">
+      <i class="fa-solid fa-circle-exclamation"></i>
+    </div>
+    <div class="state-title" style="color:#dc2626;">Something Went Wrong</div>
+    <div class="state-message">
+      Your invite could not be accepted due to an unexpected error.
+      No changes were made to your account.
+    </div>
+    {% if proj %}
+    <div class="detail-card">
+      <div class="detail-row">
+        <div class="detail-label">Project</div>
+        <div class="detail-value">{{ proj.name }}</div>
+      </div>
+    </div>
+    {% endif %}
+    <div class="alert alert-red">
+      <i class="fa-solid fa-rotate-right" style="margin-top:1px;flex-shrink:0;"></i>
+      <span>
+        Please try again. If the problem persists, contact the project
+        administrator.
+      </span>
+    </div>
+    <a href="/invite/{{ token }}"
+       class="btn-submit"
+       style="display:block;text-align:center;text-decoration:none;margin-top:16px;background:#dc2626;">
+      <i class="fa-solid fa-rotate-right" style="margin-right:7px;"></i>
+      Try again
+    </a>
+
+    {# ════════════════════════════════════════════════════
        STATE: valid — pending invite, not yet expired
        ════════════════════════════════════════════════════ #}
     {% else %}
