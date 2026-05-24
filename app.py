@@ -2329,6 +2329,9 @@ def project_itp_detail(pid, tid, eid):
     if request.method == 'POST':
         action = request.form.get('action')
         if action == 'save_meta':
+            if record.status == 'complete':
+                flash('This ITP is complete and locked. Reopen it before editing.', 'danger')
+                return redirect(url_for('project_itp_detail', pid=pid, tid=tid, eid=eid))
             record.lot_number       = request.form.get('lot_number', '').strip()
             record.location         = request.form.get('location', '').strip()
             record.engineer_name    = request.form.get('engineer_name', '').strip()
@@ -2358,6 +2361,9 @@ def api_project_itp_save_meta(pid, tid, eid):
     """AJAX — save ITP metadata (lot, engineer name/company). Location is read-only from WTG."""
     if not _user_in_project(pid):
         return jsonify({'error': 'Access denied.'}), 403
+    # Verify template and element both belong to this project before touching the record
+    ProjectITPTemplate.query.filter_by(id=tid, project_id=pid).first_or_404()
+    WTG.query.filter_by(id=eid, project_id=pid).first_or_404()
     proj   = Project.query.get_or_404(pid)
     record = ITPRecord.query.filter_by(wtg_id=eid).filter(
         ITPRecord.project_itp_template_id == tid).first_or_404()
@@ -2388,6 +2394,9 @@ def api_project_itp_add_invite(pid, tid, eid):
     """AJAX — add a client signatory to this ITP record."""
     if not _user_in_project(pid):
         return jsonify({'error': 'Access denied.'}), 403
+    # Verify template and element both belong to this project before touching the record
+    ProjectITPTemplate.query.filter_by(id=tid, project_id=pid).first_or_404()
+    WTG.query.filter_by(id=eid, project_id=pid).first_or_404()
     record = ITPRecord.query.filter_by(wtg_id=eid).filter(
         ITPRecord.project_itp_template_id == tid).first_or_404()
     if record.status == 'complete':
@@ -2559,6 +2568,9 @@ def itp_reopen(pid, tid, eid):
         return jsonify({'error': 'Access denied.'}), 403
     if current_user.role not in ('manager', 'admin'):
         return jsonify({'error': 'Only project managers or admins can reopen a completed ITP.'}), 403
+    # Verify template and element both belong to this project before touching the record
+    ProjectITPTemplate.query.filter_by(id=tid, project_id=pid).first_or_404()
+    WTG.query.filter_by(id=eid, project_id=pid).first_or_404()
     record = ITPRecord.query.filter_by(wtg_id=eid).filter(
         ITPRecord.project_itp_template_id == tid).first_or_404()
     if record.status not in ('complete', 'client_commented', 'client_signed'):
@@ -2637,6 +2649,9 @@ def itp_detail(wtg_id, itp_type):
 
         # ── Save lot/location metadata ────────────────────────────────────
         if action == 'save_meta':
+            if record.status == 'complete':
+                flash('This ITP is complete and locked. Reopen it before editing.', 'danger')
+                return redirect(url_for('itp_detail', wtg_id=wtg_id, itp_type=itp_type))
             record.lot_number = request.form.get('lot_number', '').strip()
             record.location   = request.form.get('location', '').strip()
             record.engineer_name    = request.form.get('engineer_name', current_user.name or '').strip()
@@ -2645,42 +2660,14 @@ def itp_detail(wtg_id, itp_type):
             flash('ITP details saved.', 'success')
             return redirect(url_for('itp_detail', wtg_id=wtg_id, itp_type=itp_type))
 
-        # ── Invite client ──────────────────────────────────────────────────
+        # ── Invite client (legacy path — disabled; use project ITP invite API) ─
         elif action == 'invite_client':
-            client_id    = request.form.get('client_id', '')
-            client_email = request.form.get('client_email', '').strip()
-            client_info  = next((c for c in CLIENTS if c['id'] == client_id), None)
-            if not client_info:
-                flash('Please select a client.', 'danger')
-                return redirect(url_for('itp_detail', wtg_id=wtg_id, itp_type=itp_type))
-
-            token = uuid.uuid4().hex
-            record.client_name       = client_info['name']
-            record.client_company    = client_info['company']
-            record.client_email      = client_email
-            record.client_token      = token
-            record.client_invited_at = datetime.now(timezone.utc)
-            record.engineer_signed_at = record.engineer_signed_at or datetime.now(timezone.utc)
-            record.status            = 'client_invited'
-            db.session.commit()
-
-            sign_url = url_for('itp_client_sign', token=token, _external=True)
-
-            # ── Send email invitation ──────────────────────────────────────
-            if client_email:
-                sent = email_client_invitation(
-                    record   = record,
-                    wtg_name = wtg.name,
-                    sign_url = sign_url,
-                    client_name  = client_info['name'],
-                    client_email = client_email,
-                )
-                if sent:
-                    flash(f'Invitation email sent to {client_email}! They can sign without logging in.', 'success')
-                else:
-                    flash(f'Client link generated for {client_info["name"]}. Email could not be sent — copy the link below manually.', 'warning')
-            else:
-                flash(f'Client link generated for {client_info["name"]}! Copy link below.', 'success')
+            # The legacy CLIENTS list is KRWF-specific and this path is no longer
+            # supported.  All client invites must go through the project ITP API
+            # (/projects/<pid>/itp/<tid>/element/<eid>/add-invite) which uses
+            # per-invitee tokens, expiry, and proper audit logging.
+            flash('Client invites are managed via the project ITP page. '
+                  'Please use the "Invite Client" panel there.', 'warning')
             return redirect(url_for('itp_detail', wtg_id=wtg_id, itp_type=itp_type))
 
     now = datetime.now()
@@ -3098,12 +3085,13 @@ def api_itp_item_upload(record_id, item_no, crit_idx):
         uploaded_by=current_user.id,
     )
     db.session.add(doc)
+    db.session.flush()   # assign doc.id before log_audit reads it
     log_audit(
         'itp_document_uploaded',
         project_id  = project_id,
         actor       = current_user,
         entity_type = 'itp_document',
-        entity_id   = None,
+        entity_id   = doc.id,
         entity_label= f.filename,
         detail      = {'record_id': record_id, 'item_no': item_no, 'ci': crit_idx,
                        'filename': fname, 'doc_type': dtype},
@@ -3171,8 +3159,11 @@ def itp_print(record_id):
 @login_required
 def itp_export():
     """Page to select and bulk-download ITPs as PDFs — scoped to active project."""
+    from flask import g
     proj = getattr(g, 'project', None)
     if proj:
+        if not _user_in_project(proj.id):
+            abort(403)
         wtgs    = WTG.query.filter_by(project_id=proj.id).order_by(WTG.name).all()
         wtg_ids = [w.id for w in wtgs]
         records = (ITPRecord.query
@@ -3274,11 +3265,23 @@ def project_itp_backup(pid):
     if request.method == 'POST':
         import zipfile, io as _io
         data = request.get_json(silent=True) or {}
-        tids = [int(x) for x in data.get('template_ids', [])]
-        if not tids:
+        raw_tids = [int(x) for x in data.get('template_ids', [])]
+        if not raw_tids:
             return jsonify({'error': 'No templates selected'}), 400
 
-        # Collect all records for these templates
+        # Only accept template_ids that actually belong to this project —
+        # prevents a caller from injecting ids from other projects.
+        valid_tids = {
+            t.id for t in ProjectITPTemplate.query.filter(
+                ProjectITPTemplate.id.in_(raw_tids),
+                ProjectITPTemplate.project_id == pid,
+            ).all()
+        }
+        tids = [t for t in raw_tids if t in valid_tids]
+        if not tids:
+            return jsonify({'error': 'No valid templates found for this project.'}), 400
+
+        # Collect all records for these validated templates
         all_records = ITPRecord.query.filter(
             ITPRecord.project_itp_template_id.in_(tids)
         ).all()
