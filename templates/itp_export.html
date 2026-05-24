@@ -245,7 +245,8 @@ async function downloadZip() {
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
     a.href     = url;
-    a.download = `King_Rocks_ITPs_${new Date().toISOString().slice(0,10)}.zip`;
+    const _projName = {{ (active_project.name | replace(' ', '_')) | tojson if active_project else '"Project"' }};
+    a.download = `${_projName}_ITPs_${new Date().toISOString().slice(0,10)}.zip`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

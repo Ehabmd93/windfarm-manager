@@ -1,6 +1,16 @@
 """
-ITP Definitions — King Rocks Wind Farm
-Sourced directly from signed ITP documents Rev E.
+ITP Definitions — King Rocks Wind Farm (KRWF) legacy data.
+
+⚠️  INTENTIONAL LEGACY / DEMO DATA — DO NOT GENERALISE ⚠️
+This file contains ITP definitions that are specific to the King Rocks Wind Farm
+(KRWF) project. They are kept here for backward compatibility with existing KRWF
+ITP records and are only loaded when ENABLE_DEMO_KRWF_SEED=true or when a legacy
+itp_type matches a KRWF key.
+
+Do NOT add new project-specific data here.  All new projects should use
+ProjectITPTemplate records stored in the database (the "project-specific ITP"
+system).  References to CBOP, Vestas, Ehab, Wayne, TCS, OPER-FRM, SPE-CIV, etc.
+below are project-specific and intentional — they must not be removed.
 """
 
 # Inspection type codes

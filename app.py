@@ -1,7 +1,7 @@
 import os, json, base64, uuid, unicodedata, re
 import urllib.request, urllib.parse
 from urllib.parse import quote as _urlquote
-from datetime import datetime, date, timezone
+from datetime import datetime, date, timezone, timedelta
 from flask import (Flask, render_template, request, redirect,
                    url_for, flash, jsonify, abort, send_from_directory, make_response)
 from flask_login import (LoginManager, login_user, logout_user,
@@ -1678,7 +1678,7 @@ def proof_roll_form(test_id):
                 ))
                 db.session.delete(tmp)
 
-        # ── Signatories (2: TCS rep + Client rep) ───────────────────────
+        # ── Signatories (2: engineer rep + client rep) ───────────────────
         for i in range(1, 3):
             name     = request.form.get(f'sig_name_{i}','').strip()
             company  = request.form.get(f'sig_company_{i}','').strip()
@@ -2194,6 +2194,8 @@ def itp_index():
 def project_itp_index(pid):
     """Landing page for project-specific ITPs — welcome screen or grid if ITPs exist."""
     proj = Project.query.get_or_404(pid)
+    if not _user_in_project(pid):
+        abort(403)
     from flask import session as fsession
     fsession['active_project_id'] = pid
 
@@ -2243,6 +2245,8 @@ def project_itp_index(pid):
 def project_itp_create(pid):
     """3-step ITP creation wizard."""
     proj = Project.query.get_or_404(pid)
+    if not _user_in_project(pid):
+        abort(403)
     from flask import session as fsession
     fsession['active_project_id'] = pid
 
@@ -2285,6 +2289,8 @@ def project_itp_create(pid):
 def project_itp_detail(pid, tid, eid):
     """Full ITP checklist for a project-specific template + element."""
     proj     = Project.query.get_or_404(pid)
+    if not _user_in_project(pid):
+        abort(403)
     template = ProjectITPTemplate.query.filter_by(id=tid, project_id=pid).first_or_404()
     wtg      = WTG.query.filter_by(id=eid, project_id=pid).first_or_404()
     defn     = template.to_dict()
@@ -2350,13 +2356,28 @@ def project_itp_detail(pid, tid, eid):
 @login_required
 def api_project_itp_save_meta(pid, tid, eid):
     """AJAX — save ITP metadata (lot, engineer name/company). Location is read-only from WTG."""
+    if not _user_in_project(pid):
+        return jsonify({'error': 'Access denied.'}), 403
     proj   = Project.query.get_or_404(pid)
     record = ITPRecord.query.filter_by(wtg_id=eid).filter(
         ITPRecord.project_itp_template_id == tid).first_or_404()
+    if record.status == 'complete':
+        return jsonify({'error': 'This ITP is complete and locked. Reopen it before editing.'}), 400
     data = request.get_json(silent=True) or {}
     record.lot_number       = (data.get('lot_number') or '').strip()
     record.engineer_name    = (data.get('engineer_name') or current_user.name).strip()
     record.engineer_company = (data.get('engineer_company') or current_user.company or '').strip()
+    log_audit(
+        'itp_metadata_changed',
+        project_id  = pid,
+        actor       = current_user,
+        entity_type = 'itp_record',
+        entity_id   = record.id,
+        entity_label= f'{record.wtg.name if record.wtg else ""} (tid={tid})',
+        detail      = {'lot_number': record.lot_number,
+                       'engineer_name': record.engineer_name,
+                       'engineer_company': record.engineer_company},
+    )
     db.session.commit()
     return jsonify({'ok': True})
 
@@ -2365,8 +2386,12 @@ def api_project_itp_save_meta(pid, tid, eid):
 @login_required
 def api_project_itp_add_invite(pid, tid, eid):
     """AJAX — add a client signatory to this ITP record."""
+    if not _user_in_project(pid):
+        return jsonify({'error': 'Access denied.'}), 403
     record = ITPRecord.query.filter_by(wtg_id=eid).filter(
         ITPRecord.project_itp_template_id == tid).first_or_404()
+    if record.status == 'complete':
+        return jsonify({'error': 'This ITP is complete and locked. Reopen it before adding invites.'}), 400
     data    = request.get_json(silent=True) or {}
     name    = (data.get('name') or '').strip()
     company = (data.get('company') or '').strip()
@@ -2391,11 +2416,12 @@ def api_project_itp_add_invite(pid, tid, eid):
     # not the shared record.client_token (which is kept only for legacy fallback).
     invite_token = uuid.uuid4().hex
     invite = ITPClientInvite(
-        record_id = record.id,
-        name      = name,
-        company   = company,
-        email     = email,
-        token     = invite_token,
+        record_id  = record.id,
+        name       = name,
+        company    = company,
+        email      = email,
+        token      = invite_token,
+        expires_at = datetime.now(timezone.utc) + timedelta(days=14),
     )
     db.session.add(invite)
     db.session.flush()   # get invite.id before commit
@@ -2475,6 +2501,8 @@ def api_project_itp_remove_invite(pid, tid, eid, inv_id):
 def project_itp_template_view(pid, tid):
     """View/manage a single ITP template — shows applicable elements as cards."""
     proj     = Project.query.get_or_404(pid)
+    if not _user_in_project(pid):
+        abort(403)
     template = ProjectITPTemplate.query.filter_by(id=tid, project_id=pid).first_or_404()
     from flask import session as fsession
     fsession['active_project_id'] = pid
@@ -2511,12 +2539,53 @@ def project_itp_template_view(pid, tid):
 @app.route('/projects/<int:pid>/itp/<int:tid>/delete', methods=['POST'])
 @login_required
 def project_itp_delete(pid, tid):
-    """Soft-delete an ITP template."""
+    """Soft-delete an ITP template. Requires manager or admin role."""
+    if not _user_in_project(pid):
+        abort(403)
+    if current_user.role not in ('manager', 'admin'):
+        abort(403)
     t = ProjectITPTemplate.query.filter_by(id=tid, project_id=pid).first_or_404()
     t.is_active = False
     db.session.commit()
     flash('ITP template deleted.', 'success')
     return redirect(url_for('project_itp_index', pid=pid))
+
+
+@app.route('/projects/<int:pid>/itp/<int:tid>/element/<int:eid>/reopen', methods=['POST'])
+@login_required
+def itp_reopen(pid, tid, eid):
+    """AJAX — reopen a complete ITP (increments revision, requires reason, admin/manager only)."""
+    if not _user_in_project(pid):
+        return jsonify({'error': 'Access denied.'}), 403
+    if current_user.role not in ('manager', 'admin'):
+        return jsonify({'error': 'Only project managers or admins can reopen a completed ITP.'}), 403
+    record = ITPRecord.query.filter_by(wtg_id=eid).filter(
+        ITPRecord.project_itp_template_id == tid).first_or_404()
+    if record.status not in ('complete', 'client_commented', 'client_signed'):
+        return jsonify({'error': 'Only completed ITPs can be reopened.'}), 400
+    data   = request.get_json(silent=True) or {}
+    reason = (data.get('reason') or '').strip()
+    if not reason:
+        return jsonify({'error': 'A reason is required to reopen an ITP.'}), 400
+
+    record.status          = 'reopened'
+    record.revision        = (record.revision or 0) + 1
+    record.reopened_at     = datetime.now(timezone.utc)
+    record.reopened_by_id  = current_user.id
+    record.reopen_reason   = reason
+
+    log_audit(
+        'itp_reopened',
+        project_id  = pid,
+        actor       = current_user,
+        entity_type = 'itp_record',
+        entity_id   = record.id,
+        entity_label= f'{record.wtg.name if record.wtg else ""} (rev {record.revision})',
+        detail      = {'reason': reason, 'new_revision': record.revision,
+                       'tid': tid, 'eid': eid},
+    )
+    db.session.commit()
+    return jsonify({'ok': True, 'revision': record.revision, 'status': record.status})
 
 
 @app.route('/itp/<int:wtg_id>/<itp_type>', methods=['GET', 'POST'])
@@ -2526,6 +2595,8 @@ def itp_detail(wtg_id, itp_type):
     if itp_type not in ITP_DEFINITIONS:
         abort(404)
     wtg  = WTG.query.get_or_404(wtg_id)
+    if not _user_in_project(wtg.project_id):
+        abort(403)
     defn = ITP_DEFINITIONS[itp_type]
 
     # Get or create ITPRecord
@@ -2804,6 +2875,22 @@ def itp_client_sign(token):
                 record.client_signature = sig
                 record.client_signed_at = datetime.now(timezone.utc)
                 record.status           = 'client_commented' if concerns else 'complete'
+
+                # Audit: client signed the ITP
+                log_audit(
+                    'itp_client_signed',
+                    project_id  = _itp_project_id(record),
+                    actor       = None,   # public route — no authenticated user
+                    entity_type = 'itp_record',
+                    entity_id   = record.id,
+                    entity_label= f'{wtg.name if wtg else ""} — {record.client_name or "Client"}',
+                    detail      = {
+                        'client_name':    record.client_name,
+                        'client_company': record.client_company,
+                        'status':         record.status,
+                        'concerns':       len(concerns),
+                    },
+                )
                 db.session.commit()
 
                 # ── In-app notifications ────────────────────────────────────
@@ -2983,8 +3070,11 @@ def api_itp_item_upload(record_id, item_no, crit_idx):
     """Upload a document/photo to a specific ITP criterion."""
     from models import ITPItemDocument
     record = ITPRecord.query.get_or_404(record_id)
-    if not _user_in_project(_itp_project_id(record)):
+    project_id = _itp_project_id(record)
+    if not _user_in_project(project_id):
         return jsonify({'error': 'Access denied.'}), 403
+    if record.status == 'complete':
+        return jsonify({'error': 'This ITP is complete and locked. Reopen it before uploading.'}), 400
     s = ITPItemStatus.query.filter_by(
         itp_record_id=record_id, item_no=item_no, criterion_index=crit_idx
     ).first_or_404()
@@ -3008,6 +3098,16 @@ def api_itp_item_upload(record_id, item_no, crit_idx):
         uploaded_by=current_user.id,
     )
     db.session.add(doc)
+    log_audit(
+        'itp_document_uploaded',
+        project_id  = project_id,
+        actor       = current_user,
+        entity_type = 'itp_document',
+        entity_id   = None,
+        entity_label= f.filename,
+        detail      = {'record_id': record_id, 'item_no': item_no, 'ci': crit_idx,
+                       'filename': fname, 'doc_type': dtype},
+    )
     db.session.commit()
     return jsonify({'id': doc.id, 'name': doc.original_name, 'url': doc.url, 'type': doc.doc_type})
 
@@ -3018,8 +3118,12 @@ def api_itp_item_doc_delete(doc_id):
     from models import ITPItemDocument
     doc = ITPItemDocument.query.get_or_404(doc_id)
     record = ITPRecord.query.get(doc.itp_record_id)
-    if record and not _user_in_project(_itp_project_id(record)):
+    project_id = _itp_project_id(record) if record else None
+    if record and not _user_in_project(project_id):
         return jsonify({'error': 'Access denied.'}), 403
+    if record and record.status == 'complete':
+        return jsonify({'error': 'This ITP is complete and locked. Reopen it before deleting documents.'}), 400
+    original_name = doc.original_name
     try:
         fpath = os.path.join(get_itp_docs_dir(), doc.filename)
         if os.path.exists(fpath):
@@ -3027,6 +3131,16 @@ def api_itp_item_doc_delete(doc_id):
     except Exception:
         pass
     db.session.delete(doc)
+    log_audit(
+        'itp_document_deleted',
+        project_id  = project_id,
+        actor       = current_user,
+        entity_type = 'itp_document',
+        entity_id   = doc_id,
+        entity_label= original_name,
+        detail      = {'record_id': doc.itp_record_id if record else None,
+                       'filename': doc.filename},
+    )
     db.session.commit()
     return jsonify({'ok': True})
 
@@ -3076,6 +3190,7 @@ def itp_export():
 @login_required
 def itp_export_zip():
     """Generate a ZIP of self-contained HTML print pages for selected ITP records."""
+    from flask import g, send_file
     import zipfile, io as _io
     data       = request.get_json() or {}
     record_ids = data.get('ids', [])
@@ -3083,10 +3198,15 @@ def itp_export_zip():
         return jsonify({'error': 'No ITP records selected'}), 400
 
     zip_buf = _io.BytesIO()
+    exported_ids = []
     with zipfile.ZipFile(zip_buf, 'w', zipfile.ZIP_DEFLATED) as zf:
         for rid in record_ids:
             record = ITPRecord.query.get(rid)
             if not record:
+                continue
+            # Per-record authorization — skip records the user cannot access
+            rec_pid = _itp_project_id(record)
+            if not _user_in_project(rec_pid):
                 continue
             if record.itp_type.startswith('PROJ_'):
                 tmpl = ProjectITPTemplate.query.get(record.project_itp_template_id)
@@ -3110,11 +3230,24 @@ def itp_export_zip():
             fname = f"{record.wtg.name}_{record.itp_type}_{record.lot_number or 'NoLot'}.html"
             fname = fname.replace('/', '-').replace(' ', '_')
             zf.writestr(fname, html_content)
+            exported_ids.append(rid)
 
     zip_buf.seek(0)
-    from flask import send_file
     proj = getattr(g, 'project', None)
     safe_name = (proj.name.replace(' ', '_') if proj else 'Project')
+
+    # Audit: log the export action
+    log_audit(
+        'itp_exported_zip',
+        project_id  = proj.id if proj else None,
+        actor       = current_user,
+        entity_type = 'itp_export',
+        entity_id   = None,
+        entity_label= safe_name,
+        detail      = {'record_ids': exported_ids, 'count': len(exported_ids)},
+    )
+    db.session.commit()
+
     return send_file(
         zip_buf,
         mimetype='application/zip',
@@ -3132,6 +3265,8 @@ def itp_export_zip():
 def project_itp_backup(pid):
     """Page + ZIP generator for project-specific ITP backup."""
     proj      = Project.query.get_or_404(pid)
+    if not _user_in_project(pid):
+        abort(403)
     templates = (ProjectITPTemplate.query
                  .filter_by(project_id=pid, is_active=True)
                  .order_by(ProjectITPTemplate.id).all())
@@ -3812,18 +3947,39 @@ def _user_in_project(project_id):
 
 
 def _user_can_sign(project_id):
-    """True if the current authenticated user may sign ITP criteria."""
+    """True if the current authenticated user may sign ITP criteria.
+
+    Lookup order:
+      1. manager/admin — always allowed if they're in the project.
+      2. PTM matched by user_id — honours can_sign exactly.
+      3. PTM matched by email (when user_id not yet linked) — honours can_sign.
+         Also back-fills user_id so future lookups are faster.
+      4. No PTM found for this project → fall back to global can_enter_data().
+    """
     if not _user_in_project(project_id):
         return False
     if current_user.role in ('manager', 'admin'):
         return True
-    # Check ProjectTeamMember.can_sign if a team-member record exists
     if project_id is not None:
+        # Primary lookup — by user_id
         tm = ProjectTeamMember.query.filter_by(
             project_id=project_id, user_id=current_user.id
         ).first()
         if tm is not None:
             return bool(tm.can_sign)
+        # Secondary lookup — by email (unlinked PTM row)
+        if current_user.email:
+            tm_email = ProjectTeamMember.query.filter_by(
+                project_id=project_id, email=current_user.email
+            ).filter(ProjectTeamMember.user_id == None).first()
+            if tm_email is not None:
+                # Back-fill user_id for faster future lookups
+                try:
+                    tm_email.user_id = current_user.id
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+                return bool(tm_email.can_sign)
     return current_user.can_enter_data()
 
 

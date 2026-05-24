@@ -159,7 +159,7 @@
         </div>
         <div>
           <label class="wiz-label">Specification Ref.</label>
-          <input class="wiz-input" id="f-spec" placeholder="e.g. PROJ-SPE-CIV-3000">
+          <input class="wiz-input" id="f-spec" placeholder="e.g. PROJ-SPE-001">
         </div>
       </div>
       <div style="margin-bottom:16px;">
@@ -500,7 +500,7 @@ function addActivity(data) {
         <p style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">Inspection Codes</p>
         <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start;">
           <div>
-            <p style="font-size:10px;color:#94a3b8;margin-bottom:5px;">Our Team (Lucas)</p>
+            <p style="font-size:10px;color:#94a3b8;margin-bottom:5px;">Our Team (Engineer)</p>
             <div style="display:flex;flex-wrap:wrap;gap:4px;" id="lucas-codes-${idx}">
               ${INSPECTION_CODES.map(c => `<button type="button" class="code-btn" data-code="${c}"
                 onclick="toggleCode(this,'lucas-codes-${idx}')">${c}</button>`).join('')}

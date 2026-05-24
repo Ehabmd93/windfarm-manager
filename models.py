@@ -569,7 +569,7 @@ class ITPItemStatus(db.Model):
     inspection_code  = db.Column(db.String(20), default='')
     frequency        = db.Column(db.String(100), default='')
 
-    # Lucas TCS sign-off (per criterion)
+    # Engineer sign-off (per criterion)
     lucas_complete   = db.Column(db.Boolean, default=False)
     lucas_signed_at  = db.Column(db.DateTime, nullable=True)   # date + time
     lucas_comments   = db.Column(db.Text)
