@@ -34,7 +34,8 @@ import kml_parser
 from project_config import (PROJECT_TYPE_PROFILES, get_profile,
                              is_wind_farm, GENERIC_ELEMENT_TYPE_LABELS)
 from kml_parser import get_geojson
-from email_utils import email_client_invitation, email_client_signed, email_project_invitation
+from email_utils import (email_client_invitation, email_client_signed,
+                         email_project_invitation, email_password_reset)
 import r2_storage
 
 # ─── App setup ──────────────────────────────────────────────────────────────
@@ -266,6 +267,86 @@ def login():
 def logout():
     logout_user()
     return redirect(url_for('login'))
+
+
+# ─── Forgot password (Phase 5A — request only) ───────────────────────────────
+@app.route('/forgot-password', methods=['GET', 'POST'])
+def forgot_password():
+    """Phase 5A: Accept an email address and send a password reset link.
+
+    Security contract:
+      - Always returns the same success page whether the email exists or not.
+      - Token is created only for active users; raw token never stored in DB.
+      - Any prior unused tokens for the same user are revoked before issuing
+        a new one.
+      - Email failures are swallowed silently; the success page is shown anyway.
+    """
+    if request.method == 'GET':
+        return render_template('forgot_password.html', submitted=False)
+
+    # ── POST ──────────────────────────────────────────────────────────────────
+    email = (request.form.get('email') or '').strip().lower()
+
+    if email:
+        user = User.query.filter_by(email=email).first()
+
+        if user and user.is_active:
+            now = datetime.now(timezone.utc)
+
+            # Revoke any existing unused tokens for this user before issuing new one
+            stale = PasswordResetToken.query.filter_by(
+                user_id=user.id,
+                used_at=None,
+                revoked_at=None,
+            ).all()
+            for t in stale:
+                t.revoked_at = now
+
+            # Create new token — store only the hash
+            raw_token = _make_raw_token()
+            reset_token = PasswordResetToken(
+                user_id=user.id,
+                token_hash=_hash_token(raw_token),
+                expires_at=now + timedelta(hours=1),
+                used_at=None,
+                revoked_at=None,
+            )
+            db.session.add(reset_token)
+            db.session.flush()  # get reset_token.id for audit log
+
+            _base = (os.environ.get('APP_URL') or
+                     request.host_url.rstrip('/')).rstrip('/')
+            reset_url = f"{_base}/reset-password/{raw_token}"
+
+            log_audit('password_reset_requested',
+                      project_id=None,
+                      actor=None,
+                      entity_type='user',
+                      entity_id=user.id,
+                      entity_label=user.email,
+                      detail={'user_id': user.id,
+                              'user_email': user.email,
+                              'token_id': reset_token.id})
+
+            try:
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+                # DB failure — still show success page; do not leak error
+                return render_template('forgot_password.html', submitted=True)
+
+            try:
+                email_password_reset(
+                    to_email=user.email,
+                    user_name=user.name,
+                    reset_url=reset_url,
+                    expires_at=reset_token.expires_at,
+                )
+            except Exception:
+                pass  # Email failure must never reveal anything to requester
+
+    # Always show the same page — do not reveal whether email is registered
+    return render_template('forgot_password.html', submitted=True)
 
 
 # ─── Public invite landing (Phase 4B — new-user acceptance) ─────────────────
