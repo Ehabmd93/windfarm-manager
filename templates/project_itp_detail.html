@@ -527,27 +527,11 @@
       <div class="panel-hdr blue"><i class="fa-solid fa-users"></i> Client Signatories</div>
       <div class="panel-body">
 
-        <!-- ONE canonical signing link -->
-        <div id="signing-link-block" style="{% if not record.client_token %}display:none;{% endif %}margin-bottom:16px;padding:14px;background:#f0f9ff;border:1.5px solid #bae6fd;border-radius:14px;">
-          <p style="font-size:10px;font-weight:800;color:#0369a1;text-transform:uppercase;letter-spacing:.05em;margin:0 0 8px;">
-            <i class="fa-solid fa-link" style="margin-right:5px;"></i>Signing Link — share with any client
-          </p>
-          <div style="display:flex;gap:6px;">
-            <input type="text" id="canonical-link" readonly
-                   value="{% if record.client_token %}{{ url_for('itp_client_sign', token=record.client_token, _external=True) }}{% endif %}"
-                   class="form-input" style="font-size:11px;background:white;flex:1;min-width:0;"/>
-            <button onclick="copyInviteLink(document.getElementById('canonical-link').value)"
-                    style="padding:8px 12px;border-radius:9px;border:1.5px solid #bae6fd;
-                           background:white;color:#0369a1;font-size:12px;font-weight:700;
-                           cursor:pointer;flex-shrink:0;white-space:nowrap;">
-              <i class="fa-solid fa-copy mr-1"></i>Copy
-            </button>
-          </div>
-        </div>
-
-        <!-- Who was notified -->
+            <!-- Signatories list — each invitee has their own signing link -->
         <div id="invites-list" style="display:flex;flex-direction:column;gap:6px;{% if record.client_invites %}margin-bottom:14px;{% endif %}">
-          {% for inv in record.client_invites %}
+          {% set active_invites = record.client_invites | selectattr('is_revoked', 'equalto', false) | list %}
+          {% for inv in active_invites %}
+          {% set inv_sign_url = url_for('itp_client_sign', token=inv.token, _external=True) %}
           <div id="inv-row-{{ inv.id }}"
                style="display:flex;align-items:center;gap:8px;padding:9px 12px;
                       background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
@@ -557,8 +541,26 @@
                 {{ inv.company }}{% if inv.email %} · {{ inv.email }}{% endif %}
                 {% if inv.invited_at %} · {{ inv.invited_at.strftime('%d %b') }}{% endif %}
               </p>
+              <!-- Per-invitee link (collapsed by default) -->
+              <div id="inv-link-{{ inv.id }}" style="display:none;margin-top:6px;">
+                <div style="display:flex;gap:5px;">
+                  <input type="text" readonly value="{{ inv_sign_url }}"
+                         style="flex:1;font-size:10px;padding:5px 8px;border:1px solid #bae6fd;
+                                border-radius:7px;background:white;color:#0369a1;min-width:0;"/>
+                  <button onclick="copyInviteLink('{{ inv_sign_url }}')"
+                          style="padding:5px 8px;border-radius:7px;border:1px solid #bae6fd;
+                                 background:white;color:#0369a1;font-size:11px;cursor:pointer;white-space:nowrap;">
+                    <i class="fa-solid fa-copy"></i>
+                  </button>
+                </div>
+              </div>
             </div>
-            <button onclick="removeInvite({{ inv.id }})" title="Remove"
+            <button onclick="toggleInviteLink({{ inv.id }})" title="Show/copy link"
+                    style="padding:5px 8px;border-radius:7px;border:1px solid #bae6fd;
+                           background:white;color:#0369a1;font-size:11px;cursor:pointer;">
+              <i class="fa-solid fa-link"></i>
+            </button>
+            <button onclick="removeInvite({{ inv.id }})" title="Revoke"
                     style="padding:5px 8px;border-radius:7px;border:1px solid #fecaca;
                            background:white;color:#ef4444;font-size:11px;cursor:pointer;">
               <i class="fa-solid fa-xmark"></i>
@@ -566,7 +568,7 @@
           </div>
           {% else %}
           <p id="no-invites-msg" style="font-size:12px;color:#94a3b8;text-align:center;padding:6px 0;margin:0;">
-            No one notified yet.
+            No active signatories yet.
           </p>
           {% endfor %}
         </div>
@@ -897,17 +899,13 @@ async function addInvite() {
     if (data.ok) {
       const noMsg = document.getElementById('no-invites-msg');
       if (noMsg) noMsg.remove();
-      document.getElementById('invites-list').appendChild(buildInviteRow(data));
+      const row = buildInviteRow(data);
+      document.getElementById('invites-list').appendChild(row);
+      // Auto-show the link for the new invite
+      toggleInviteLink(data.id);
       document.getElementById('inv-name').value    = '';
       document.getElementById('inv-company').value = '';
       document.getElementById('inv-email').value   = '';
-      // Show or update the canonical signing link block
-      const linkBlock = document.getElementById('signing-link-block');
-      const linkInput = document.getElementById('canonical-link');
-      if (linkBlock && linkInput) {
-        linkInput.value = data.sign_url;
-        linkBlock.style.display = '';
-      }
     } else {
       alert(data.error || 'Failed to add signatory.');
     }
@@ -926,13 +924,35 @@ function buildInviteRow(inv) {
     <div style="flex:1;min-width:0;">
       <p style="font-size:12px;font-weight:700;color:#0f172a;margin:0;">${inv.name}</p>
       <p style="font-size:11px;color:#94a3b8;margin:0;">${inv.company}${inv.email ? ' · ' + inv.email : ''}</p>
+      <div id="inv-link-${inv.id}" style="display:none;margin-top:6px;">
+        <div style="display:flex;gap:5px;">
+          <input type="text" readonly value="${inv.sign_url}"
+                 style="flex:1;font-size:10px;padding:5px 8px;border:1px solid #bae6fd;
+                        border-radius:7px;background:white;color:#0369a1;min-width:0;"/>
+          <button onclick="copyInviteLink('${inv.sign_url}')"
+                  style="padding:5px 8px;border-radius:7px;border:1px solid #bae6fd;
+                         background:white;color:#0369a1;font-size:11px;cursor:pointer;white-space:nowrap;">
+            <i class="fa-solid fa-copy"></i>
+          </button>
+        </div>
+      </div>
     </div>
-    <button onclick="removeInvite(${inv.id})" title="Remove"
+    <button onclick="toggleInviteLink(${inv.id})" title="Show/copy link"
+            style="padding:5px 8px;border-radius:7px;border:1px solid #bae6fd;
+                   background:white;color:#0369a1;font-size:11px;cursor:pointer;">
+      <i class="fa-solid fa-link"></i>
+    </button>
+    <button onclick="removeInvite(${inv.id})" title="Revoke"
             style="padding:5px 8px;border-radius:7px;border:1px solid #fecaca;
                    background:white;color:#ef4444;font-size:11px;cursor:pointer;">
       <i class="fa-solid fa-xmark"></i>
     </button>`;
   return d;
+}
+
+function toggleInviteLink(invId) {
+  const el = document.getElementById(`inv-link-${invId}`);
+  if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
 }
 
 async function removeInvite(invId) {

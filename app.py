@@ -2326,36 +2326,9 @@ def project_itp_detail(pid, tid, eid):
             record.lot_number       = request.form.get('lot_number', '').strip()
             record.location         = request.form.get('location', '').strip()
             record.engineer_name    = request.form.get('engineer_name', '').strip()
-            record.engineer_company = request.form.get('engineer_company', 'TCS').strip()
+            record.engineer_company = request.form.get('engineer_company', '').strip()
             db.session.commit()
             flash('ITP details saved.', 'success')
-            return redirect(url_for('project_itp_detail', pid=pid, tid=tid, eid=eid))
-
-        elif action == 'invite_client':
-            client_id    = request.form.get('client_id', '')
-            client_email = request.form.get('client_email', '').strip()
-            client_info  = next((c for c in CLIENTS if c['id'] == client_id), None)
-            if not client_info:
-                flash('Please select a client.', 'danger')
-                return redirect(url_for('project_itp_detail', pid=pid, tid=tid, eid=eid))
-            token = uuid.uuid4().hex
-            record.client_name       = client_info['name']
-            record.client_company    = client_info['company']
-            record.client_email      = client_email
-            record.client_token      = token
-            record.client_invited_at = datetime.now(timezone.utc)
-            record.engineer_signed_at = record.engineer_signed_at or datetime.now(timezone.utc)
-            record.status            = 'client_invited'
-            db.session.commit()
-            sign_url = url_for('itp_client_sign', token=token, _external=True)
-            if client_email:
-                sent = email_client_invitation(
-                    record=record, wtg_name=wtg.name, sign_url=sign_url,
-                    client_name=client_info['name'], client_email=client_email)
-                flash(f'Invitation sent to {client_email}!' if sent else
-                      f'Link generated for {client_info["name"]} — copy below.', 'success' if sent else 'warning')
-            else:
-                flash(f'Client link generated for {client_info["name"]}!', 'success')
             return redirect(url_for('project_itp_detail', pid=pid, tid=tid, eid=eid))
 
     now_dt = datetime.now().strftime('%Y-%m-%dT%H:%M')
@@ -2368,7 +2341,7 @@ def project_itp_detail(pid, tid, eid):
                            proj=proj, template=template,
                            wtg=wtg, itp_type=itp_type,
                            defn=defn, record=record, statuses=statuses,
-                           clients=CLIENTS, today=date.today().isoformat(),
+                           today=date.today().isoformat(),
                            now_dt=now_dt, linked_docs=itp_linked_docs,
                            pid=pid, tid=tid, eid=eid)
 
@@ -2414,8 +2387,8 @@ def api_project_itp_add_invite(pid, tid, eid):
     if record.status in ('draft', 'in_progress'):
         record.status = 'client_invited'
 
-    # Each person gets their own audit invite record (unique token for DB),
-    # but the UI always shows the canonical record.client_token as the signing URL.
+    # Each person gets their own unique token — the signing URL uses THIS token,
+    # not the shared record.client_token (which is kept only for legacy fallback).
     invite_token = uuid.uuid4().hex
     invite = ITPClientInvite(
         record_id = record.id,
@@ -2425,10 +2398,21 @@ def api_project_itp_add_invite(pid, tid, eid):
         token     = invite_token,
     )
     db.session.add(invite)
-    db.session.commit()
+    db.session.flush()   # get invite.id before commit
 
-    # Always advertise the ONE canonical link
-    sign_url = url_for('itp_client_sign', token=record.client_token, _external=True)
+    # Per-invitee signing URL — each person has their own unique link
+    sign_url = url_for('itp_client_sign', token=invite_token, _external=True)
+
+    log_audit(
+        'itp_invite_created',
+        project_id  = record.wtg.project_id if record.wtg else None,
+        actor       = current_user,
+        entity_type = 'itp_invite',
+        entity_id   = invite.id,
+        entity_label= f'{name} ({email or "no email"})',
+        detail      = {'record_id': record.id, 'tid': tid, 'eid': eid},
+    )
+    db.session.commit()
 
     # Send invitation email if email provided
     wtg = record.wtg
@@ -2460,9 +2444,28 @@ def api_project_itp_add_invite(pid, tid, eid):
 @app.route('/projects/<int:pid>/itp/<int:tid>/element/<int:eid>/remove-invite/<int:inv_id>', methods=['POST'])
 @login_required
 def api_project_itp_remove_invite(pid, tid, eid, inv_id):
-    """AJAX — remove a client invite."""
+    """AJAX — revoke a client invite (marks as revoked, preserves audit trail)."""
+    # Verify caller belongs to this project
+    if not _user_in_project(pid):
+        return jsonify({'error': 'Access denied.'}), 403
+
     invite = ITPClientInvite.query.get_or_404(inv_id)
-    db.session.delete(invite)
+    # Guard: ensure the invite belongs to this project
+    if invite.record and invite.record.wtg and invite.record.wtg.project_id != pid:
+        return jsonify({'error': 'Access denied.'}), 403
+
+    invite.is_revoked = True
+    invite.revoked_at = datetime.now(timezone.utc)
+
+    log_audit(
+        'itp_invite_revoked',
+        project_id  = pid,
+        actor       = current_user,
+        entity_type = 'itp_invite',
+        entity_id   = invite.id,
+        entity_label= f'{invite.name} ({invite.email or "no email"})',
+        detail      = {'record_id': invite.record_id, 'tid': tid, 'eid': eid},
+    )
     db.session.commit()
     return jsonify({'ok': True})
 
@@ -2635,8 +2638,15 @@ def api_client_review_item(token, item_no, ci):
     """Public API — client per-item review (5 actions + legacy accept/concern)."""
     invite = ITPClientInvite.query.filter_by(token=token).first()
     if invite:
+        # Enforce revocation
+        if invite.is_revoked:
+            return jsonify({'error': 'This signing link has been revoked.'}), 403
+        # Enforce expiry
+        if invite.expires_at and invite.expires_at < datetime.now(timezone.utc):
+            return jsonify({'error': 'This signing link has expired.'}), 403
         record = invite.record
     else:
+        # Legacy fallback — shared record.client_token
         record = ITPRecord.query.filter_by(client_token=token).first_or_404()
 
     # Allow review in any active state (ITP is open for the life of the project)
@@ -2738,14 +2748,33 @@ def api_client_review_item(token, item_no, ci):
 
 @app.route('/itp/client/<token>', methods=['GET', 'POST'])
 def itp_client_sign(token):
-    """Public page for client to review + sign the ITP (KRWF and project-specific)."""
-    # Support both new-style ITPClientInvite tokens and legacy record.client_token
+    """Public page for client to review + sign the ITP."""
+    # Support per-invitee tokens (ITPClientInvite) and legacy shared record.client_token
     invite = ITPClientInvite.query.filter_by(token=token).first()
+    link_error = None
+
     if invite:
+        if invite.is_revoked:
+            link_error = 'This signing link has been revoked by the project team.'
+        elif invite.expires_at and invite.expires_at < datetime.now(timezone.utc):
+            link_error = 'This signing link has expired. Please contact the project team for a new link.'
         record = invite.record
     else:
-        record = ITPRecord.query.filter_by(client_token=token).first_or_404()
+        # Legacy fallback — shared record.client_token
+        record = ITPRecord.query.filter_by(client_token=token).first()
+        if not record:
+            abort(404)
         invite = None
+
+    if link_error:
+        wtg = record.wtg if record else None
+        proj_name = wtg.project.name if wtg and wtg.project else 'Project'
+        return render_template('itp_client_sign.html',
+                               record=record, wtg=wtg, defn={},
+                               statuses={}, proj_name=proj_name,
+                               token=token, link_error=link_error,
+                               today=date.today().isoformat()), 403
+
     wtg      = record.wtg
     # Resolve ITP definition (supports both KRWF and project-specific)
     if record.itp_type.startswith('PROJ_'):
@@ -2842,7 +2871,8 @@ def itp_client_sign(token):
     return render_template('itp_client_sign.html',
                            record=record, wtg=wtg, defn=defn,
                            statuses=statuses, proj_name=proj_name,
-                           token=token,
+                           token=token, invite=invite,
+                           link_error=None,
                            today=date.today().isoformat())
 
 
@@ -2850,6 +2880,16 @@ def itp_client_sign(token):
 @login_required
 def api_itp_sign_criterion(record_id, item_no, crit_idx):
     """AJAX: Save engineer signature for one criterion (with date + time)."""
+    record = ITPRecord.query.get_or_404(record_id)
+    project_id = _itp_project_id(record)
+
+    if not _user_in_project(project_id):
+        return jsonify({'error': 'Access denied — you are not a member of this project.'}), 403
+    if not _user_can_sign(project_id):
+        return jsonify({'error': 'You do not have permission to sign ITP criteria.'}), 403
+    if record.status == 'complete':
+        return jsonify({'error': 'This ITP is complete and locked. Ask the project admin to reopen it.'}), 400
+
     s = ITPItemStatus.query.filter_by(
         itp_record_id=record_id, item_no=item_no, criterion_index=crit_idx
     ).first_or_404()
@@ -2865,21 +2905,27 @@ def api_itp_sign_criterion(record_id, item_no, crit_idx):
     s.lucas_signature = sig
     s.lucas_comments  = comments
     try:
-        # datetime-local sends "YYYY-MM-DDTHH:MM"
         s.lucas_signed_at = datetime.strptime(dt_str[:16], '%Y-%m-%dT%H:%M')
     except (ValueError, TypeError):
         s.lucas_signed_at = datetime.now()
 
     # Update ITP record status from draft → in_progress, and auto-fill engineer name
-    record = ITPRecord.query.get(record_id)
-    if record:
-        if record.status == 'draft':
-            record.status = 'in_progress'
-        # Auto-populate engineer name from logged-in user if not already set
-        if not record.engineer_name:
-            record.engineer_name = current_user.name
-        if not record.engineer_company:
-            record.engineer_company = (current_user.company or '')
+    if record.status == 'draft':
+        record.status = 'in_progress'
+    if not record.engineer_name:
+        record.engineer_name = current_user.name
+    if not record.engineer_company:
+        record.engineer_company = (current_user.company or '')
+
+    log_audit(
+        'itp_item_signed',
+        project_id  = project_id,
+        actor       = current_user,
+        entity_type = 'itp_item',
+        entity_id   = s.id,
+        entity_label= f'{record.wtg.name if record.wtg else ""} · {item_no}.{crit_idx + 1}',
+        detail      = {'record_id': record_id, 'item_no': item_no, 'ci': crit_idx},
+    )
 
     db.session.commit()
     return jsonify({
@@ -2895,6 +2941,16 @@ def api_itp_sign_criterion(record_id, item_no, crit_idx):
 @login_required
 def api_itp_unsign_criterion(record_id, item_no, crit_idx):
     """AJAX: Remove engineer signature from one criterion."""
+    record = ITPRecord.query.get_or_404(record_id)
+    project_id = _itp_project_id(record)
+
+    if not _user_in_project(project_id):
+        return jsonify({'error': 'Access denied — you are not a member of this project.'}), 403
+    if not _user_can_sign(project_id):
+        return jsonify({'error': 'You do not have permission to modify ITP signatures.'}), 403
+    if record.status == 'complete':
+        return jsonify({'error': 'This ITP is complete and locked. Ask the project admin to reopen it.'}), 400
+
     s = ITPItemStatus.query.filter_by(
         itp_record_id=record_id, item_no=item_no, criterion_index=crit_idx
     ).first_or_404()
@@ -2902,6 +2958,17 @@ def api_itp_unsign_criterion(record_id, item_no, crit_idx):
     s.lucas_signature  = None
     s.lucas_signed_at  = None
     s.lucas_comments   = None
+
+    log_audit(
+        'itp_item_unsigned',
+        project_id  = project_id,
+        actor       = current_user,
+        entity_type = 'itp_item',
+        entity_id   = s.id,
+        entity_label= f'{record.wtg.name if record.wtg else ""} · {item_no}.{crit_idx + 1}',
+        detail      = {'record_id': record_id, 'item_no': item_no, 'ci': crit_idx},
+    )
+
     db.session.commit()
     return jsonify({'ok': True})
 
@@ -2915,6 +2982,9 @@ def get_itp_docs_dir():
 def api_itp_item_upload(record_id, item_no, crit_idx):
     """Upload a document/photo to a specific ITP criterion."""
     from models import ITPItemDocument
+    record = ITPRecord.query.get_or_404(record_id)
+    if not _user_in_project(_itp_project_id(record)):
+        return jsonify({'error': 'Access denied.'}), 403
     s = ITPItemStatus.query.filter_by(
         itp_record_id=record_id, item_no=item_no, criterion_index=crit_idx
     ).first_or_404()
@@ -2947,6 +3017,9 @@ def api_itp_item_upload(record_id, item_no, crit_idx):
 def api_itp_item_doc_delete(doc_id):
     from models import ITPItemDocument
     doc = ITPItemDocument.query.get_or_404(doc_id)
+    record = ITPRecord.query.get(doc.itp_record_id)
+    if record and not _user_in_project(_itp_project_id(record)):
+        return jsonify({'error': 'Access denied.'}), 403
     try:
         fpath = os.path.join(get_itp_docs_dir(), doc.filename)
         if os.path.exists(fpath):
@@ -2962,8 +3035,10 @@ def api_itp_item_doc_delete(doc_id):
 @app.route('/itp/<int:record_id>/print')
 @login_required
 def itp_print(record_id):
-    """Render a print-friendly ITP for PDF download. Supports both KRWF and project-specific ITPs."""
+    """Render a print-friendly ITP for PDF download. Supports project-specific ITPs."""
     record = ITPRecord.query.get_or_404(record_id)
+    if not _user_in_project(_itp_project_id(record)):
+        abort(403)
     if record.itp_type.startswith('PROJ_'):
         tmpl = ProjectITPTemplate.query.get(record.project_itp_template_id)
         defn = tmpl.to_dict() if tmpl else None
@@ -3038,11 +3113,13 @@ def itp_export_zip():
 
     zip_buf.seek(0)
     from flask import send_file
+    proj = getattr(g, 'project', None)
+    safe_name = (proj.name.replace(' ', '_') if proj else 'Project')
     return send_file(
         zip_buf,
         mimetype='application/zip',
         as_attachment=True,
-        download_name='King_Rocks_ITPs.zip'
+        download_name=f'{safe_name}_ITPs.zip'
     )
 
 
@@ -3715,18 +3792,60 @@ def api_get_fields(scope):
 def health():
     return {'status': 'ok', 'app': 'windfarm-manager'}, 200
 
+# ─── ITP access-control helpers ──────────────────────────────────────────────
+def _itp_project_id(record):
+    """Return the project_id for an ITPRecord (or None for legacy records)."""
+    if record.wtg and record.wtg.project_id:
+        return record.wtg.project_id
+    return None
+
+
+def _user_in_project(project_id):
+    """True if the current authenticated user is a member of project_id."""
+    if project_id is None:
+        return True   # legacy records without project — allow
+    if current_user.role in ('manager', 'admin'):
+        return True
+    return ProjectMember.query.filter_by(
+        project_id=project_id, user_id=current_user.id
+    ).first() is not None
+
+
+def _user_can_sign(project_id):
+    """True if the current authenticated user may sign ITP criteria."""
+    if not _user_in_project(project_id):
+        return False
+    if current_user.role in ('manager', 'admin'):
+        return True
+    # Check ProjectTeamMember.can_sign if a team-member record exists
+    if project_id is not None:
+        tm = ProjectTeamMember.query.filter_by(
+            project_id=project_id, user_id=current_user.id
+        ).first()
+        if tm is not None:
+            return bool(tm.can_sign)
+    return current_user.can_enter_data()
+
+
 # ─── Safe column migrations ───────────────────────────────────────────────────
 def run_migrations():
     try:
         with app.app_context():
             with db.engine.connect() as conn:
                 cols_to_add = [
-                    ("users",              "position",      "VARCHAR(100) DEFAULT ''"),
-                    ("users",              "avatar_color",  "VARCHAR(20)  DEFAULT '#4f46e5'"),
+                    ("users",              "position",         "VARCHAR(100) DEFAULT ''"),
+                    ("users",              "avatar_color",     "VARCHAR(20)  DEFAULT '#4f46e5'"),
                     # ITP extended client review action
-                    ("itp_item_statuses",  "client_action", "VARCHAR(50)"),
-                    # ITP client invite expiry
-                    ("itp_client_invites", "expires_at",    "TIMESTAMP"),
+                    ("itp_item_statuses",  "client_action",    "VARCHAR(50)"),
+                    # ITP client invite expiry + revocation
+                    ("itp_client_invites", "expires_at",       "TIMESTAMP"),
+                    ("itp_client_invites", "is_revoked",       "BOOLEAN DEFAULT FALSE"),
+                    ("itp_client_invites", "revoked_at",       "TIMESTAMP"),
+                    # ITP record reopen / revision tracking
+                    ("itp_records",        "revision",         "INTEGER DEFAULT 0"),
+                    ("itp_records",        "reopened_at",      "TIMESTAMP"),
+                    ("itp_records",        "reopened_by_id",   "INTEGER"),
+                    ("itp_records",        "reopen_reason",    "TEXT"),
                 ]
                 for table, col, typedef in cols_to_add:
                     try:

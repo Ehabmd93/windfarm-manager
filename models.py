@@ -510,19 +510,27 @@ class ITPRecord(db.Model):
     created_at      = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     created_by      = db.Column(db.Integer, db.ForeignKey('users.id'))
 
-    # Engineer sign-off (Lucas)
+    # Engineer sign-off
     engineer_name       = db.Column(db.String(100))
-    engineer_company    = db.Column(db.String(100), default='CBOP')
+    engineer_company    = db.Column(db.String(100), default='')
     engineer_signature  = db.Column(db.Text)           # base64
     engineer_signed_at  = db.Column(db.DateTime, nullable=True)
 
-    # Status: draft | engineer_signed | client_invited | complete
+    # Status lifecycle:
+    # draft → in_progress → client_invited → client_reviewing →
+    #   client_commented → complete → reopened → superseded
     status = db.Column(db.String(30), default='draft')
+
+    # Reopen / revision tracking
+    revision        = db.Column(db.Integer, default=0)
+    reopened_at     = db.Column(db.DateTime, nullable=True)
+    reopened_by_id  = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    reopen_reason   = db.Column(db.Text, nullable=True)
 
     # Client invite
     client_name         = db.Column(db.String(100))
     client_email        = db.Column(db.String(150))
-    client_company      = db.Column(db.String(100), default='Vestas')
+    client_company      = db.Column(db.String(100), default='')
     client_token        = db.Column(db.String(64), unique=True, nullable=True)
     client_invited_at   = db.Column(db.DateTime, nullable=True)
     client_signature    = db.Column(db.Text)
@@ -880,15 +888,17 @@ class Notification(db.Model):
 # ═══════════════════════════════════════════════
 class ITPClientInvite(db.Model):
     __tablename__ = 'itp_client_invites'
-    id         = db.Column(db.Integer, primary_key=True)
-    record_id  = db.Column(db.Integer, db.ForeignKey('itp_records.id'), nullable=False)
-    name       = db.Column(db.String(100), nullable=False)
-    company    = db.Column(db.String(100), default='')
-    email      = db.Column(db.String(150), default='')
-    token      = db.Column(db.String(100), unique=True, nullable=False)
-    invited_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-    expires_at = db.Column(db.DateTime, nullable=True)
-    record     = db.relationship('ITPRecord', backref='client_invites', lazy=True)
+    id          = db.Column(db.Integer, primary_key=True)
+    record_id   = db.Column(db.Integer, db.ForeignKey('itp_records.id'), nullable=False)
+    name        = db.Column(db.String(100), nullable=False)
+    company     = db.Column(db.String(100), default='')
+    email       = db.Column(db.String(150), default='')
+    token       = db.Column(db.String(100), unique=True, nullable=False)
+    invited_at  = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    expires_at  = db.Column(db.DateTime, nullable=True)
+    is_revoked  = db.Column(db.Boolean, default=False)
+    revoked_at  = db.Column(db.DateTime, nullable=True)
+    record      = db.relationship('ITPRecord', backref='client_invites', lazy=True)
 
 
 # ═══════════════════════════════════════════════

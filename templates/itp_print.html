@@ -328,20 +328,20 @@ td.sig-cell { padding:2pt; }
   <!-- Form reference row -->
   <div class="hdr-ref">
     <div class="ref-cell">
-      <div class="ref-label">Form Reference</div>
-      <div class="ref-value">OPER-FRM-050</div>
+      <div class="ref-label">ITP Number</div>
+      <div class="ref-value">{{ defn.get('itp_number', '–') }}</div>
     </div>
     <div class="ref-cell">
-      <div class="ref-label">Procedure Reference</div>
-      <div class="ref-value">OPER-PRO-044</div>
+      <div class="ref-label">Spec Reference</div>
+      <div class="ref-value">{{ defn.get('spec', '–') or '–' }}</div>
     </div>
     <div class="ref-cell">
-      <div class="ref-label">Issue Date</div>
-      <div class="ref-value">Version 5 · October 2021</div>
+      <div class="ref-label">Revision</div>
+      <div class="ref-value">Rev {{ defn.get('revision', 'A') }}</div>
     </div>
     <div class="ref-cell" style="border-right:none;">
-      <div class="ref-label">Revision Date</div>
-      <div class="ref-value">{{ defn['date'] }}</div>
+      <div class="ref-label">Issue Date</div>
+      <div class="ref-value">{{ defn['date'] or '–' }}</div>
     </div>
   </div>
 
@@ -379,9 +379,9 @@ td.sig-cell { padding:2pt; }
       </tr>
       <tr>
         <td class="label-cell">Prepared By</td>
-        <td class="wide-value">{{ defn.get('prepared_by', record.engineer_name or 'Ehab Yousef') }}</td>
+        <td class="wide-value">{{ defn.get('prepared_by') or record.engineer_name or '' }}</td>
         <td class="label-cell">Approved By</td>
-        <td class="value-cell">{{ defn.get('approved_by','Wayne Hoey') }}</td>
+        <td class="value-cell">{{ defn.get('approved_by') or '' }}</td>
       </tr>
       <tr>
         <td class="label-cell">Location / Lot #</td>
@@ -399,8 +399,11 @@ td.sig-cell { padding:2pt; }
     <div class="scope-block">
       <div class="block-label">Drawings &amp; Standards / Specification</div>
       <div class="block-text">
-        <div style="margin-bottom:3pt;"><strong>Drawings:</strong> KRWF Design Drawings</div>
-        <div><strong>Spec:</strong> {{ defn.get('spec','KRWF-SPE-CIV-3000') }}</div>
+        {% if defn.get('spec') %}
+        <div><strong>Spec:</strong> {{ defn.get('spec') }}</div>
+        {% else %}
+        <div style="color:#94a3b8;font-style:italic;">No specification reference recorded.</div>
+        {% endif %}
       </div>
     </div>
   </div>
@@ -445,7 +448,7 @@ td.sig-cell { padding:2pt; }
   <!-- Footer -->
   <div class="page-footer">
     <span>Uncontrolled When Printed</span>
-    <span>OPER-FRM-050</span>
+    <span>{{ defn.get('itp_number','') }}</span>
     <span>Page 1 of {{ defn['items']|length + 2 }}</span>
   </div>
 </div>
@@ -639,7 +642,7 @@ td.sig-cell { padding:2pt; }
   <!-- Footer -->
   <div class="page-footer">
     <span>Uncontrolled When Printed</span>
-    <span>OPER-FRM-050</span>
+    <span>{{ defn.get('itp_number','') }}</span>
     <span>Checklist — {{ wtg.name }} · {{ defn['name'] }}</span>
   </div>
 </div>
@@ -649,17 +652,17 @@ td.sig-cell { padding:2pt; }
 ═══════════════════════════════════════════════════════════════════════ #}
 <div class="sheet">
 
-  <!-- Myosh Activity & Filing -->
-  <div class="section-label">Myosh Activity &amp; Filing</div>
+  <!-- Filing & Record Management -->
+  <div class="section-label">Document &amp; Filing</div>
   <table style="border-top:none;margin-bottom:8pt;">
     <colgroup><col style="width:40mm"/><col/></colgroup>
     <tr>
-      <td style="font-weight:700;background:#f1f5f9;">Myosh Activity</td>
-      <td>No Myosh Activity Required</td>
+      <td style="font-weight:700;background:#f1f5f9;">Project</td>
+      <td>{{ active_project.name if active_project else (record.wtg.project.name if record.wtg and record.wtg.project else '') }}</td>
     </tr>
     <tr>
       <td style="font-weight:700;background:#f1f5f9;">Filing</td>
-      <td>Completed Inspection &amp; Test Plan to be Filed within the Project MDR Record</td>
+      <td>Completed Inspection &amp; Test Plan to be filed within the Project Document Register</td>
     </tr>
   </table>
 
@@ -731,7 +734,7 @@ td.sig-cell { padding:2pt; }
   <!-- Footer -->
   <div class="page-footer">
     <span>Uncontrolled When Printed</span>
-    <span>OPER-FRM-050</span>
+    <span>{{ defn.get('itp_number','') }}</span>
     <span>Page {{ defn['items']|length + 2 }} of {{ defn['items']|length + 2 }}</span>
   </div>
 </div>

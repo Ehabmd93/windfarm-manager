@@ -42,7 +42,7 @@ def email_client_invitation(record, wtg_name, sign_url,
     proj_label = proj_name or 'Project'
     itp_label  = itp_name  or record.itp_type.upper().replace('_', ' ')
     engineer   = record.engineer_name or 'Engineer'
-    company    = record.engineer_company or 'TCS'
+    company    = record.engineer_company or ''
 
     subject = f"Action Required: Please Sign ITP — {wtg_name} · {itp_label}"
     html = f"""
@@ -93,7 +93,7 @@ def email_client_invitation(record, wtg_name, sign_url,
         </tr>
         <tr>
           <td style="color:#64748b;padding:5px 0;">Inspected by</td>
-          <td style="font-weight:700;color:#1e3a5f;">{engineer} · {company}</td>
+          <td style="font-weight:700;color:#1e3a5f;">{engineer}{' · ' + company if company else ''}</td>
         </tr>
       </table>
     </div>

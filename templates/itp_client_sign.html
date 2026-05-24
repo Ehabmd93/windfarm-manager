@@ -184,6 +184,12 @@
       <p style="color:#93c5fd;font-size:12px;margin:0;">
         {{ wtg.name }} &middot; Client Review &amp; Sign-off
       </p>
+      {% if invite %}
+      <p style="color:#bfdbfe;font-size:11px;margin:4px 0 0;">
+        <i class="fa-solid fa-user" style="margin-right:4px;"></i>
+        Invited: <strong>{{ invite.name }}</strong>{% if invite.company %} · {{ invite.company }}{% endif %}
+      </p>
+      {% endif %}
     </div>
     <div style="flex-shrink:0;margin-top:2px;">
       {% if record.status == 'complete' %}
@@ -219,6 +225,16 @@
   </div>
   {% endfor %}
   {% endwith %}
+
+  <!-- ─── LINK ERROR (expired / revoked) ─────────────────────────────── -->
+  {% if link_error %}
+  <div style="background:#fef2f2;border:2px solid #fecaca;border-radius:18px;
+              padding:32px 24px;text-align:center;margin-bottom:16px;">
+    <i class="fa-solid fa-lock" style="font-size:48px;color:#dc2626;display:block;margin-bottom:14px;"></i>
+    <h2 style="font-size:18px;font-weight:800;color:#991b1b;margin:0 0 10px;">Link Unavailable</h2>
+    <p style="color:#b91c1c;font-size:14px;margin:0;line-height:1.6;">{{ link_error }}</p>
+  </div>
+  {% else %}
 
   <!-- ─── FINAL STATE BANNERS ─────────────────────────────────────────── -->
   {% if record.status == 'complete' %}
@@ -286,7 +302,7 @@
       <div>
         <p style="color:#94a3b8;font-size:10px;font-weight:700;text-transform:uppercase;margin:0 0 2px;">Inspected by</p>
         <p style="font-weight:700;color:#0f172a;font-size:13px;margin:0;">
-          {{ record.engineer_name or 'Engineer' }} &middot; {{ record.engineer_company or 'TCS' }}
+          {{ record.engineer_name or 'Engineer' }}{% if record.engineer_company %} &middot; {{ record.engineer_company }}{% endif %}
         </p>
       </div>
       <div>
@@ -532,7 +548,7 @@
                 <div style="min-width:0;">
                   <p style="font-size:11px;font-weight:700;color:#166534;margin:0 0 2px;">
                     <i class="fa-solid fa-check-circle" style="margin-right:4px;"></i>
-                    {{ record.engineer_name or 'Engineer' }} &middot; {{ record.engineer_company or 'TCS' }}
+                    {{ record.engineer_name or 'Engineer' }}{% if record.engineer_company %} &middot; {{ record.engineer_company }}{% endif %}
                   </p>
                   <p style="font-size:11px;color:#4ade80;margin:0;">
                     {% if s.lucas_signed_at %}
@@ -728,6 +744,8 @@
     {% endfor %}
   </div>
 
+
+  {% endif %}{# end link_error else block #}
 
 </div><!-- /max-width container -->
 
