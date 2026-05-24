@@ -88,6 +88,47 @@ def _project_role_label(role_key):
                 role_key.replace('_', ' ').title())
 
 
+# ── Invite role → User/ProjectMember role mappings (Phase 4B) ─────────────────
+
+_INVITE_TO_USER_ROLE = {
+    'project_admin':           'manager',
+    'project_manager':         'manager',
+    'qa_manager':              'manager',
+    'site_engineer':           'engineer',
+    'supervisor':              'supervisor',
+    'subcontractor_submitter': 'engineer',
+    'testing_lab':             'engineer',
+    'client_reviewer':         'client',
+    'client_approver':         'client',
+    'consultant':              'supervisor',
+    'auditor':                 'supervisor',
+}
+
+_INVITE_TO_PROJ_ROLE = {
+    'project_admin':           'admin',
+    'project_manager':         'lead',
+    'qa_manager':              'lead',
+    'site_engineer':           'engineer',
+    'supervisor':              'engineer',
+    'subcontractor_submitter': 'engineer',
+    'testing_lab':             'engineer',
+    'client_reviewer':         'client',
+    'client_approver':         'client',
+    'consultant':              'viewer',
+    'auditor':                 'viewer',
+}
+
+
+def _invite_role_to_user_role(role):
+    """Map a project-directory role key to a global User.role value."""
+    return _INVITE_TO_USER_ROLE.get(role or '', 'engineer')
+
+
+def _invite_role_to_proj_role(role):
+    """Map a project-directory role key to a ProjectMember.proj_role value."""
+    return _INVITE_TO_PROJ_ROLE.get(role or '', 'viewer')
+
+
 app = Flask(__name__)
 
 # ── Fix for Railway / any reverse proxy (fixes HTTPS redirects) ──────────────
@@ -203,64 +244,233 @@ def logout():
     return redirect(url_for('login'))
 
 
-# ─── Public invite landing (Phase 4A — read-only) ────────────────────────────
-@app.route('/invite/<token>')
-def invite_accept(token):
-    """Public invite landing page.
+# ─── Public invite landing (Phase 4B — new-user acceptance) ─────────────────
 
-    Hashes the raw URL token and looks up UserInvite by token_hash.
-    Renders the correct state page; auto-marks pending-but-expired invites.
-    No user creation, no login, no form submission in Phase 4A.
+def _resolve_invite_state(token):
+    """
+    Hash raw token, look up UserInvite, determine display state.
+
+    Returns (invite_or_None, proj_or_None, state_str).
+    State values: 'invalid' | 'revoked' | 'accepted' | 'expired' | 'valid'
+    Also auto-marks pending-but-past-expiry invites as 'expired'.
     """
     token_hash = _hash_token(token)
-    invite     = UserInvite.query.filter_by(token_hash=token_hash).first()
+    invite = UserInvite.query.filter_by(token_hash=token_hash).first()
 
-    # ── Determine display state ──────────────────────────────────────────────
     if invite is None:
-        # Unknown hash — either never issued or already rotated
-        return render_template('invite_accept.html',
-                               state='invalid',
-                               invite=None,
-                               proj=None,
-                               role_label='')
+        return None, None, 'invalid'
 
-    proj = invite.project   # may be None if project was deleted
+    proj = invite.project  # may be None if project deleted
 
     if invite.status == 'revoked':
-        state = 'revoked'
+        return invite, proj, 'revoked'
 
-    elif invite.status == 'accepted':
-        state = 'accepted'
+    if invite.status == 'accepted':
+        return invite, proj, 'accepted'
 
-    elif invite.status == 'expired':
-        # Already marked expired by a previous visit or scheduled job
-        state = 'expired'
+    if invite.status == 'expired':
+        return invite, proj, 'expired'
 
-    else:
-        # status == 'pending' — check whether it has since expired.
-        # SQLite returns naive datetimes; PostgreSQL returns aware ones.
-        # Normalise expires_at to UTC-aware before comparing.
+    # status == 'pending' — check wall-clock expiry
+    # SQLite returns naive datetimes; PostgreSQL returns aware ones.
+    # Normalise to UTC-aware before comparing.
+    now = datetime.now(timezone.utc)
+    expires_at = invite.expires_at
+    if expires_at is not None and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at is not None and expires_at < now:
+        try:
+            invite.status = 'expired'
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+        return invite, proj, 'expired'
+
+    return invite, proj, 'valid'
+
+
+@app.route('/invite/<token>', methods=['GET', 'POST'])
+def invite_accept(token):
+    """Public invite landing page — Phase 4B.
+
+    GET:  Show invite details.
+          • valid + new e-mail  → password-setup form
+          • valid + existing user → Phase 4C placeholder
+          • any other state    → informational error page
+
+    POST: Create new User account from the invite.
+          Existing-user acceptance is handled in Phase 4C (not here).
+    """
+    from flask import session as flask_session
+
+    # ── POST: new-user account creation ──────────────────────────────────────
+    if request.method == 'POST':
+        # Re-hash token from URL — never trust form data for this
+        invite, proj, state = _resolve_invite_state(token)
+
+        # Reject any non-valid state immediately
+        if state != 'valid':
+            role_label = _project_role_label(invite.role) if invite else ''
+            return render_template('invite_accept.html',
+                                   state=state,
+                                   invite=invite,
+                                   proj=proj,
+                                   role_label=role_label,
+                                   user_exists=False,
+                                   form_error=None,
+                                   token=token)
+
+        # Safety: if email already exists, do NOT create a duplicate account
+        existing_user = User.query.filter_by(
+            email=invite.email.strip().lower()
+        ).first()
+        if existing_user:
+            # Phase 4C handles this — POST shouldn't reach here for existing users
+            # but guard defensively
+            role_label = _project_role_label(invite.role) if invite.role else ''
+            return render_template('invite_accept.html',
+                                   state='valid',
+                                   invite=invite,
+                                   proj=proj,
+                                   role_label=role_label,
+                                   user_exists=True,
+                                   form_error=None,
+                                   token=token)
+
+        password  = (request.form.get('password')  or '').strip()
+        password2 = (request.form.get('password2') or '').strip()
+
+        # ── Password validation ───────────────────────────────────────────────
+        form_error = None
+        if not password:
+            form_error = 'Password is required.'
+        elif len(password) < 8:
+            form_error = 'Password must be at least 8 characters.'
+        elif password != password2:
+            form_error = 'Passwords do not match.'
+
+        if form_error:
+            role_label = _project_role_label(invite.role) if invite.role else ''
+            return render_template('invite_accept.html',
+                                   state='valid',
+                                   invite=invite,
+                                   proj=proj,
+                                   role_label=role_label,
+                                   user_exists=False,
+                                   form_error=form_error,
+                                   token=token)
+
+        # ── Create User ───────────────────────────────────────────────────────
         now = datetime.now(timezone.utc)
-        expires_at = invite.expires_at
-        if expires_at is not None and expires_at.tzinfo is None:
-            expires_at = expires_at.replace(tzinfo=timezone.utc)
-        if expires_at is not None and expires_at < now:
-            try:
-                invite.status = 'expired'
-                db.session.commit()
-            except Exception:
-                db.session.rollback()
-            state = 'expired'
-        else:
-            state = 'valid'
+        new_user = User(
+            name=invite.name,
+            email=invite.email.strip().lower(),
+            password=generate_password_hash(password),
+            role=_invite_role_to_user_role(invite.role),
+            company=invite.company or '',
+            is_active=True,
+            email_verified=True,
+            email_verified_at=now,
+            password_changed_at=now,
+            failed_login_count=0,
+            locked_until=None,
+        )
+        db.session.add(new_user)
+        db.session.flush()  # get new_user.id before FK references
+
+        # ── Link ProjectTeamMember → new User ────────────────────────────────
+        if invite.project_team_member_id is not None:
+            team_member = ProjectTeamMember.query.filter_by(
+                id=invite.project_team_member_id,
+                project_id=invite.project_id,
+            ).first()
+            if team_member and team_member.user_id is None:
+                team_member.user_id = new_user.id
+                log_audit('project_member_linked',
+                          project_id=invite.project_id,
+                          actor=None,
+                          entity_type='team_member',
+                          entity_id=team_member.id,
+                          entity_label=new_user.name,
+                          detail={'user_id': new_user.id,
+                                  'role': invite.role})
+
+        # ── Create ProjectMember if not already present ───────────────────────
+        if invite.project_id is not None:
+            already = ProjectMember.query.filter_by(
+                project_id=invite.project_id,
+                user_id=new_user.id,
+            ).first()
+            if not already:
+                pm = ProjectMember(
+                    project_id=invite.project_id,
+                    user_id=new_user.id,
+                    proj_role=_invite_role_to_proj_role(invite.role),
+                    added_at=now,
+                )
+                db.session.add(pm)
+
+        # ── Mark invite accepted ──────────────────────────────────────────────
+        invite.status      = 'accepted'
+        invite.accepted_at = now
+
+        # ── Audit ─────────────────────────────────────────────────────────────
+        log_audit('user_created_from_invite',
+                  project_id=invite.project_id,
+                  actor=None,
+                  entity_type='user',
+                  entity_id=new_user.id,
+                  entity_label=new_user.email,
+                  detail={'name': new_user.name,
+                          'role': new_user.role,
+                          'invite_id': invite.id})
+
+        log_audit('user_invite_accepted',
+                  project_id=invite.project_id,
+                  actor=None,
+                  entity_type='user_invite',
+                  entity_id=invite.id,
+                  entity_label=invite.email,
+                  detail={'new_user_id': new_user.id})
+
+        db.session.commit()
+
+        # ── Login & redirect ──────────────────────────────────────────────────
+        login_user(new_user)
+        if invite.project_id is not None:
+            flask_session['active_project_id'] = invite.project_id
+
+        flash('Welcome! Your account has been created and you have been added to the project.', 'success')
+        return redirect(url_for('projects_list'))
+
+    # ── GET ───────────────────────────────────────────────────────────────────
+    invite, proj, state = _resolve_invite_state(token)
+
+    if state != 'valid':
+        role_label = _project_role_label(invite.role) if invite else ''
+        return render_template('invite_accept.html',
+                               state=state,
+                               invite=invite,
+                               proj=proj,
+                               role_label=role_label,
+                               user_exists=False,
+                               form_error=None,
+                               token=token)
+
+    # state == 'valid' — check whether email already has an account
+    user_exists = User.query.filter_by(
+        email=invite.email.strip().lower()
+    ).first() is not None
 
     role_label = _project_role_label(invite.role) if invite.role else ''
-
     return render_template('invite_accept.html',
-                           state=state,
+                           state='valid',
                            invite=invite,
                            proj=proj,
-                           role_label=role_label)
+                           role_label=role_label,
+                           user_exists=user_exists,
+                           form_error=None,
+                           token=token)
 
 # ─── Projects ────────────────────────────────────────────────────────────────
 @app.route('/projects')

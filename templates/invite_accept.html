@@ -170,6 +170,55 @@
     .alert-green  { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
     .alert-gray   { background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; }
 
+    /* ── Password form ───────────────────────────────────────────── */
+    .form-group {
+      margin-bottom: 16px;
+    }
+    .form-label {
+      display: block;
+      font-size: 12px;
+      font-weight: 700;
+      color: #475569;
+      margin-bottom: 5px;
+      letter-spacing: .02em;
+    }
+    .form-input {
+      width: 100%;
+      padding: 9px 12px;
+      border: 1.5px solid #cbd5e1;
+      border-radius: 8px;
+      font-size: 14px;
+      color: #1e293b;
+      background: #fff;
+      outline: none;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    .form-input:focus {
+      border-color: #2563eb;
+      box-shadow: 0 0 0 3px rgba(37,99,235,.12);
+    }
+    .form-hint {
+      font-size: 11px;
+      color: #94a3b8;
+      margin-top: 4px;
+    }
+    .btn-submit {
+      display: block;
+      width: 100%;
+      padding: 11px 0;
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      letter-spacing: .02em;
+      transition: background .15s, transform .1s;
+    }
+    .btn-submit:hover  { background: #1d4ed8; }
+    .btn-submit:active { transform: scale(.98); }
+
     /* ── Footer ──────────────────────────────────────────────────── */
     .card-footer {
       padding: 16px 32px 24px;
@@ -388,16 +437,54 @@
       {% endif %}
     </div>
 
-    <!-- Coming next: account setup form (Phase 4B) -->
-    <div class="alert alert-gray" style="margin-bottom:0;">
+    {# ─── Branch: existing user — Phase 4C placeholder ─── #}
+    {% if user_exists %}
+    <div class="alert alert-amber">
       <i class="fa-solid fa-circle-info" style="margin-top:1px;flex-shrink:0;"></i>
       <span>
-        Account setup will be available shortly.
-        If you already have a QA Manager account, <a href="/login" style="color:#2563eb;">sign in here</a>.
+        This email address already has a QA Manager account.
+        <a href="/login" style="color:#d97706;font-weight:700;">Sign in</a>
+        and the project will be linked to your existing account.
+        (Existing-account acceptance will be added in a future update.)
       </span>
     </div>
 
+    {# ─── Branch: new user — password setup form ─── #}
+    {% else %}
+
+    {# Error banner #}
+    {% if form_error %}
+    <div class="alert alert-red" style="margin-bottom:20px;">
+      <i class="fa-solid fa-circle-exclamation" style="margin-top:1px;flex-shrink:0;"></i>
+      <span>{{ form_error }}</span>
+    </div>
     {% endif %}
+
+    <form method="POST" action="/invite/{{ token }}" novalidate>
+      <div class="form-group">
+        <label class="form-label" for="password">Create a password</label>
+        <input class="form-input" type="password" id="password" name="password"
+               autocomplete="new-password" required placeholder="At least 8 characters"/>
+        <div class="form-hint">Must be at least 8 characters.</div>
+      </div>
+      <div class="form-group" style="margin-bottom:22px;">
+        <label class="form-label" for="password2">Confirm password</label>
+        <input class="form-input" type="password" id="password2" name="password2"
+               autocomplete="new-password" required placeholder="Re-enter your password"/>
+      </div>
+      <button type="submit" class="btn-submit">
+        <i class="fa-solid fa-user-check" style="margin-right:7px;"></i>
+        Create account &amp; join project
+      </button>
+    </form>
+
+    <p style="font-size:11px;color:#94a3b8;text-align:center;margin-top:14px;">
+      Already have an account? <a href="/login">Sign in instead</a>.
+    </p>
+
+    {% endif %}{# end user_exists #}
+
+    {% endif %}{# end valid state #}
 
   </div><!-- /card-body -->
 
