@@ -22,9 +22,7 @@
   }
   .member-row:last-child { border-bottom:none; }
   .member-row:hover { background:#f8fafc; }
-  .member-top {
-    display:flex;align-items:flex-start;gap:12px;
-  }
+  .member-top { display:flex;align-items:flex-start;gap:12px; }
   .role-dot {
     width:28px;height:28px;border-radius:50%;flex-shrink:0;margin-top:2px;
     display:inline-flex;align-items:center;justify-content:center;font-size:11px;
@@ -92,10 +90,7 @@
     transition:background .12s;
   }
   .btn-danger:hover { background:#fecaca; }
-  .empty-state {
-    padding:32px 20px;text-align:center;color:#94a3b8;font-size:13px;
-  }
-  /* copy-link toast */
+  .empty-state { padding:32px 20px;text-align:center;color:#94a3b8;font-size:13px; }
   #link-toast {
     display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
     background:#1e293b;color:#fff;padding:10px 20px;border-radius:10px;
@@ -105,11 +100,17 @@
 {% endblock %}
 
 {% block content %}
-{# ── Member row macro — defined first so calls below are valid ── #}
+{#
+  _member_row macro — defined first so every call below is valid in Jinja2.
+
+  IDs and names are placed in data-* attributes (HTML-context, safe) and read
+  in JS via element.dataset.  This avoids the classic pitfall of inserting
+  user-controlled strings into JS string literals inside onclick="..." where
+  HTML entities like &#39; get decoded back to ' and break the string.
+#}
 {% macro _member_row(m, inv, eff_status, can_manage) %}
 <div class="member-row" id="member-{{ m.id }}">
   <div class="member-top">
-    <!-- Role icon -->
     <div class="role-dot" style="background:{{ m.role_color }}18;">
       <i class="fa-solid {{ m.role_icon }}" style="color:{{ m.role_color }};font-size:11px;"></i>
     </div>
@@ -137,7 +138,7 @@
       </div>
       {% endif %}
 
-      <!-- Status badges: linked user + invite -->
+      <!-- Status badges: linked-user status + invite status -->
       <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:5px;">
         {% if m.user_id %}
         <span class="user-badge">
@@ -149,9 +150,7 @@
         <span class="invite-badge pending">
           <i class="fa-solid fa-clock" style="font-size:9px;"></i>
           Pending Invite
-          {% if inv and inv.expires_at %}
-          · expires {{ inv.expires_at.strftime('%d %b %Y') }}
-          {% endif %}
+          {% if inv and inv.expires_at %} · expires {{ inv.expires_at.strftime('%d %b %Y') }}{% endif %}
         </span>
         {% elif eff_status == 'accepted' %}
         <span class="invite-badge accepted">
@@ -170,31 +169,37 @@
         {% endif %}
       </div>
 
-      <!-- Action buttons (managers/admins only) -->
+      {#
+        Action buttons: only rendered when can_manage is True.
+        IDs go in data-* attributes; JS reads them via element.dataset.
+        This is correct for any name content including quotes and apostrophes.
+      #}
       {% if can_manage %}
       <div class="member-actions">
         {% if inv and eff_status in ('pending', 'expired') %}
-        <button class="btn-xs btn-xs-primary" onclick="resendInvite({{ inv.id }}, '{{ m.name|e }}')">
+        <button class="btn-xs btn-xs-primary"
+                data-iid="{{ inv.id }}" data-mname="{{ m.name }}"
+                onclick="resendInvite(this)">
           <i class="fa-solid fa-paper-plane" style="font-size:9px;"></i> Resend Invite
         </button>
-        <button class="btn-xs btn-xs-amber" onclick="copyInviteLink({{ inv.id }})">
+        <button class="btn-xs btn-xs-amber"
+                data-iid="{{ inv.id }}"
+                onclick="copyInviteLink(this)">
           <i class="fa-solid fa-link" style="font-size:9px;"></i> Copy New Link
         </button>
-        <button class="btn-xs btn-xs-danger" onclick="revokeInvite({{ inv.id }}, '{{ m.name|e }}')">
+        <button class="btn-xs btn-xs-danger"
+                data-iid="{{ inv.id }}" data-mname="{{ m.name }}"
+                onclick="revokeInvite(this)">
           <i class="fa-solid fa-ban" style="font-size:9px;"></i> Revoke
         </button>
         {% endif %}
-        <button class="btn-xs btn-xs-gray" onclick="deleteMember({{ m.id }}, '{{ m.name|e }}')">
+        <button class="btn-xs btn-xs-gray"
+                data-mid="{{ m.id }}" data-mname="{{ m.name }}"
+                onclick="deleteMember(this)">
           <i class="fa-solid fa-times" style="font-size:9px;"></i> Remove
         </button>
       </div>
-      {% else %}
-      <div class="member-actions">
-        <button class="btn-xs btn-xs-gray" onclick="deleteMember({{ m.id }}, '{{ m.name|e }}')">
-          <i class="fa-solid fa-times" style="font-size:9px;"></i> Remove
-        </button>
-      </div>
-      {% endif %}
+      {% endif %}{# end can_manage — engineers see NO action buttons #}
 
     </div><!-- /member-body -->
   </div><!-- /member-top -->
@@ -203,19 +208,27 @@
 
 <div style="max-width:960px;margin:0 auto;padding:24px 20px;">
 
-  <!-- Header -->
+  <!-- ── Page header ────────────────────────────────────────── -->
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
     <div>
       <h2 style="font-size:22px;font-weight:800;color:#1e293b;margin:0;">People & Companies</h2>
-      <p style="color:#64748b;font-size:13px;margin-top:4px;">Manage all companies and personnel involved in <strong>{{ proj.name }}</strong></p>
+      <p style="color:#64748b;font-size:13px;margin-top:4px;">
+        {% if can_manage %}
+          Manage all companies and personnel involved in <strong>{{ proj.name }}</strong>
+        {% else %}
+          Viewing team directory for <strong>{{ proj.name }}</strong>
+        {% endif %}
+      </p>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      {% if can_manage %}
       <button onclick="openAddCompany()" class="btn-primary">
         <i class="fa-solid fa-building-circle-arrow-right"></i> Add Company
       </button>
       <button onclick="openAddMember()" class="btn-primary" style="background:linear-gradient(135deg,#0891b2,#06b6d4);">
         <i class="fa-solid fa-user-plus"></i> Add Member
       </button>
+      {% endif %}
       <a href="{{ url_for('project_audit', pid=proj.id) }}"
          style="display:inline-flex;align-items:center;gap:7px;padding:10px 16px;
                 background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;
@@ -228,7 +241,7 @@
     </div>
   </div>
 
-  <!-- Summary chips -->
+  <!-- ── Summary chips ─────────────────────────────────────── -->
   {% set pending_count = invites_by_member.values()|selectattr('status','equalto','pending')|list|length %}
   <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:24px;">
     <div style="background:#f0f7ff;border:1px solid #bfdbfe;border-radius:12px;padding:10px 16px;">
@@ -243,7 +256,7 @@
       <div style="font-size:20px;font-weight:800;color:#d97706;">{{ members|selectattr('can_sign')|list|length }}</div>
       <div style="font-size:11px;color:#f59e0b;font-weight:600;">Can Sign</div>
     </div>
-    {% if pending_count %}
+    {% if pending_count and can_manage %}
     <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:10px 16px;">
       <div style="font-size:20px;font-weight:800;color:#d97706;">{{ pending_count }}</div>
       <div style="font-size:11px;color:#f59e0b;font-weight:600;">Pending Invites</div>
@@ -251,7 +264,7 @@
     {% endif %}
   </div>
 
-  <!-- Companies -->
+  <!-- ── Companies ─────────────────────────────────────────── -->
   {% if companies %}
     {% for company in companies %}
     <div class="company-card" id="company-{{ company.id }}">
@@ -279,9 +292,13 @@
           </div>
           {% endif %}
         </div>
-        <button onclick="deleteCompany({{ company.id }}, '{{ company.name|e }}')" class="btn-danger">
+        {% if can_manage %}
+        <button class="btn-danger"
+                data-cid="{{ company.id }}" data-cname="{{ company.name }}"
+                onclick="deleteCompany(this)">
           <i class="fa-solid fa-trash"></i>
         </button>
+        {% endif %}
       </div>
 
       {% set comp_members = members|selectattr('company_id', 'equalto', company.id)|list %}
@@ -301,25 +318,36 @@
         <div class="empty-state">
           <i class="fa-solid fa-user-plus" style="font-size:20px;margin-bottom:8px;display:block;"></i>
           No team members assigned to this company yet.
-          <button onclick="openAddMember({{ company.id }})" style="display:inline-block;margin-top:8px;padding:5px 12px;background:#f0f4f8;border:1.5px solid #e2e8f0;border-radius:8px;font-size:12px;font-weight:700;color:#4f46e5;cursor:pointer;">
+          {% if can_manage %}
+          <button data-company-id="{{ company.id }}"
+                  onclick="openAddMember(parseInt(this.dataset.companyId))"
+                  style="display:inline-block;margin-top:8px;padding:5px 12px;background:#f0f4f8;
+                         border:1.5px solid #e2e8f0;border-radius:8px;font-size:12px;
+                         font-weight:700;color:#4f46e5;cursor:pointer;">
             Add Member Here
           </button>
+          {% endif %}
         </div>
       {% endif %}
     </div>
     {% endfor %}
   {% else %}
-    <div style="background:#fff;border-radius:16px;border:2px dashed #e2e8f0;padding:48px 20px;text-align:center;color:#94a3b8;margin-bottom:20px;">
+    <div style="background:#fff;border-radius:16px;border:2px dashed #e2e8f0;padding:48px 20px;
+                text-align:center;color:#94a3b8;margin-bottom:20px;">
       <i class="fa-solid fa-building" style="font-size:32px;margin-bottom:12px;display:block;"></i>
       <p style="font-size:15px;font-weight:700;color:#64748b;margin:0 0 6px;">No companies yet</p>
-      <p style="font-size:13px;margin:0 0 16px;">Add the companies involved in this project (client, contractors, consultants, labs)</p>
+      <p style="font-size:13px;margin:0 0 16px;">
+        {% if can_manage %}Add the companies involved in this project (client, contractors, consultants, labs){% else %}No companies have been added to this project yet.{% endif %}
+      </p>
+      {% if can_manage %}
       <button onclick="openAddCompany()" class="btn-primary">
         <i class="fa-solid fa-plus"></i> Add First Company
       </button>
+      {% endif %}
     </div>
   {% endif %}
 
-  <!-- Unassigned members -->
+  <!-- ── Unassigned members ─────────────────────────────── -->
   {% set unassigned = members|selectattr('company_id', 'none')|list %}
   {% if unassigned %}
   <div class="company-card">
@@ -349,7 +377,8 @@
 
 </div><!-- /container -->
 
-<!-- ── Add Company Modal ─────────────────────────────── -->
+{% if can_manage %}
+<!-- ── Add Company Modal ────────────────────────────────── -->
 <div class="modal-overlay" id="add-company-modal">
   <div class="modal-box">
     <h3 style="font-size:18px;font-weight:800;color:#1e293b;margin:0 0 20px;">Add Company</h3>
@@ -392,13 +421,17 @@
       </div>
     </div>
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;">
-      <button onclick="closeAddCompany()" style="padding:10px 18px;background:#f1f5f9;border:none;border-radius:10px;font-size:13px;font-weight:700;color:#64748b;cursor:pointer;">Cancel</button>
-      <button onclick="submitAddCompany()" class="btn-primary"><i class="fa-solid fa-building-circle-arrow-right"></i> Add Company</button>
+      <button onclick="closeAddCompany()"
+              style="padding:10px 18px;background:#f1f5f9;border:none;border-radius:10px;
+                     font-size:13px;font-weight:700;color:#64748b;cursor:pointer;">Cancel</button>
+      <button onclick="submitAddCompany()" class="btn-primary">
+        <i class="fa-solid fa-building-circle-arrow-right"></i> Add Company
+      </button>
     </div>
   </div>
 </div>
 
-<!-- ── Add Member Modal ─────────────────────────────── -->
+<!-- ── Add Member Modal ─────────────────────────────────── -->
 <div class="modal-overlay" id="add-member-modal">
   <div class="modal-box">
     <h3 style="font-size:18px;font-weight:800;color:#1e293b;margin:0 0 20px;">Add Team Member</h3>
@@ -451,18 +484,34 @@
       </div>
     </div>
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;">
-      <button onclick="closeAddMember()" style="padding:10px 18px;background:#f1f5f9;border:none;border-radius:10px;font-size:13px;font-weight:700;color:#64748b;cursor:pointer;">Cancel</button>
-      <button onclick="submitAddMember()" class="btn-primary" style="background:linear-gradient(135deg,#0891b2,#06b6d4);"><i class="fa-solid fa-user-plus"></i> Add Member</button>
+      <button onclick="closeAddMember()"
+              style="padding:10px 18px;background:#f1f5f9;border:none;border-radius:10px;
+                     font-size:13px;font-weight:700;color:#64748b;cursor:pointer;">Cancel</button>
+      <button onclick="submitAddMember()" class="btn-primary" style="background:linear-gradient(135deg,#0891b2,#06b6d4);">
+        <i class="fa-solid fa-user-plus"></i> Add Member
+      </button>
     </div>
   </div>
 </div>
+{% endif %}{# end can_manage modals #}
 
-<!-- Copy-link toast -->
+<!-- Copy-link toast (visible to all, shown only after a successful copy) -->
 <div id="link-toast">Link copied to clipboard</div>
 
 <script>
 const PID = {{ proj.id }};
+const CAN_MANAGE = {{ 'true' if can_manage else 'false' }};
 
+/* ── Guard: prevents engineers from accidentally calling management APIs ── */
+function _requireManage() {
+  if (!CAN_MANAGE) {
+    console.warn('Action blocked — insufficient permissions.');
+    return false;
+  }
+  return true;
+}
+
+{% if can_manage %}
 /* ── Company modal ── */
 function openAddCompany() {
   document.getElementById('add-company-modal').classList.add('open');
@@ -472,21 +521,21 @@ function closeAddCompany() {
   document.getElementById('add-company-modal').classList.remove('open');
 }
 async function submitAddCompany() {
+  if (!_requireManage()) return;
   const name = document.getElementById('c-name').value.trim();
   if (!name) { alert('Company name is required'); return; }
-  const payload = {
-    company_type:  document.getElementById('c-type').value,
-    name:          name,
-    short_name:    document.getElementById('c-short').value.trim(),
-    contact_name:  document.getElementById('c-contact').value.trim(),
-    contact_email: document.getElementById('c-email').value.trim(),
-    contact_phone: document.getElementById('c-phone').value.trim(),
-    notes:         document.getElementById('c-notes').value.trim(),
-  };
   const r = await fetch(`/projects/${PID}/companies`, {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      company_type:  document.getElementById('c-type').value,
+      name,
+      short_name:    document.getElementById('c-short').value.trim(),
+      contact_name:  document.getElementById('c-contact').value.trim(),
+      contact_email: document.getElementById('c-email').value.trim(),
+      contact_phone: document.getElementById('c-phone').value.trim(),
+      notes:         document.getElementById('c-notes').value.trim(),
+    }),
   });
   const d = await r.json();
   if (!d.ok) { alert(d.error); return; }
@@ -495,12 +544,11 @@ async function submitAddCompany() {
 }
 
 /* ── Member modal ── */
-let _defaultCompanyId = null;
 function openAddMember(companyId) {
-  _defaultCompanyId = companyId || null;
+  if (!_requireManage()) return;
   if (companyId) {
     const sel = document.getElementById('m-company');
-    for (let o of sel.options) { if (o.value == companyId) { o.selected = true; break; } }
+    for (const o of sel.options) { if (o.value == companyId) { o.selected = true; break; } }
   }
   document.getElementById('add-member-modal').classList.add('open');
   document.getElementById('m-name').focus();
@@ -509,22 +557,22 @@ function closeAddMember() {
   document.getElementById('add-member-modal').classList.remove('open');
 }
 async function submitAddMember() {
+  if (!_requireManage()) return;
   const name = document.getElementById('m-name').value.trim();
   if (!name) { alert('Name is required'); return; }
   const cid = document.getElementById('m-company').value;
-  const payload = {
-    name:         name,
-    position:     document.getElementById('m-position').value.trim(),
-    email:        document.getElementById('m-email').value.trim(),
-    phone:        document.getElementById('m-phone').value.trim(),
-    project_role: document.getElementById('m-role').value,
-    company_id:   cid ? parseInt(cid) : null,
-    can_sign:     document.getElementById('m-can-sign').checked,
-  };
   const r = await fetch(`/projects/${PID}/team`, {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      name,
+      position:     document.getElementById('m-position').value.trim(),
+      email:        document.getElementById('m-email').value.trim(),
+      phone:        document.getElementById('m-phone').value.trim(),
+      project_role: document.getElementById('m-role').value,
+      company_id:   cid ? parseInt(cid) : null,
+      can_sign:     document.getElementById('m-can-sign').checked,
+    }),
   });
   const d = await r.json();
   if (!d.ok) { alert(d.error); return; }
@@ -532,8 +580,11 @@ async function submitAddMember() {
   location.reload();
 }
 
-/* ── Delete company ── */
-async function deleteCompany(id, name) {
+/* ── Delete company — reads IDs from data-* attributes ── */
+async function deleteCompany(btn) {
+  if (!_requireManage()) return;
+  const id   = btn.dataset.cid;
+  const name = btn.dataset.cname;
   if (!confirm(`Remove company "${name}" and all their team members?`)) return;
   const r = await fetch(`/projects/${PID}/companies/${id}`, { method: 'DELETE' });
   const d = await r.json();
@@ -541,8 +592,11 @@ async function deleteCompany(id, name) {
   else alert(d.error);
 }
 
-/* ── Delete member ── */
-async function deleteMember(id, name) {
+/* ── Delete member — reads IDs from data-* attributes ── */
+async function deleteMember(btn) {
+  if (!_requireManage()) return;
+  const id   = btn.dataset.mid;
+  const name = btn.dataset.mname;
   if (!confirm(`Remove ${name} from the project?`)) return;
   const r = await fetch(`/projects/${PID}/team/${id}`, { method: 'DELETE' });
   const d = await r.json();
@@ -550,9 +604,12 @@ async function deleteMember(id, name) {
   else alert(d.error);
 }
 
-/* ── Resend invite ── */
-async function resendInvite(inviteId, memberName) {
-  if (!confirm(`Resend invite to ${memberName}? A new invitation email will be sent and the previous link will stop working.`)) return;
+/* ── Resend invite — reads IDs from data-* attributes ── */
+async function resendInvite(btn) {
+  if (!_requireManage()) return;
+  const inviteId = btn.dataset.iid;
+  const name     = btn.dataset.mname;
+  if (!confirm(`Resend invite to ${name}? A new email will be sent and the previous link will stop working.`)) return;
   const r = await fetch(`/projects/${PID}/team/invites/${inviteId}/resend`, { method: 'POST' });
   const d = await r.json();
   if (!d.ok) { alert(d.error); return; }
@@ -560,17 +617,22 @@ async function resendInvite(inviteId, memberName) {
   location.reload();
 }
 
-/* ── Revoke invite ── */
-async function revokeInvite(inviteId, memberName) {
-  if (!confirm(`Revoke the invite for ${memberName}? They will no longer be able to accept it.`)) return;
+/* ── Revoke invite — reads IDs from data-* attributes ── */
+async function revokeInvite(btn) {
+  if (!_requireManage()) return;
+  const inviteId = btn.dataset.iid;
+  const name     = btn.dataset.mname;
+  if (!confirm(`Revoke the invite for ${name}? They will no longer be able to accept it.`)) return;
   const r = await fetch(`/projects/${PID}/team/invites/${inviteId}/revoke`, { method: 'POST' });
   const d = await r.json();
   if (!d.ok) { alert(d.error); return; }
   location.reload();
 }
 
-/* ── Copy new invite link ── */
-async function copyInviteLink(inviteId) {
+/* ── Copy new invite link — reads ID from data-* attribute ── */
+async function copyInviteLink(btn) {
+  if (!_requireManage()) return;
+  const inviteId = btn.dataset.iid;
   const r = await fetch(`/projects/${PID}/team/invites/${inviteId}/copy-link`, { method: 'POST' });
   const d = await r.json();
   if (!d.ok) { alert(d.error); return; }
@@ -578,23 +640,23 @@ async function copyInviteLink(inviteId) {
     await navigator.clipboard.writeText(d.invite_url);
     showToast('Link copied to clipboard');
   } catch (_) {
-    // Fallback: prompt so user can copy manually
     prompt('Copy this invite link:', d.invite_url);
   }
-  location.reload();   // reload so the UI reflects the rotated expiry
-}
-
-/* ── Toast helper ── */
-function showToast(msg) {
-  const el = document.getElementById('link-toast');
-  el.textContent = msg;
-  el.style.display = 'block';
-  setTimeout(() => { el.style.display = 'none'; }, 3000);
+  location.reload();
 }
 
 /* ── Close modals on backdrop click ── */
 document.querySelectorAll('.modal-overlay').forEach(el => {
   el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
 });
+{% endif %}{# end can_manage JS block #}
+
+/* ── Toast ── */
+function showToast(msg) {
+  const el = document.getElementById('link-toast');
+  el.textContent = msg;
+  el.style.display = 'block';
+  setTimeout(() => { el.style.display = 'none'; }, 3000);
+}
 </script>
 {% endblock %}

@@ -966,9 +966,9 @@ def project_people(pid):
 @app.route('/projects/<int:pid>/companies', methods=['POST'])
 @login_required
 def api_add_company(pid):
-    """AJAX — add a company to the project."""
-    if current_user.role not in ('engineer', 'manager', 'admin'):
-        return jsonify({'error': 'Forbidden'}), 403
+    """AJAX — add a company to the project. Requires manager or admin."""
+    if current_user.role not in ('manager', 'admin'):
+        return jsonify({'error': 'Forbidden — only managers and admins can add companies.'}), 403
     proj = Project.query.get_or_404(pid)
     data = request.get_json(silent=True) or {}
     name = (data.get('name') or '').strip()
@@ -1000,9 +1000,9 @@ def api_add_company(pid):
 @app.route('/projects/<int:pid>/companies/<int:cid>', methods=['DELETE'])
 @login_required
 def api_delete_company(pid, cid):
-    """AJAX — remove a company from the project."""
-    if current_user.role not in ('engineer', 'manager', 'admin'):
-        return jsonify({'error': 'Forbidden'}), 403
+    """AJAX — remove a company from the project. Requires manager or admin."""
+    if current_user.role not in ('manager', 'admin'):
+        return jsonify({'error': 'Forbidden — only managers and admins can remove companies.'}), 403
     c = ProjectCompany.query.filter_by(id=cid, project_id=pid).first_or_404()
     log_audit('company_removed', project_id=pid, actor=current_user,
               entity_type='company', entity_id=cid, entity_label=c.name)
@@ -1015,8 +1015,8 @@ def api_delete_company(pid, cid):
 @login_required
 def api_add_team_member(pid):
     """AJAX — add a team member to the project, creating a UserInvite if email is provided."""
-    if current_user.role not in ('engineer', 'manager', 'admin'):
-        return jsonify({'error': 'Forbidden'}), 403
+    if current_user.role not in ('manager', 'admin'):
+        return jsonify({'error': 'Forbidden — only managers and admins can add team members.'}), 403
     proj = Project.query.get_or_404(pid)
     data = request.get_json(silent=True) or {}
     name = (data.get('name') or '').strip()
@@ -1128,9 +1128,9 @@ def api_add_team_member(pid):
 @app.route('/projects/<int:pid>/team/<int:mid>', methods=['DELETE'])
 @login_required
 def api_delete_team_member(pid, mid):
-    """AJAX — remove (deactivate) a team member."""
-    if current_user.role not in ('engineer', 'manager', 'admin'):
-        return jsonify({'error': 'Forbidden'}), 403
+    """AJAX — remove (deactivate) a team member. Requires manager or admin."""
+    if current_user.role not in ('manager', 'admin'):
+        return jsonify({'error': 'Forbidden — only managers and admins can remove team members.'}), 403
     m = ProjectTeamMember.query.filter_by(id=mid, project_id=pid).first_or_404()
     m.is_active = False
     log_audit('member_removed', project_id=pid, actor=current_user,
