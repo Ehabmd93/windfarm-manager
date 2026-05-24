@@ -176,6 +176,32 @@ def _exec_ddl(db, stmt):
 
 # ─── Generic defaults (always seeded, never project-specific) ─────────────────
 
+def _ensure_default_users(app):
+    """
+    If NO users exist at all, create a minimal set of default accounts
+    so the app is always accessible on a fresh database.
+    Runs unconditionally — safe on existing databases (noop if users exist).
+    """
+    from sqlalchemy.exc import IntegrityError
+    with app.app_context():
+        if User.query.first():
+            return  # users already exist, nothing to do
+        print("No users found — creating default demo accounts...")
+        default_users = [
+            User(name='Engineer',   email='engineer@demo.com',   password=generate_password_hash('engineer123'),   role='engineer',   company='Demo Co'),
+            User(name='Supervisor', email='supervisor@demo.com', password=generate_password_hash('supervisor123'), role='supervisor', company='Demo Co'),
+            User(name='Manager',    email='manager@demo.com',    password=generate_password_hash('manager123'),    role='manager',    company='Demo Co'),
+            User(name='Client',     email='client@demo.com',     password=generate_password_hash('client123'),     role='client',     company='Client Co'),
+        ]
+        try:
+            db.session.add_all(default_users)
+            db.session.commit()
+            print("Default demo accounts created: engineer/supervisor/manager/client @demo.com (password: role+123)")
+        except IntegrityError:
+            db.session.rollback()
+            print("Default users already exist (concurrent startup).")
+
+
 def _seed_defaults(app):
     """Foundation stage templates, custom fields, progress widgets.
     Safe to run on any project type — not wind-farm-specific."""
@@ -356,6 +382,9 @@ def seed(app):
         if _eng and _eng.name not in ('Ehab', 'Engineer', 'Demo Engineer'):
             _eng.name = 'Demo Engineer'
             db.session.commit()
+
+    # Ensure at least one user always exists (noop if users already present)
+    _ensure_default_users(app)
 
     # Seed generic defaults (always)
     _seed_defaults(app)

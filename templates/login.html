@@ -74,19 +74,19 @@
         <div class="mt-6 pt-6 border-t border-slate-100">
           <p class="text-xs text-slate-500 text-center font-semibold mb-3">Demo Accounts</p>
           <div class="grid grid-cols-2 gap-2 text-xs">
-            <button onclick="fill('engineer@demo.com','engineer123')"
+            <button onclick="demoLogin('engineer')"
               class="px-3 py-2 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition font-medium border border-green-200">
               <i class="fa-solid fa-helmet-safety mr-1"></i>Engineer
             </button>
-            <button onclick="fill('supervisor@demo.com','supervisor123')"
+            <button onclick="demoLogin('supervisor')"
               class="px-3 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition font-medium border border-blue-200">
               <i class="fa-solid fa-user-tie mr-1"></i>Supervisor
             </button>
-            <button onclick="fill('manager@demo.com','manager123')"
+            <button onclick="demoLogin('manager')"
               class="px-3 py-2 bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 transition font-medium border border-purple-200">
               <i class="fa-solid fa-briefcase mr-1"></i>Manager
             </button>
-            <button onclick="fill('client@demo.com','client123')"
+            <button onclick="demoLogin('client')"
               class="px-3 py-2 bg-orange-50 text-orange-700 rounded-lg hover:bg-orange-100 transition font-medium border border-orange-200">
               <i class="fa-solid fa-building mr-1"></i>Client
             </button>
@@ -97,10 +97,37 @@
   </div>
 
   <script>
-    function fill(email, pw) {
-      document.querySelector('input[name=email]').value = email;
-      document.querySelector('input[name=password]').value = pw;
+    // Demo login — tries @demo.com first, falls back to @cbop.com if that failed
+    const DEMO_CREDS = {
+      engineer:   { pw:'engineer123',   alts:['engineer@demo.com','engineer@cbop.com'] },
+      supervisor: { pw:'supervisor123', alts:['supervisor@demo.com','supervisor@cbop.com'] },
+      manager:    { pw:'manager123',    alts:['manager@demo.com','manager@cbop.com'] },
+      client:     { pw:'client123',     alts:['client@demo.com','client@client.com'] },
+    };
+    function demoLogin(role) {
+      const c = DEMO_CREDS[role];
+      if (!c) return;
+      // Use stored preference if available, otherwise try first option
+      const stored = localStorage.getItem('demo_email_' + role);
+      const email  = stored || c.alts[0];
+      document.querySelector('input[name=email]').value    = email;
+      document.querySelector('input[name=password]').value = c.pw;
+      document.querySelector('form').submit();
     }
+    // On page load: if there's an error and email matches a demo account,
+    // cycle to the next alt so the button tries the other one next time
+    (function() {
+      const hasError = document.querySelector('.bg-red-50') !== null;
+      if (!hasError) return;
+      const emailVal = document.querySelector('input[name=email]').value;
+      for (const [role, c] of Object.entries(DEMO_CREDS)) {
+        const idx = c.alts.indexOf(emailVal);
+        if (idx !== -1) {
+          const nextAlt = c.alts[(idx + 1) % c.alts.length];
+          localStorage.setItem('demo_email_' + role, nextAlt);
+        }
+      }
+    })();
   </script>
 </body>
 </html>
