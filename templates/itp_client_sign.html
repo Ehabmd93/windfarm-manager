@@ -32,13 +32,19 @@
     }
     .btn-accept:hover{ background:#dcfce7;border-color:#86efac;transform:translateY(-1px); }
 
-    .btn-concern{
-      display:inline-flex;align-items:center;gap:6px;
-      padding:9px 18px;border-radius:10px;font-size:12px;font-weight:700;
-      background:#fffbeb;color:#d97706;border:2px solid #fde68a;
-      cursor:pointer;transition:all .15s;
+    .btn-issue{
+      display:inline-flex;align-items:center;gap:5px;
+      padding:7px 12px;border-radius:8px;font-size:11px;font-weight:700;
+      cursor:pointer;transition:all .15s;border:1.5px solid;
     }
-    .btn-concern:hover{ background:#fef3c7;border-color:#fbbf24;transform:translateY(-1px); }
+    .btn-issue.rejected      { background:#fef2f2;color:#dc2626;border-color:#fecaca; }
+    .btn-issue.rejected:hover{ background:#fee2e2; }
+    .btn-issue.request_changes      { background:#fffbeb;color:#d97706;border-color:#fde68a; }
+    .btn-issue.request_changes:hover{ background:#fef3c7; }
+    .btn-issue.request_clarification      { background:#eff6ff;color:#2563eb;border-color:#bfdbfe; }
+    .btn-issue.request_clarification:hover{ background:#dbeafe; }
+    .btn-issue.not_accepted      { background:#fff1f2;color:#9f1239;border-color:#fecdd3; }
+    .btn-issue.not_accepted:hover{ background:#ffe4e6; }
 
     .btn-undo{
       display:inline-flex;align-items:center;gap:5px;
@@ -54,6 +60,26 @@
       padding:7px 14px;border-radius:10px;font-size:12px;font-weight:700;
       background:#f0fdf4;color:#16a34a;border:2px solid #bbf7d0;
     }
+    .badge-rejected{
+      display:inline-flex;align-items:center;gap:6px;
+      padding:7px 14px;border-radius:10px;font-size:12px;font-weight:700;
+      background:#fef2f2;color:#dc2626;border:2px solid #fecaca;
+    }
+    .badge-changes{
+      display:inline-flex;align-items:center;gap:6px;
+      padding:7px 14px;border-radius:10px;font-size:12px;font-weight:700;
+      background:#fffbeb;color:#d97706;border:2px solid #fde68a;
+    }
+    .badge-clarif{
+      display:inline-flex;align-items:center;gap:6px;
+      padding:7px 14px;border-radius:10px;font-size:12px;font-weight:700;
+      background:#eff6ff;color:#2563eb;border:2px solid #bfdbfe;
+    }
+    .badge-na{
+      display:inline-flex;align-items:center;gap:6px;
+      padding:7px 14px;border-radius:10px;font-size:12px;font-weight:700;
+      background:#fff1f2;color:#9f1239;border:2px solid #fecdd3;
+    }
     .badge-concern{
       display:inline-flex;align-items:center;gap:6px;
       padding:7px 14px;border-radius:10px;font-size:12px;font-weight:700;
@@ -65,7 +91,19 @@
       background:#f1f5f9;color:#64748b;border:2px solid #e2e8f0;
     }
 
-    /* ── Concern input box ── */
+    /* ── Comment input box (replaces concern-box) ── */
+    .comment-box{
+      display:none;margin-top:10px;
+      border-radius:12px;padding:14px;
+    }
+    .comment-box.open{ display:block; }
+    .comment-box textarea{
+      width:100%;min-height:80px;border:1.5px solid currentColor;border-radius:8px;
+      padding:10px;font-size:13px;color:#0f172a;background:white;
+      font-family:inherit;resize:vertical;line-height:1.5;
+    }
+    .comment-box textarea:focus{ outline:none; }
+    /* ── Legacy concern-box alias ── */
     .concern-box{
       display:none;margin-top:10px;
       background:#fffbeb;border:2px solid #fde68a;border-radius:12px;padding:14px;
@@ -542,11 +580,12 @@
               {% if s and s.lucas_complete %}
 
               <div id="crit-state-{{ act_no }}-{{ ci }}">
+                {% set _action = s.client_action if s.client_action else ('approved' if s.client_accepted else 'request_changes' if s.client_reviewed else '') %}
                 {% if s.client_reviewed and s.client_accepted %}
-                <!-- ACCEPTED -->
+                <!-- APPROVED -->
                 <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                   <span class="badge-accepted">
-                    <i class="fa-solid fa-check-circle"></i> Accepted
+                    <i class="fa-solid fa-check-circle"></i> Approved &amp; Signed
                   </span>
                   {% if not is_finalized %}
                   <button class="btn-undo" onclick="undoReview('{{ act_no }}', {{ ci }})">
@@ -556,12 +595,18 @@
                 </div>
 
                 {% elif s.client_reviewed and not s.client_accepted %}
-                <!-- CONCERN RAISED -->
+                <!-- ISSUE ACTION SUBMITTED -->
                 <div>
                   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
-                    <span class="badge-concern">
-                      <i class="fa-solid fa-triangle-exclamation"></i> Concern Raised
-                    </span>
+                    {% if _action == 'rejected' %}
+                    <span class="badge-rejected"><i class="fa-solid fa-times-circle"></i> Rejected</span>
+                    {% elif _action == 'request_clarification' %}
+                    <span class="badge-clarif"><i class="fa-solid fa-question-circle"></i> Clarification Requested</span>
+                    {% elif _action == 'not_accepted' %}
+                    <span class="badge-na"><i class="fa-solid fa-ban"></i> Not Accepted</span>
+                    {% else %}
+                    <span class="badge-changes"><i class="fa-solid fa-pencil"></i> Changes Requested</span>
+                    {% endif %}
                     {% if not is_finalized %}
                     <button class="btn-undo" onclick="undoReview('{{ act_no }}', {{ ci }})">
                       <i class="fa-solid fa-rotate-left"></i> Undo
@@ -569,29 +614,43 @@
                     {% endif %}
                   </div>
                   {% if s.client_comments %}
-                  <div style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:10px;
-                              padding:10px 14px;font-size:13px;color:#92400e;line-height:1.5;">
-                    <i class="fa-solid fa-comment-dots" style="margin-right:6px;"></i>{{ s.client_comments }}
+                  <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;
+                              padding:10px 14px;font-size:13px;color:#334155;line-height:1.5;">
+                    <i class="fa-solid fa-comment-dots" style="margin-right:6px;color:#94a3b8;"></i>{{ s.client_comments }}
                   </div>
                   {% endif %}
                 </div>
 
                 {% elif not is_finalized %}
-                <!-- PENDING — show action buttons -->
+                <!-- PENDING — show 5 action buttons -->
                 <div>
-                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                  <!-- Primary action: Approve & Sign -->
+                  <div style="margin-bottom:8px;">
                     <button class="btn-accept" onclick="showAcceptSig('{{ act_no }}', {{ ci }})">
-                      <i class="fa-solid fa-pen-nib"></i> Accept &amp; Sign
+                      <i class="fa-solid fa-check-circle"></i> Approve &amp; Sign
                     </button>
-                    <button class="btn-concern" onclick="showConcernBox('{{ act_no }}', {{ ci }})">
-                      <i class="fa-solid fa-triangle-exclamation"></i> Raise Concern
+                  </div>
+                  <!-- Issue actions -->
+                  <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+                    <span style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;">Or raise:</span>
+                    <button class="btn-issue rejected" onclick="showCommentBox('{{ act_no }}', {{ ci }}, 'rejected')">
+                      <i class="fa-solid fa-times-circle"></i> Reject
+                    </button>
+                    <button class="btn-issue request_changes" onclick="showCommentBox('{{ act_no }}', {{ ci }}, 'request_changes')">
+                      <i class="fa-solid fa-pencil"></i> Request Changes
+                    </button>
+                    <button class="btn-issue request_clarification" onclick="showCommentBox('{{ act_no }}', {{ ci }}, 'request_clarification')">
+                      <i class="fa-solid fa-question-circle"></i> Request Clarification
+                    </button>
+                    <button class="btn-issue not_accepted" onclick="showCommentBox('{{ act_no }}', {{ ci }}, 'not_accepted')">
+                      <i class="fa-solid fa-ban"></i> Not Accepted
                     </button>
                   </div>
 
-                  <!-- Per-item accept signature pad (hidden by default) -->
+                  <!-- Per-item approve signature pad (hidden by default) -->
                   <div id="accept-sig-box-{{ act_no }}-{{ ci }}" class="accept-sig-box">
                     <p style="font-size:12px;font-weight:700;color:#166534;margin:0 0 8px;">
-                      <i class="fa-solid fa-pen-nib" style="margin-right:5px;"></i>Draw your signature to accept this item:
+                      <i class="fa-solid fa-pen-nib" style="margin-right:5px;"></i>Draw your signature to approve this item:
                     </p>
                     <canvas id="accept-sig-canvas-{{ act_no }}-{{ ci }}"
                             class="accept-sig-canvas" width="600" height="100"></canvas>
@@ -610,29 +669,32 @@
                               style="flex:1;padding:8px 16px;border-radius:8px;font-size:12px;font-weight:700;
                                      background:linear-gradient(135deg,#15803d,#16a34a);color:white;
                                      border:none;cursor:pointer;">
-                        <i class="fa-solid fa-check-circle" style="margin-right:5px;"></i>Confirm &amp; Accept
+                        <i class="fa-solid fa-check-circle" style="margin-right:5px;"></i>Confirm &amp; Approve
                       </button>
                     </div>
                   </div>
 
-                  <!-- Inline concern input (hidden by default) -->
-                  <div id="concern-box-{{ act_no }}-{{ ci }}" class="concern-box">
-                    <p style="font-size:12px;font-weight:700;color:#92400e;margin:0 0 8px;">
-                      <i class="fa-solid fa-comment-dots" style="margin-right:5px;"></i>Describe your concern:
+                  <!-- Shared comment/issue input box (hidden by default) -->
+                  <div id="comment-box-{{ act_no }}-{{ ci }}" class="concern-box">
+                    <input type="hidden" id="comment-action-{{ act_no }}-{{ ci }}" value="">
+                    <p id="comment-label-{{ act_no }}-{{ ci }}"
+                       style="font-size:12px;font-weight:700;color:#92400e;margin:0 0 8px;">
+                      <i class="fa-solid fa-comment-dots" style="margin-right:5px;"></i>Describe the issue:
                     </p>
-                    <textarea id="concern-text-{{ act_no }}-{{ ci }}"
-                              placeholder="e.g. Test results don't match specification, awaiting rectification..."></textarea>
+                    <textarea id="comment-text-{{ act_no }}-{{ ci }}"
+                              placeholder="Provide details…"></textarea>
                     <div style="display:flex;gap:8px;margin-top:10px;">
-                      <button onclick="cancelConcern('{{ act_no }}', {{ ci }})"
+                      <button onclick="cancelComment('{{ act_no }}', {{ ci }})"
                               style="padding:8px 16px;border-radius:8px;font-size:12px;font-weight:600;
                                      background:white;color:#64748b;border:1.5px solid #e2e8f0;cursor:pointer;">
                         <i class="fa-solid fa-xmark" style="margin-right:4px;"></i>Cancel
                       </button>
-                      <button onclick="submitConcern('{{ act_no }}', {{ ci }})"
+                      <button onclick="submitComment('{{ act_no }}', {{ ci }})"
+                              id="comment-submit-{{ act_no }}-{{ ci }}"
                               style="flex:1;padding:8px 16px;border-radius:8px;font-size:12px;font-weight:700;
                                      background:linear-gradient(135deg,#d97706,#f59e0b);color:white;
                                      border:none;cursor:pointer;">
-                        <i class="fa-solid fa-paper-plane" style="margin-right:5px;"></i>Submit Concern
+                        <i class="fa-solid fa-paper-plane" style="margin-right:5px;"></i>Submit
                       </button>
                     </div>
                   </div>
@@ -805,37 +867,69 @@ async function confirmAccept(actNo, ci) {
   }
 }
 
-function showConcernBox(actNo, ci) {
+// Action labels and styles for issue types
+const ACTION_META = {
+  rejected:              { label:'Rejected',                icon:'fa-times-circle',     badge:'badge-rejected', toast:'✕ Rejection saved' },
+  request_changes:       { label:'Changes Requested',       icon:'fa-pencil',           badge:'badge-changes',  toast:'⚑ Changes requested saved' },
+  request_clarification: { label:'Clarification Requested', icon:'fa-question-circle',  badge:'badge-clarif',   toast:'? Clarification request saved' },
+  not_accepted:          { label:'Not Accepted',            icon:'fa-ban',              badge:'badge-na',       toast:'✕ Not Accepted saved' },
+};
+const COMMENT_PLACEHOLDERS = {
+  rejected:              'Explain why this item is rejected and what must be corrected…',
+  request_changes:       'Describe what changes are required before this can be accepted…',
+  request_clarification: 'Describe what clarification or additional information you need…',
+  not_accepted:          'Explain why this item is not accepted…',
+};
+
+function showCommentBox(actNo, ci, actionType) {
   // Close accept sig box if open
   const ab = document.getElementById(`accept-sig-box-${actNo}-${ci}`);
   if (ab) ab.classList.remove('open');
-  const box = document.getElementById(`concern-box-${actNo}-${ci}`);
-  if (box) box.classList.add('open');
+  // Set the hidden action field
+  const actionField = document.getElementById(`comment-action-${actNo}-${ci}`);
+  if (actionField) actionField.value = actionType;
+  // Update label and placeholder
+  const label = document.getElementById(`comment-label-${actNo}-${ci}`);
+  const meta  = ACTION_META[actionType] || { label: 'Describe the issue' };
+  if (label) label.innerHTML = `<i class="fa-solid ${meta.icon}" style="margin-right:5px;"></i>${meta.label}: please provide details`;
+  const textarea = document.getElementById(`comment-text-${actNo}-${ci}`);
+  if (textarea) { textarea.placeholder = COMMENT_PLACEHOLDERS[actionType] || 'Provide details…'; textarea.value = ''; }
+  // Open the box
+  const box = document.getElementById(`comment-box-${actNo}-${ci}`);
+  if (box) { box.classList.add('open'); if (textarea) textarea.focus(); }
 }
 
-function cancelConcern(actNo, ci) {
-  const box = document.getElementById(`concern-box-${actNo}-${ci}`);
+function cancelComment(actNo, ci) {
+  const box = document.getElementById(`comment-box-${actNo}-${ci}`);
   if (box) box.classList.remove('open');
-  const txt = document.getElementById(`concern-text-${actNo}-${ci}`);
+  const txt = document.getElementById(`comment-text-${actNo}-${ci}`);
   if (txt) txt.value = '';
 }
 
-async function submitConcern(actNo, ci) {
-  const txt = document.getElementById(`concern-text-${actNo}-${ci}`);
+async function submitComment(actNo, ci) {
+  const actionField = document.getElementById(`comment-action-${actNo}-${ci}`);
+  const action = actionField ? actionField.value : 'request_changes';
+  const txt = document.getElementById(`comment-text-${actNo}-${ci}`);
   const comment = txt ? txt.value.trim() : '';
   if (!comment) {
-    alert('Please describe your concern before submitting.');
+    alert(COMMENT_PLACEHOLDERS[action] || 'Please provide details before submitting.');
     return;
   }
-  const res = await callReview(actNo, ci, {action: 'concern', comment});
+  const res = await callReview(actNo, ci, { action, comment });
   if (res.ok) {
-    setCritState(actNo, ci, 'concern', comment);
+    const meta = ACTION_META[action] || { label: 'Issue Raised', toast: 'Issue saved' };
+    setCritState(actNo, ci, action, comment);
     updateProgress(res);
-    showToast('⚠ Concern saved', 'warning');
+    showToast(meta.toast, 'warning');
   } else {
     alert(res.error || 'Could not save. Please try again.');
   }
 }
+
+// ── Legacy aliases (kept for backward compat) ──────────────────────────────
+function showConcernBox(actNo, ci) { showCommentBox(actNo, ci, 'request_changes'); }
+function cancelConcern(actNo, ci)  { cancelComment(actNo, ci); }
+async function submitConcern(actNo, ci) { await submitComment(actNo, ci); }
 
 async function undoReview(actNo, ci) {
   if (!confirm('Are you sure you want to undo your review for this item?')) return;
@@ -879,11 +973,11 @@ function setCritState(actNo, ci, state, comment, signature) {
   const iconDiv  = document.getElementById(`crit-icon-${actNo}-${ci}`);
   if (!stateDiv) return;
 
-  if (state === 'accepted') {
+  if (state === 'accepted' || state === 'approved') {
     stateDiv.innerHTML = `
       <div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:${signature ? '8px' : '0'};">
-          <span class="badge-accepted"><i class="fa-solid fa-check-circle"></i> Accepted &amp; Signed</span>
+          <span class="badge-accepted"><i class="fa-solid fa-check-circle"></i> Approved &amp; Signed</span>
           <button class="btn-undo" onclick="undoReview('${actNo}', ${ci})">
             <i class="fa-solid fa-rotate-left"></i> Undo
           </button>
@@ -899,18 +993,20 @@ function setCritState(actNo, ci, state, comment, signature) {
       iconDiv.innerHTML = '<i class="fa-solid fa-check" style="color:#16a34a;font-size:11px;"></i>';
     }
 
-  } else if (state === 'concern') {
+  } else if (ACTION_META[state] || state === 'concern') {
+    // Issue action (rejected / request_changes / request_clarification / not_accepted / concern)
+    const meta = ACTION_META[state] || { label:'Issue Raised', icon:'fa-triangle-exclamation', badge:'badge-concern' };
     stateDiv.innerHTML = `
       <div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
-          <span class="badge-concern"><i class="fa-solid fa-triangle-exclamation"></i> Concern Raised</span>
+          <span class="${meta.badge}"><i class="fa-solid ${meta.icon}"></i> ${meta.label}</span>
           <button class="btn-undo" onclick="undoReview('${actNo}', ${ci})">
             <i class="fa-solid fa-rotate-left"></i> Undo
           </button>
         </div>
-        ${comment ? `<div style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:10px;
-                                 padding:10px 14px;font-size:13px;color:#92400e;line-height:1.5;">
-          <i class="fa-solid fa-comment-dots" style="margin-right:6px;"></i>${esc(comment)}
+        ${comment ? `<div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;
+                                 padding:10px 14px;font-size:13px;color:#334155;line-height:1.5;">
+          <i class="fa-solid fa-comment-dots" style="margin-right:6px;color:#94a3b8;"></i>${esc(comment)}
         </div>` : ''}
       </div>`;
     if (iconDiv) {
@@ -921,18 +1017,30 @@ function setCritState(actNo, ci, state, comment, signature) {
   } else { // pending
     stateDiv.innerHTML = `
       <div>
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <div style="margin-bottom:8px;">
           <button class="btn-accept" onclick="showAcceptSig('${actNo}', ${ci})">
-            <i class="fa-solid fa-pen-nib"></i> Accept &amp; Sign
+            <i class="fa-solid fa-check-circle"></i> Approve &amp; Sign
           </button>
-          <button class="btn-concern" onclick="showConcernBox('${actNo}', ${ci})">
-            <i class="fa-solid fa-triangle-exclamation"></i> Raise Concern
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+          <span style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;">Or raise:</span>
+          <button class="btn-issue rejected" onclick="showCommentBox('${actNo}', ${ci}, 'rejected')">
+            <i class="fa-solid fa-times-circle"></i> Reject
+          </button>
+          <button class="btn-issue request_changes" onclick="showCommentBox('${actNo}', ${ci}, 'request_changes')">
+            <i class="fa-solid fa-pencil"></i> Request Changes
+          </button>
+          <button class="btn-issue request_clarification" onclick="showCommentBox('${actNo}', ${ci}, 'request_clarification')">
+            <i class="fa-solid fa-question-circle"></i> Request Clarification
+          </button>
+          <button class="btn-issue not_accepted" onclick="showCommentBox('${actNo}', ${ci}, 'not_accepted')">
+            <i class="fa-solid fa-ban"></i> Not Accepted
           </button>
         </div>
 
         <div id="accept-sig-box-${actNo}-${ci}" class="accept-sig-box">
           <p style="font-size:12px;font-weight:700;color:#166534;margin:0 0 8px;">
-            <i class="fa-solid fa-pen-nib" style="margin-right:5px;"></i>Draw your signature to accept this item:
+            <i class="fa-solid fa-pen-nib" style="margin-right:5px;"></i>Draw your signature to approve this item:
           </p>
           <canvas id="accept-sig-canvas-${actNo}-${ci}" class="accept-sig-canvas" width="600" height="100"></canvas>
           <div style="display:flex;gap:8px;margin-top:10px;">
@@ -949,28 +1057,29 @@ function setCritState(actNo, ci, state, comment, signature) {
             <button onclick="confirmAccept('${actNo}', ${ci})"
                     style="flex:1;padding:8px 16px;border-radius:8px;font-size:12px;font-weight:700;
                            background:linear-gradient(135deg,#15803d,#16a34a);color:white;border:none;cursor:pointer;">
-              <i class="fa-solid fa-check-circle" style="margin-right:5px;"></i>Confirm &amp; Accept
+              <i class="fa-solid fa-check-circle" style="margin-right:5px;"></i>Confirm &amp; Approve
             </button>
           </div>
         </div>
 
-        <div id="concern-box-${actNo}-${ci}" class="concern-box">
-          <p style="font-size:12px;font-weight:700;color:#92400e;margin:0 0 8px;">
-            <i class="fa-solid fa-comment-dots" style="margin-right:5px;"></i>Describe your concern:
+        <div id="comment-box-${actNo}-${ci}" class="concern-box">
+          <input type="hidden" id="comment-action-${actNo}-${ci}" value="">
+          <p id="comment-label-${actNo}-${ci}" style="font-size:12px;font-weight:700;color:#92400e;margin:0 0 8px;">
+            <i class="fa-solid fa-comment-dots" style="margin-right:5px;"></i>Describe the issue:
           </p>
-          <textarea id="concern-text-${actNo}-${ci}"
-                    placeholder="e.g. Test results don't match specification, awaiting rectification..."></textarea>
+          <textarea id="comment-text-${actNo}-${ci}" placeholder="Provide details…"></textarea>
           <div style="display:flex;gap:8px;margin-top:10px;">
-            <button onclick="cancelConcern('${actNo}', ${ci})"
+            <button onclick="cancelComment('${actNo}', ${ci})"
                     style="padding:8px 16px;border-radius:8px;font-size:12px;font-weight:600;
                            background:white;color:#64748b;border:1.5px solid #e2e8f0;cursor:pointer;">
               <i class="fa-solid fa-xmark" style="margin-right:4px;"></i>Cancel
             </button>
-            <button onclick="submitConcern('${actNo}', ${ci})"
+            <button onclick="submitComment('${actNo}', ${ci})"
+                    id="comment-submit-${actNo}-${ci}"
                     style="flex:1;padding:8px 16px;border-radius:8px;font-size:12px;font-weight:700;
                            background:linear-gradient(135deg,#d97706,#f59e0b);color:white;
                            border:none;cursor:pointer;">
-              <i class="fa-solid fa-paper-plane" style="margin-right:5px;"></i>Submit Concern
+              <i class="fa-solid fa-paper-plane" style="margin-right:5px;"></i>Submit
             </button>
           </div>
         </div>

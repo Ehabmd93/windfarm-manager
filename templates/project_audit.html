@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Audit Log — {{ proj.name }}{% endblock %}
+{% block page_title %}Audit Log{% endblock %}
+{% block page_sub %}{{ proj.name }} · Event History{% endblock %}
+
+{% block content %}
+<div style="max-width:900px;margin:0 auto;padding:24px 20px;">
+
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px;">
+    <div>
+      <h2 style="font-size:20px;font-weight:800;color:#1e293b;margin:0;">Project Audit Log</h2>
+      <p style="color:#64748b;font-size:13px;margin-top:4px;">All tracked events for <strong>{{ proj.name }}</strong></p>
+    </div>
+    <a href="{{ url_for('project_people', pid=proj.id) }}"
+       style="display:inline-flex;align-items:center;gap:6px;padding:9px 16px;
+              background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;
+              font-size:13px;font-weight:700;color:#64748b;text-decoration:none;">
+      <i class="fa-solid fa-arrow-left"></i> Back to People
+    </a>
+  </div>
+
+  {% if events %}
+  <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.05);">
+    {% for ev in events %}
+    <div style="display:flex;align-items:flex-start;gap:14px;padding:14px 20px;
+                border-bottom:1px solid #f8fafc;transition:background .12s;"
+         onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='#fff'">
+      <!-- Icon -->
+      <div style="width:36px;height:36px;border-radius:10px;flex-shrink:0;
+                  background:{% if 'signed' in ev.event_type or 'complete' in ev.event_type %}#dcfce7{% elif 'removed' in ev.event_type %}#fee2e2{% elif 'added' in ev.event_type or 'invited' in ev.event_type %}#eff6ff{% else %}#f1f5f9{% endif %};
+                  display:flex;align-items:center;justify-content:center;">
+        <i class="fa-solid
+          {% if 'signed' in ev.event_type %}fa-pen-nib
+          {% elif 'client_reviewed' in ev.event_type %}fa-eye
+          {% elif 'member_added' in ev.event_type %}fa-user-plus
+          {% elif 'member_removed' in ev.event_type %}fa-user-minus
+          {% elif 'company_added' in ev.event_type %}fa-building-circle-arrow-right
+          {% elif 'company_removed' in ev.event_type %}fa-building-circle-xmark
+          {% elif 'invited' in ev.event_type %}fa-envelope
+          {% elif 'complete' in ev.event_type %}fa-check-double
+          {% elif 'document' in ev.event_type %}fa-file-circle-plus
+          {% else %}fa-circle-dot{% endif %}"
+           style="font-size:14px;color:
+          {% if 'signed' in ev.event_type or 'complete' in ev.event_type %}#16a34a
+          {% elif 'removed' in ev.event_type %}#dc2626
+          {% elif 'added' in ev.event_type or 'invited' in ev.event_type %}#2563eb
+          {% else %}#64748b{% endif %};"></i>
+      </div>
+      <!-- Content -->
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;">
+          <span style="font-size:13px;font-weight:700;color:#1e293b;">
+            {{ ev.event_type.replace('_', ' ').title() }}
+          </span>
+          {% if ev.entity_label %}
+          <span style="font-size:12px;color:#64748b;">— {{ ev.entity_label }}</span>
+          {% endif %}
+        </div>
+        <div style="font-size:11px;color:#94a3b8;margin-top:3px;">
+          {% if ev.actor_name %}
+          <span style="color:#475569;font-weight:600;">{{ ev.actor_name }}</span>
+          {% if ev.actor_company %}<span> · {{ ev.actor_company }}</span>{% endif %}
+          {% if ev.actor_role %}<span> · {{ ev.actor_role.replace('_',' ').title() }}</span>{% endif %}
+          ·
+          {% endif %}
+          {{ ev.created_at.strftime('%d %b %Y at %H:%M') if ev.created_at else '' }}
+          {% if ev.ip_address %} · <span style="font-family:monospace;">{{ ev.ip_address }}</span>{% endif %}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div style="background:#fff;border-radius:16px;border:2px dashed #e2e8f0;
+              padding:60px 20px;text-align:center;color:#94a3b8;">
+    <i class="fa-solid fa-clock-rotate-left" style="font-size:32px;margin-bottom:12px;display:block;"></i>
+    <p style="font-size:15px;font-weight:700;color:#64748b;margin:0 0 4px;">No events yet</p>
+    <p style="font-size:13px;margin:0;">Actions will appear here as the project progresses.</p>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

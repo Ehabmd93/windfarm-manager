@@ -320,17 +320,34 @@
 
           <!-- Client review status -->
           {% if s and s.client_reviewed %}
+          {% set _ca = s.client_action if s.client_action else ('approved' if s.client_accepted else 'request_changes') %}
           <div class="sig-preview" style="margin-top:4px;">
             <div class="sig-preview-inner"
-                 style="{% if s.client_accepted %}background:#eff6ff;border-color:#93c5fd;{% else %}background:#fffbeb;border-color:#fde68a;{% endif %}">
+                 style="{% if s.client_accepted %}background:#eff6ff;border-color:#93c5fd;
+                        {% elif _ca == 'rejected' %}background:#fef2f2;border-color:#fecaca;
+                        {% elif _ca == 'request_clarification' %}background:#eff6ff;border-color:#bfdbfe;
+                        {% elif _ca == 'not_accepted' %}background:#fff1f2;border-color:#fecdd3;
+                        {% else %}background:#fffbeb;border-color:#fde68a;{% endif %}">
               {% if s.client_accepted and s.client_signature %}
               <img src="{{ s.client_signature }}"
                    style="height:40px;border-radius:6px;border:1px solid #93c5fd;background:white;flex-shrink:0;" alt="client sig"/>
               {% endif %}
               <div class="sig-preview-meta">
-                <p class="name" style="color:{% if s.client_accepted %}#1d4ed8{% else %}#d97706{% endif %};">
-                  <i class="fa-solid {% if s.client_accepted %}fa-check-circle{% else %}fa-triangle-exclamation{% endif %} mr-1"></i>
-                  {% if s.client_accepted %}Client Accepted{% else %}Client Concern{% endif %}
+                <p class="name" style="color:{% if s.client_accepted %}#1d4ed8
+                  {% elif _ca == 'rejected' %}#dc2626
+                  {% elif _ca == 'request_clarification' %}#2563eb
+                  {% elif _ca == 'not_accepted' %}#9f1239
+                  {% else %}#d97706{% endif %};">
+                  <i class="fa-solid {% if s.client_accepted %}fa-check-circle
+                    {% elif _ca == 'rejected' %}fa-times-circle
+                    {% elif _ca == 'request_clarification' %}fa-question-circle
+                    {% elif _ca == 'not_accepted' %}fa-ban
+                    {% else %}fa-pencil{% endif %} mr-1"></i>
+                  {% if s.client_accepted %}Client Approved
+                  {% elif _ca == 'rejected' %}Rejected
+                  {% elif _ca == 'request_clarification' %}Clarification Requested
+                  {% elif _ca == 'not_accepted' %}Not Accepted
+                  {% else %}Changes Requested{% endif %}
                 </p>
                 <p class="dt">
                   {% if s.client_comments %}{{ s.client_comments }}{% if s.client_signed_at %} · {% endif %}{% endif %}

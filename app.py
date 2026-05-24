@@ -24,7 +24,9 @@ from models import (db, User, WTG, Area, QATest, TestRecord,
                     CustomTrackingField, ProgressWidget,
                     Document, DocumentLink, DocumentFolder,
                     Notification, ITPClientInvite,
-                    DOCUMENT_CATEGORIES, DOCUMENT_LINK_TYPES, DOCUMENT_LINK_DICT)
+                    DOCUMENT_CATEGORIES, DOCUMENT_LINK_TYPES, DOCUMENT_LINK_DICT,
+                    ProjectCompany, ProjectTeamMember, AuditEvent,
+                    COMPANY_TYPES, PROJECT_ROLES, ITP_REVIEW_ACTIONS)
 from itp_definitions import ITP_DEFINITIONS, CLIENTS
 from seed import seed
 import kml_parser
@@ -140,6 +142,9 @@ def inject_now():
         'DOCUMENT_LINK_TYPES':  DOCUMENT_LINK_TYPES,
         'DOCUMENT_LINK_DICT':   DOCUMENT_LINK_DICT,
         'ELEMENT_TYPES':        ELEMENT_TYPES,
+        'COMPANY_TYPES':        COMPANY_TYPES,
+        'PROJECT_ROLES':        PROJECT_ROLES,
+        'ITP_REVIEW_ACTIONS':   ITP_REVIEW_ACTIONS,
     }
 
 # ─── Context helpers ─────────────────────────────────────────────────────────
@@ -886,6 +891,156 @@ def project_setup(pid):
                            work_packages=work_packages,
                            element_types=ELEMENT_TYPES,
                            activity_types=ACTIVITY_TYPES)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PEOPLE & COMPANIES — project team management
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route('/projects/<int:pid>/people')
+@login_required
+def project_people(pid):
+    """Companies + team members management page."""
+    if current_user.role not in ('engineer', 'manager', 'admin'):
+        abort(403)
+    proj     = Project.query.get_or_404(pid)
+    from flask import session as fsession
+    fsession['active_project_id'] = pid
+    companies = (ProjectCompany.query
+                 .filter_by(project_id=pid)
+                 .order_by(ProjectCompany.company_type, ProjectCompany.name)
+                 .all())
+    # Team members per company (also unassigned)
+    members = (ProjectTeamMember.query
+               .filter_by(project_id=pid, is_active=True)
+               .order_by(ProjectTeamMember.name)
+               .all())
+    return render_template('project_people.html',
+                           proj=proj,
+                           companies=companies,
+                           members=members,
+                           company_types=COMPANY_TYPES,
+                           project_roles=PROJECT_ROLES)
+
+
+@app.route('/projects/<int:pid>/companies', methods=['POST'])
+@login_required
+def api_add_company(pid):
+    """AJAX — add a company to the project."""
+    if current_user.role not in ('engineer', 'manager', 'admin'):
+        return jsonify({'error': 'Forbidden'}), 403
+    proj = Project.query.get_or_404(pid)
+    data = request.get_json(silent=True) or {}
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify({'error': 'Company name is required'}), 400
+    c = ProjectCompany(
+        project_id    = pid,
+        company_type  = data.get('company_type', 'client'),
+        name          = name,
+        short_name    = (data.get('short_name') or '').strip(),
+        contact_name  = (data.get('contact_name') or '').strip(),
+        contact_email = (data.get('contact_email') or '').strip(),
+        contact_phone = (data.get('contact_phone') or '').strip(),
+        notes         = (data.get('notes') or '').strip(),
+        added_by      = current_user.id,
+    )
+    db.session.add(c)
+    log_audit('company_added', project_id=pid, actor=current_user,
+              entity_type='company', entity_label=name,
+              detail={'company_type': c.company_type})
+    db.session.commit()
+    return jsonify({'ok': True, 'id': c.id, 'name': c.name,
+                    'company_type': c.company_type,
+                    'type_label': c.type_label,
+                    'type_color': c.type_color,
+                    'type_icon':  c.type_icon})
+
+
+@app.route('/projects/<int:pid>/companies/<int:cid>', methods=['DELETE'])
+@login_required
+def api_delete_company(pid, cid):
+    """AJAX — remove a company from the project."""
+    if current_user.role not in ('engineer', 'manager', 'admin'):
+        return jsonify({'error': 'Forbidden'}), 403
+    c = ProjectCompany.query.filter_by(id=cid, project_id=pid).first_or_404()
+    log_audit('company_removed', project_id=pid, actor=current_user,
+              entity_type='company', entity_id=cid, entity_label=c.name)
+    db.session.delete(c)
+    db.session.commit()
+    return jsonify({'ok': True})
+
+
+@app.route('/projects/<int:pid>/team', methods=['POST'])
+@login_required
+def api_add_team_member(pid):
+    """AJAX — add a team member to the project."""
+    if current_user.role not in ('engineer', 'manager', 'admin'):
+        return jsonify({'error': 'Forbidden'}), 403
+    Project.query.get_or_404(pid)
+    data = request.get_json(silent=True) or {}
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify({'error': 'Name is required'}), 400
+    m = ProjectTeamMember(
+        project_id   = pid,
+        company_id   = data.get('company_id') or None,
+        name         = name,
+        email        = (data.get('email')    or '').strip(),
+        position     = (data.get('position') or '').strip(),
+        phone        = (data.get('phone')    or '').strip(),
+        project_role = data.get('project_role', 'site_engineer'),
+        can_sign     = bool(data.get('can_sign', True)),
+        added_by     = current_user.id,
+    )
+    db.session.add(m)
+    log_audit('member_added', project_id=pid, actor=current_user,
+              entity_type='member', entity_label=name,
+              detail={'role': m.project_role, 'email': m.email})
+    db.session.commit()
+    company_name = m.company.name if m.company else ''
+    return jsonify({
+        'ok':          True,
+        'id':          m.id,
+        'name':        m.name,
+        'email':       m.email,
+        'position':    m.position,
+        'project_role': m.project_role,
+        'role_label':  m.role_label,
+        'role_color':  m.role_color,
+        'role_icon':   m.role_icon,
+        'can_sign':    m.can_sign,
+        'company_name': company_name,
+    })
+
+
+@app.route('/projects/<int:pid>/team/<int:mid>', methods=['DELETE'])
+@login_required
+def api_delete_team_member(pid, mid):
+    """AJAX — remove (deactivate) a team member."""
+    if current_user.role not in ('engineer', 'manager', 'admin'):
+        return jsonify({'error': 'Forbidden'}), 403
+    m = ProjectTeamMember.query.filter_by(id=mid, project_id=pid).first_or_404()
+    m.is_active = False
+    log_audit('member_removed', project_id=pid, actor=current_user,
+              entity_type='member', entity_id=mid, entity_label=m.name)
+    db.session.commit()
+    return jsonify({'ok': True})
+
+
+@app.route('/projects/<int:pid>/audit')
+@login_required
+def project_audit(pid):
+    """Audit trail page — show all events for this project."""
+    if current_user.role not in ('engineer', 'manager', 'admin'):
+        abort(403)
+    proj   = Project.query.get_or_404(pid)
+    events = (AuditEvent.query
+              .filter_by(project_id=pid)
+              .order_by(AuditEvent.created_at.desc())
+              .limit(500)
+              .all())
+    return render_template('project_audit.html', proj=proj, events=events)
 
 
 @app.route('/projects/<int:pid>/hierarchy')
@@ -2456,7 +2611,7 @@ def itp_detail(wtg_id, itp_type):
 
 @app.route('/api/itp/client/<token>/item/<item_no>/<int:ci>', methods=['POST'])
 def api_client_review_item(token, item_no, ci):
-    """Public API — client per-item review: accept or raise concern."""
+    """Public API — client per-item review (5 actions + legacy accept/concern)."""
     invite = ITPClientInvite.query.filter_by(token=token).first()
     if invite:
         record = invite.record
@@ -2480,30 +2635,44 @@ def api_client_review_item(token, item_no, ci):
     data   = request.get_json(silent=True) or {}
     action = data.get('action', '')
 
-    if action == 'accept':
+    # --- Approved / Accept (requires signature) ---
+    if action in ('accept', 'approved'):
         sig = (data.get('signature') or '').strip()
         if not sig:
-            return jsonify({'error': 'Please draw your signature before accepting.'}), 400
+            return jsonify({'error': 'Please draw your signature before approving.'}), 400
         s.client_reviewed  = True
         s.client_accepted  = True
+        s.client_action    = 'approved'
         s.client_comments  = ''
         s.client_signature = sig
         s.client_signed_at = datetime.now(timezone.utc)
 
-    elif action == 'concern':
+    # --- Actions requiring a comment (no signature) ---
+    elif action in ('concern', 'rejected', 'request_changes',
+                    'request_clarification', 'not_accepted'):
         comment = (data.get('comment') or '').strip()
         if not comment:
-            return jsonify({'error': 'Please describe your concern before submitting.'}), 400
+            action_labels = {
+                'concern':               'your concern',
+                'rejected':              'the reason for rejection',
+                'request_changes':       'what changes are required',
+                'request_clarification': 'what clarification you need',
+                'not_accepted':          'why this is not accepted',
+            }
+            return jsonify({'error': f'Please describe {action_labels.get(action, "the issue")} before submitting.'}), 400
         s.client_reviewed  = True
         s.client_accepted  = False
+        s.client_action    = action if action != 'concern' else 'request_changes'
         s.client_comments  = comment
         s.client_signed_at = datetime.now(timezone.utc)
 
     elif action == 'reset':
         s.client_reviewed  = False
         s.client_accepted  = None
+        s.client_action    = None
         s.client_comments  = ''
         s.client_signed_at = None
+        s.client_signature = None
 
     else:
         return jsonify({'error': f'Unknown action: {action}'}), 400
@@ -2511,6 +2680,19 @@ def api_client_review_item(token, item_no, ci):
     # Bump ITP status to client_reviewing so the engineer can see progress
     if record.status == 'client_invited':
         record.status = 'client_reviewing'
+
+    # Log the audit event
+    wtg_name = record.wtg.name if record.wtg else f'ITP #{record.id}'
+    log_audit(
+        'itp_item_client_reviewed',
+        project_id   = record.wtg.project_id if record.wtg else None,
+        actor        = None,  # public — no logged-in user
+        entity_type  = 'itp_item',
+        entity_id    = s.id,
+        entity_label = f'{wtg_name} · {s.item_no}.{s.criterion_index + 1}',
+        detail       = {'action': action, 'record_id': record.id,
+                        'item_no': item_no, 'ci': ci},
+    )
 
     db.session.commit()
 
@@ -2523,6 +2705,7 @@ def api_client_review_item(token, item_no, ci):
 
     return jsonify({
         'ok':          True,
+        'action':      s.client_action,
         'total':       len(signed_items),
         'reviewed':    len(reviewed),
         'accepted':    len(accepted),
@@ -3486,18 +3669,58 @@ def run_migrations():
         with app.app_context():
             with db.engine.connect() as conn:
                 cols_to_add = [
-                    ("users", "position",     "VARCHAR(100) DEFAULT ''"),
-                    ("users", "avatar_color", "VARCHAR(20)  DEFAULT '#4f46e5'"),
+                    ("users",              "position",      "VARCHAR(100) DEFAULT ''"),
+                    ("users",              "avatar_color",  "VARCHAR(20)  DEFAULT '#4f46e5'"),
+                    # ITP extended client review action
+                    ("itp_item_statuses",  "client_action", "VARCHAR(50)"),
+                    # ITP client invite expiry
+                    ("itp_client_invites", "expires_at",    "TIMESTAMP"),
                 ]
                 for table, col, typedef in cols_to_add:
                     try:
-                        conn.execute(db.text(f"ALTER TABLE {table} ADD COLUMN {col} {typedef}"))
+                        conn.execute(db.text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col} {typedef}"))
                         conn.commit()
                     except Exception:
                         try: conn.rollback()
                         except Exception: pass
     except Exception:
         pass  # migration errors must never crash startup
+
+
+# ─── Audit event helper ───────────────────────────────────────────────────────
+def log_audit(event_type, *, project_id=None, actor=None, entity_type='',
+              entity_id=None, entity_label='', detail=None, request=None):
+    """Write one row to audit_events. Never raises — errors are swallowed."""
+    try:
+        from flask import request as _req
+        req = request or _req
+        ip  = ''
+        try:
+            ip = req.headers.get('X-Forwarded-For', req.remote_addr or '')
+            if ip:
+                ip = ip.split(',')[0].strip()
+        except Exception:
+            pass
+
+        ev = AuditEvent(
+            project_id    = project_id,
+            event_type    = event_type,
+            actor_user_id = actor.id      if actor else None,
+            actor_name    = (actor.name   if actor else ''),
+            actor_email   = (actor.email  if actor else ''),
+            actor_company = (actor.company if actor else ''),
+            actor_role    = (actor.role   if actor else ''),
+            entity_type   = entity_type,
+            entity_id     = entity_id,
+            entity_label  = entity_label or '',
+            detail_json   = json.dumps(detail or {}),
+            ip_address    = ip,
+        )
+        db.session.add(ev)
+        # Do NOT commit here — let the caller commit their own transaction.
+        # The audit event will be committed together with the main change.
+    except Exception as exc:
+        print(f"[AUDIT] log_audit failed: {exc}")
 
 # ─── Startup: create tables, dirs, seed ──────────────────────────────────────
 def startup():

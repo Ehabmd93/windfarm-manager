@@ -221,6 +221,11 @@
         <i class="fa-solid fa-sitemap" style="width:16px;color:#818cf8;"></i>
         <span>Project Hierarchy</span>
       </a>
+      <a href="{{ url_for('project_people', pid=active_project.id) }}"
+         class="sidebar-link {% if request.endpoint in ('project_people','project_audit') %}active{% endif %}" style="margin-top:3px;">
+        <i class="fa-solid fa-users-gear" style="width:16px;color:#e879f9;"></i>
+        <span>People & Companies</span>
+      </a>
       {% endif %}
 
       <a href="{{ url_for('documents_list') }}" class="sidebar-link {% if request.endpoint in ['documents_list','document_upload','document_detail'] %}active{% endif %}" style="margin-top:3px;">

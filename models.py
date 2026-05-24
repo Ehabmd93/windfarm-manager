@@ -576,6 +576,8 @@ class ITPItemStatus(db.Model):
     # Per-item client review (new — per-item Accept / Raise Concern)
     client_reviewed  = db.Column(db.Boolean, default=False)  # has client ticked this item
     client_accepted  = db.Column(db.Boolean, nullable=True)  # True=accepted, False=concern raised, None=not reviewed
+    # Expanded action: approved|rejected|request_changes|request_clarification|not_accepted
+    client_action    = db.Column(db.String(50), nullable=True)
 
     # Attached documents / photos per criterion
     documents        = db.relationship('ITPItemDocument', backref='item_status',
@@ -885,7 +887,166 @@ class ITPClientInvite(db.Model):
     email      = db.Column(db.String(150), default='')
     token      = db.Column(db.String(100), unique=True, nullable=False)
     invited_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    expires_at = db.Column(db.DateTime, nullable=True)
     record     = db.relationship('ITPRecord', backref='client_invites', lazy=True)
+
+
+# ═══════════════════════════════════════════════
+# ═══════════════════════════════════════════════
+# PROJECT COMPANIES & TEAM STRUCTURE
+# ═══════════════════════════════════════════════
+COMPANY_TYPES = [
+    ('main_contractor', 'Main Contractor', 'fa-building',        '#2563eb'),
+    ('subcontractor',   'Subcontractor',   'fa-hard-hat',        '#7c3aed'),
+    ('client',          'Client',          'fa-handshake',       '#0891b2'),
+    ('consultant',      'Consultant',      'fa-user-tie',        '#f59e0b'),
+    ('testing_lab',     'Testing Lab',     'fa-microscope',      '#22c55e'),
+]
+
+PROJECT_ROLES = [
+    ('project_admin',          'Project Admin',       'fa-shield-halved',      '#ef4444'),
+    ('qa_manager',             'QA Manager',          'fa-clipboard-check',    '#4f46e5'),
+    ('site_engineer',          'Site Engineer',       'fa-screwdriver-wrench', '#22c55e'),
+    ('supervisor',             'Supervisor',          'fa-hard-hat',           '#f59e0b'),
+    ('subcontractor_submitter','Subcontractor Rep',   'fa-file-circle-plus',   '#7c3aed'),
+    ('client_reviewer',        'Client Reviewer',     'fa-eye',                '#0891b2'),
+    ('client_approver',        'Client Approver',     'fa-pen-nib',            '#2563eb'),
+    ('consultant',             'Consultant',          'fa-user-tie',           '#f97316'),
+    ('testing_lab',            'Testing Lab',         'fa-microscope',         '#6ee7b7'),
+    ('auditor',                'Auditor',             'fa-magnifying-glass',   '#94a3b8'),
+]
+
+# ITP review actions (expanded from 2 to 5)
+ITP_REVIEW_ACTIONS = [
+    ('approved',              'Approved',             'fa-check-circle',       '#16a34a', '#dcfce7'),
+    ('rejected',              'Rejected',             'fa-times-circle',       '#dc2626', '#fee2e2'),
+    ('request_changes',       'Request Changes',      'fa-pencil',             '#d97706', '#fef3c7'),
+    ('request_clarification', 'Request Clarification','fa-question-circle',    '#0891b2', '#e0f2fe'),
+    ('not_accepted',          'Not Accepted',         'fa-ban',                '#9f1239', '#ffe4e6'),
+]
+
+
+class ProjectCompany(db.Model):
+    """A company involved in a project (client, contractor, sub, consultant, lab)."""
+    __tablename__ = 'project_companies'
+    id            = db.Column(db.Integer, primary_key=True)
+    project_id    = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=False)
+    company_type  = db.Column(db.String(30), nullable=False)  # main_contractor|subcontractor|client|consultant|testing_lab
+    name          = db.Column(db.String(200), nullable=False)
+    short_name    = db.Column(db.String(50),  default='')
+    contact_name  = db.Column(db.String(100), default='')
+    contact_email = db.Column(db.String(150), default='')
+    contact_phone = db.Column(db.String(50),  default='')
+    notes         = db.Column(db.Text,        default='')
+    added_at      = db.Column(db.DateTime,    default=lambda: datetime.now(timezone.utc))
+    added_by      = db.Column(db.Integer,     db.ForeignKey('users.id'), nullable=True)
+
+    project   = db.relationship('Project',          backref='companies',  lazy=True)
+    members   = db.relationship('ProjectTeamMember', backref='company',   lazy=True,
+                                 foreign_keys='ProjectTeamMember.company_id')
+
+    @property
+    def type_label(self):
+        return next((lbl for k, lbl, *_ in COMPANY_TYPES if k == self.company_type),
+                    self.company_type.replace('_', ' ').title())
+
+    @property
+    def type_color(self):
+        return next((color for k, lbl, icon, color in COMPANY_TYPES if k == self.company_type), '#64748b')
+
+    @property
+    def type_icon(self):
+        return next((icon for k, lbl, icon, color in COMPANY_TYPES if k == self.company_type), 'fa-building')
+
+
+class ProjectTeamMember(db.Model):
+    """A named person on the project — not necessarily a registered user."""
+    __tablename__ = 'project_team_members'
+    id            = db.Column(db.Integer, primary_key=True)
+    project_id    = db.Column(db.Integer, db.ForeignKey('projects.id'),          nullable=False)
+    company_id    = db.Column(db.Integer, db.ForeignKey('project_companies.id'), nullable=True)
+
+    # Identity
+    name          = db.Column(db.String(100), nullable=False)
+    email         = db.Column(db.String(150), default='')
+    position      = db.Column(db.String(100), default='')
+    phone         = db.Column(db.String(50),  default='')
+
+    # Role & permissions
+    project_role  = db.Column(db.String(40),  nullable=False, default='site_engineer')
+    can_sign      = db.Column(db.Boolean,     default=True)
+
+    # Linked platform user account (optional)
+    user_id       = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+
+    # Invitation / portal access
+    invite_token  = db.Column(db.String(100), unique=True, nullable=True)
+    invite_sent_at= db.Column(db.DateTime, nullable=True)
+    invite_status = db.Column(db.String(20), default='pending')  # pending|accepted|expired
+    token_expires = db.Column(db.DateTime, nullable=True)
+
+    added_at      = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    added_by      = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    is_active     = db.Column(db.Boolean, default=True)
+
+    project       = db.relationship('Project', backref='team_members', lazy=True)
+    user          = db.relationship('User', foreign_keys=[user_id],
+                                    backref='team_memberships', lazy=True)
+
+    @property
+    def role_label(self):
+        return next((lbl for k, lbl, *_ in PROJECT_ROLES if k == self.project_role),
+                    self.project_role.replace('_', ' ').title())
+
+    @property
+    def role_color(self):
+        return next((color for k, lbl, icon, color in PROJECT_ROLES if k == self.project_role), '#64748b')
+
+    @property
+    def role_icon(self):
+        return next((icon for k, lbl, icon, color in PROJECT_ROLES if k == self.project_role), 'fa-user')
+
+
+# ═══════════════════════════════════════════════
+# AUDIT TRAIL
+# ═══════════════════════════════════════════════
+class AuditEvent(db.Model):
+    """Immutable audit trail — one row per meaningful event."""
+    __tablename__ = 'audit_events'
+    id            = db.Column(db.Integer, primary_key=True)
+    project_id    = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=True)
+
+    # Actor snapshot (captured at time of event so it survives account changes)
+    actor_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    actor_name    = db.Column(db.String(100), default='')
+    actor_email   = db.Column(db.String(150), default='')
+    actor_company = db.Column(db.String(100), default='')
+    actor_role    = db.Column(db.String(50),  default='')
+
+    # Event type
+    event_type    = db.Column(db.String(60), nullable=False)
+    # Values: itp_item_signed | itp_item_client_reviewed | itp_client_invited |
+    #         member_added | member_removed | company_added | company_removed |
+    #         itp_submitted | itp_complete | document_uploaded | login
+
+    # Entity affected
+    entity_type   = db.Column(db.String(30), default='')   # itp_record|itp_item|member|company|document
+    entity_id     = db.Column(db.Integer,    nullable=True)
+    entity_label  = db.Column(db.String(200), default='')  # human-readable label at time of event
+
+    # Extra structured detail (JSON blob)
+    detail_json   = db.Column(db.Text, default='{}')
+    ip_address    = db.Column(db.String(45), default='')
+
+    created_at    = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    project       = db.relationship('Project', backref='audit_events', lazy=True)
+    actor         = db.relationship('User',    backref='audit_events', lazy=True)
+
+    @property
+    def detail(self):
+        try:    return json.loads(self.detail_json or '{}')
+        except: return {}
 
 
 # ═══════════════════════════════════════════════
