@@ -188,10 +188,10 @@ def _ensure_default_users(app):
             return  # users already exist, nothing to do
         print("No users found — creating default demo accounts...")
         default_users = [
-            User(name='Engineer',   email='engineer@demo.com',   password=generate_password_hash('engineer123'),   role='engineer',   company='Demo Co'),
-            User(name='Supervisor', email='supervisor@demo.com', password=generate_password_hash('supervisor123'), role='supervisor', company='Demo Co'),
-            User(name='Manager',    email='manager@demo.com',    password=generate_password_hash('manager123'),    role='manager',    company='Demo Co'),
-            User(name='Client',     email='client@demo.com',     password=generate_password_hash('client123'),     role='client',     company='Client Co'),
+            User(name='Engineer',   email='engineer@demo.com',   password=generate_password_hash('engineer123'),   role='engineer',   company='Demo Co',    is_active=True, email_verified=True),
+            User(name='Supervisor', email='supervisor@demo.com', password=generate_password_hash('supervisor123'), role='supervisor', company='Demo Co',    is_active=True, email_verified=True),
+            User(name='Manager',    email='manager@demo.com',    password=generate_password_hash('manager123'),    role='manager',    company='Demo Co',    is_active=True, email_verified=True),
+            User(name='Client',     email='client@demo.com',     password=generate_password_hash('client123'),     role='client',     company='Client Co',  is_active=True, email_verified=True),
         ]
         try:
             db.session.add_all(default_users)
@@ -327,10 +327,10 @@ def _seed_krwf_demo(app):
             print("Demo users already exist — skipping user seed.")
         else:
             users = [
-                User(name='Demo Engineer',   email='engineer@demo.com',   password=generate_password_hash('engineer123'),   role='engineer',   company='Demo Co'),
-                User(name='Demo Supervisor', email='supervisor@demo.com', password=generate_password_hash('supervisor123'), role='supervisor', company='Demo Co'),
-                User(name='Demo Manager',    email='manager@demo.com',    password=generate_password_hash('manager123'),    role='manager',    company='Demo Co'),
-                User(name='Demo Client',     email='client@demo.com',     password=generate_password_hash('client123'),     role='client',     company='Client Co'),
+                User(name='Demo Engineer',   email='engineer@demo.com',   password=generate_password_hash('engineer123'),   role='engineer',   company='Demo Co',   is_active=True, email_verified=True),
+                User(name='Demo Supervisor', email='supervisor@demo.com', password=generate_password_hash('supervisor123'), role='supervisor', company='Demo Co',   is_active=True, email_verified=True),
+                User(name='Demo Manager',    email='manager@demo.com',    password=generate_password_hash('manager123'),    role='manager',    company='Demo Co',   is_active=True, email_verified=True),
+                User(name='Demo Client',     email='client@demo.com',     password=generate_password_hash('client123'),     role='client',     company='Client Co', is_active=True, email_verified=True),
             ]
             try:
                 db.session.add_all(users)

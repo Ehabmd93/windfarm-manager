@@ -26,7 +26,8 @@ from models import (db, User, WTG, Area, QATest, TestRecord,
                     Notification, ITPClientInvite,
                     DOCUMENT_CATEGORIES, DOCUMENT_LINK_TYPES, DOCUMENT_LINK_DICT,
                     ProjectCompany, ProjectTeamMember, AuditEvent,
-                    COMPANY_TYPES, PROJECT_ROLES, ITP_REVIEW_ACTIONS)
+                    COMPANY_TYPES, PROJECT_ROLES, ITP_REVIEW_ACTIONS,
+                    UserInvite, PasswordResetToken, INVITE_STATUSES)
 from itp_definitions import ITP_DEFINITIONS, CLIENTS
 from seed import seed
 import kml_parser
@@ -3992,27 +3993,61 @@ def run_migrations():
         with app.app_context():
             with db.engine.connect() as conn:
                 cols_to_add = [
-                    ("users",              "position",         "VARCHAR(100) DEFAULT ''"),
-                    ("users",              "avatar_color",     "VARCHAR(20)  DEFAULT '#4f46e5'"),
+                    ("users",              "position",            "VARCHAR(100) DEFAULT ''"),
+                    ("users",              "avatar_color",        "VARCHAR(20)  DEFAULT '#4f46e5'"),
+                    # Phase 1: identity / security fields on users
+                    # is_active DEFAULT TRUE so that existing accounts remain accessible.
+                    ("users",              "is_active",           "BOOLEAN DEFAULT TRUE"),
+                    ("users",              "email_verified",      "BOOLEAN DEFAULT FALSE"),
+                    ("users",              "email_verified_at",   "TIMESTAMP"),
+                    ("users",              "last_login_at",       "TIMESTAMP"),
+                    ("users",              "password_changed_at", "TIMESTAMP"),
+                    ("users",              "failed_login_count",  "INTEGER DEFAULT 0"),
+                    ("users",              "locked_until",        "TIMESTAMP"),
                     # ITP extended client review action
-                    ("itp_item_statuses",  "client_action",    "VARCHAR(50)"),
+                    ("itp_item_statuses",  "client_action",       "VARCHAR(50)"),
                     # ITP client invite expiry + revocation
-                    ("itp_client_invites", "expires_at",       "TIMESTAMP"),
-                    ("itp_client_invites", "is_revoked",       "BOOLEAN DEFAULT FALSE"),
-                    ("itp_client_invites", "revoked_at",       "TIMESTAMP"),
+                    ("itp_client_invites", "expires_at",          "TIMESTAMP"),
+                    ("itp_client_invites", "is_revoked",          "BOOLEAN DEFAULT FALSE"),
+                    ("itp_client_invites", "revoked_at",          "TIMESTAMP"),
                     # ITP record reopen / revision tracking
-                    ("itp_records",        "revision",         "INTEGER DEFAULT 0"),
-                    ("itp_records",        "reopened_at",      "TIMESTAMP"),
-                    ("itp_records",        "reopened_by_id",   "INTEGER"),
-                    ("itp_records",        "reopen_reason",    "TEXT"),
+                    ("itp_records",        "revision",            "INTEGER DEFAULT 0"),
+                    ("itp_records",        "reopened_at",         "TIMESTAMP"),
+                    ("itp_records",        "reopened_by_id",      "INTEGER"),
+                    ("itp_records",        "reopen_reason",       "TEXT"),
                 ]
                 for table, col, typedef in cols_to_add:
                     try:
-                        conn.execute(db.text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col} {typedef}"))
+                        conn.execute(db.text(
+                            f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col} {typedef}"
+                        ))
                         conn.commit()
                     except Exception:
                         try: conn.rollback()
                         except Exception: pass
+
+                # ── Backfill is_active so no existing user is locked out ──────
+                # Flask-Login checks user.is_active before allowing login;
+                # NULL evaluates as falsy and would block existing accounts.
+                try:
+                    conn.execute(db.text(
+                        "UPDATE users SET is_active = TRUE WHERE is_active IS NULL"
+                    ))
+                    conn.commit()
+                except Exception:
+                    try: conn.rollback()
+                    except Exception: pass
+
+                # ── Backfill failed_login_count null → 0 ────────────────────
+                try:
+                    conn.execute(db.text(
+                        "UPDATE users SET failed_login_count = 0 WHERE failed_login_count IS NULL"
+                    ))
+                    conn.commit()
+                except Exception:
+                    try: conn.rollback()
+                    except Exception: pass
+
     except Exception:
         pass  # migration errors must never crash startup
 

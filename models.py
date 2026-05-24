@@ -18,7 +18,19 @@ class User(UserMixin, db.Model):
     position     = db.Column(db.String(100), default='')   # job title e.g. "QA Engineer"
     company      = db.Column(db.String(100), default='')
     avatar_color = db.Column(db.String(20),  default='#4f46e5')
-    created_at   = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at   = db.Column(db.DateTime,    default=lambda: datetime.now(timezone.utc))
+
+    # ── Phase 1: identity / security fields ──────────────────────────────────
+    # is_active shadows Flask-Login's UserMixin.is_active property so that the
+    # database value controls whether the account can log in.  The run_migrations()
+    # backfill ensures every existing row has TRUE so no one is locked out.
+    is_active           = db.Column(db.Boolean,  default=True)
+    email_verified      = db.Column(db.Boolean,  default=False)
+    email_verified_at   = db.Column(db.DateTime, nullable=True)
+    last_login_at       = db.Column(db.DateTime, nullable=True)
+    password_changed_at = db.Column(db.DateTime, nullable=True)
+    failed_login_count  = db.Column(db.Integer,  default=0)
+    locked_until        = db.Column(db.DateTime, nullable=True)
 
     def can_enter_data(self):
         return self.role in ('engineer', 'admin')
@@ -1074,3 +1086,111 @@ class ProgressWidget(db.Model):
     sort_order    = db.Column(db.Integer, default=0)
     created_by    = db.Column(db.Integer, db.ForeignKey('users.id'))
     created_at    = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+# ═══════════════════════════════════════════════════════════════════
+# INVITE / AUTH TOKENS  (Phase 1 — no raw tokens stored)
+# ═══════════════════════════════════════════════════════════════════
+
+# Allowed status values for UserInvite.status
+INVITE_STATUSES = ['pending', 'accepted', 'expired', 'revoked']
+
+
+class UserInvite(db.Model):
+    """
+    Invite record for a person to join a project.
+
+    Security contract:
+      - Only the SHA-256 hex digest of the raw token is stored here
+        (token_hash).  The raw token travels only in the invite email.
+      - Tokens expire after 14 days (set at creation time in expires_at).
+      - Revocation is permanent; a revoked invite cannot be re-activated.
+      - status transitions: pending → accepted | expired | revoked
+    """
+    __tablename__ = 'user_invites'
+
+    id                     = db.Column(db.Integer, primary_key=True)
+
+    # Scope — which project this invite is for (nullable for platform-wide invites)
+    project_id             = db.Column(db.Integer, db.ForeignKey('projects.id'),            nullable=True)
+    # Optionally links to a ProjectTeamMember roster entry
+    project_team_member_id = db.Column(db.Integer, db.ForeignKey('project_team_members.id'), nullable=True)
+
+    # Invitee identity (captured at invite time)
+    email                  = db.Column(db.String(150), nullable=False)
+    name                   = db.Column(db.String(100), nullable=False, default='')
+    company                = db.Column(db.String(100), default='')
+
+    # Role & permissions to assign upon acceptance
+    role                   = db.Column(db.String(40),  default='site_engineer')
+    permission_template    = db.Column(db.String(40),  default='')
+    can_sign               = db.Column(db.Boolean,     default=False)
+
+    # Security — raw token NEVER stored; only its SHA-256 hex digest
+    token_hash             = db.Column(db.String(64),  nullable=False, unique=True)
+
+    # Who sent the invite
+    invited_by_id          = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    invited_at             = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    expires_at             = db.Column(db.DateTime, nullable=True)
+
+    # Lifecycle timestamps
+    accepted_at            = db.Column(db.DateTime, nullable=True)
+    revoked_at             = db.Column(db.DateTime, nullable=True)
+
+    # status: pending | accepted | expired | revoked
+    status                 = db.Column(db.String(20), nullable=False, default='pending')
+
+    # Relationships
+    project     = db.relationship('Project',           backref='user_invites', lazy=True)
+    invited_by  = db.relationship('User', foreign_keys=[invited_by_id],
+                                  backref='sent_invites', lazy=True)
+    team_member = db.relationship('ProjectTeamMember', backref=db.backref('user_invite', uselist=False),
+                                  lazy=True)
+
+    @property
+    def is_usable(self):
+        """True only if the invite can still be accepted right now."""
+        if self.status != 'pending':
+            return False
+        if self.expires_at and self.expires_at < datetime.now(timezone.utc):
+            return False
+        return True
+
+
+class PasswordResetToken(db.Model):
+    """
+    Short-lived token for password reset.
+
+    Security contract:
+      - Only the SHA-256 hex digest of the raw token is stored (token_hash).
+      - The raw token travels only in the reset email.
+      - Tokens expire after 1 hour (set at creation time in expires_at).
+      - Tokens are single-use; used_at is set on first use, subsequent use fails.
+      - Revocation is permanent; any prior un-used token is revoked when a new
+        one is issued for the same user.
+    """
+    __tablename__ = 'password_reset_tokens'
+
+    id         = db.Column(db.Integer, primary_key=True)
+    user_id    = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+
+    # Security — raw token NEVER stored; only its SHA-256 hex digest
+    token_hash = db.Column(db.String(64), nullable=False, unique=True)
+
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    expires_at = db.Column(db.DateTime, nullable=True)
+    used_at    = db.Column(db.DateTime, nullable=True)
+    revoked_at = db.Column(db.DateTime, nullable=True)
+
+    # Relationship
+    user = db.relationship('User', backref='password_reset_tokens', lazy=True)
+
+    @property
+    def is_usable(self):
+        """True only if the token can still be used to reset a password."""
+        if self.used_at or self.revoked_at:
+            return False
+        if self.expires_at and self.expires_at < datetime.now(timezone.utc):
+            return False
+        return True
