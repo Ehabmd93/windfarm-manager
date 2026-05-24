@@ -437,17 +437,68 @@
       {% endif %}
     </div>
 
-    {# ─── Branch: existing user — Phase 4C placeholder ─── #}
+    {# ─── Branch: existing user (Phase 4C) ────────────────────────────────── #}
     {% if user_exists %}
-    <div class="alert alert-amber">
-      <i class="fa-solid fa-circle-info" style="margin-top:1px;flex-shrink:0;"></i>
-      <span>
-        This email address already has a QA Manager account.
-        <a href="/login" style="color:#d97706;font-weight:700;">Sign in</a>
-        and the project will be linked to your existing account.
-        (Existing-account acceptance will be added in a future update.)
-      </span>
-    </div>
+
+      {# ── Not logged in: prompt to sign in with next= ── #}
+      {% if existing_sub_state == 'not_logged_in' %}
+      <div class="alert alert-amber">
+        <i class="fa-solid fa-circle-info" style="margin-top:1px;flex-shrink:0;"></i>
+        <span>
+          This email already has an account.
+          Sign in to accept this invite.
+        </span>
+      </div>
+      <a href="/login?next=/invite/{{ token }}"
+         class="btn-submit"
+         style="display:block;text-align:center;text-decoration:none;">
+        <i class="fa-solid fa-right-to-bracket" style="margin-right:7px;"></i>
+        Sign in to accept
+      </a>
+
+      {# ── Wrong user: logged in as a different email ── #}
+      {% elif existing_sub_state == 'wrong_user' %}
+      <div class="detail-card" style="margin-bottom:20px;">
+        <div class="detail-row">
+          <div class="detail-label">Invited</div>
+          <div class="detail-value" style="color:#2563eb;">{{ invite.email }}</div>
+        </div>
+        <div class="detail-row">
+          <div class="detail-label">Signed in</div>
+          <div class="detail-value" style="color:#dc2626;">{{ current_user.email }}</div>
+        </div>
+      </div>
+      <div class="alert alert-red" style="margin-bottom:0;">
+        <i class="fa-solid fa-circle-exclamation" style="margin-top:1px;flex-shrink:0;"></i>
+        <span>
+          This invite is for another email address. Sign in as
+          <strong>{{ invite.email }}</strong> to accept it.
+        </span>
+      </div>
+
+      {# ── Ready: correct user, active account ── #}
+      {% elif existing_sub_state == 'ready' %}
+      <form method="POST" action="/invite/{{ token }}" novalidate>
+        <button type="submit" class="btn-submit">
+          <i class="fa-solid fa-circle-check" style="margin-right:7px;"></i>
+          Accept invite &amp; join project
+        </button>
+      </form>
+      <p style="font-size:11px;color:#94a3b8;text-align:center;margin-top:14px;">
+        Signed in as <strong>{{ current_user.email }}</strong>.
+      </p>
+
+      {# ── Disabled: account is inactive ── #}
+      {% elif existing_sub_state == 'disabled' %}
+      <div class="alert alert-red" style="margin-bottom:0;">
+        <i class="fa-solid fa-ban" style="margin-top:1px;flex-shrink:0;"></i>
+        <span>
+          Your account has been disabled. Contact the project administrator
+          for assistance.
+        </span>
+      </div>
+
+      {% endif %}{# end existing_sub_state #}
 
     {# ─── Branch: new user — password setup form ─── #}
     {% else %}
