@@ -163,7 +163,7 @@
   {% elif record.status in ('client_invited',) %}bg-gradient-to-r from-blue-700 to-blue-500
   {% else %}bg-gradient-to-r from-violet-800 to-violet-600{% endif %} text-white">
   <div class="flex-1">
-    <p class="text-xs font-semibold uppercase tracking-wider opacity-70 mb-0.5">{{ wtg.name }} · King Rocks Wind Farm</p>
+    <p class="text-xs font-semibold uppercase tracking-wider opacity-70 mb-0.5">{{ wtg.name }}{% if active_project %} · {{ active_project.name }}{% endif %}</p>
     <h2 class="text-lg font-bold">{{ defn['name'] }}</h2>
     <p class="text-sm opacity-75 mt-0.5">Spec: {{ defn['spec'] }} · Rev {{ defn['revision'] }} · {{ defn['date'] }}</p>
     <div class="mt-3 flex items-center gap-3">
@@ -426,7 +426,7 @@
             </div>
             <div>
               <label class="form-label">Company</label>
-              <input type="text" name="engineer_company" class="form-input" value="{{ record.engineer_company or 'CBOP' }}"/>
+              <input type="text" name="engineer_company" class="form-input" value="{{ record.engineer_company or (current_user.company if current_user.company else '') }}"/>
             </div>
             <div>
               <label class="form-label">Lot Number</label>
@@ -496,7 +496,7 @@
             </div>
             <div>
               <label class="form-label">Client Email</label>
-              <input type="email" name="client_email" class="form-input" placeholder="client@vestas.com"/>
+              <input type="email" name="client_email" class="form-input" placeholder="client@company.com"/>
             </div>
           </div>
           <button type="submit" {% if done == 0 %}disabled{% endif %}

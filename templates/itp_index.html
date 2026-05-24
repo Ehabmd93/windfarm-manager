@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block title %}ITP – King Rocks Wind Farm{% endblock %}
+{% block title %}ITP – {{ active_project.name if active_project else 'QA Manager' }}{% endblock %}
 {% block page_title %}Inspection & Test Plans{% endblock %}
 {% block page_sub %}Select WTG and ITP type to view or sign{% endblock %}
 
@@ -30,9 +30,9 @@
 <!-- Header banner -->
 <div class="bg-gradient-to-r from-violet-800 to-violet-600 text-white rounded-2xl p-6 mb-8 flex items-center justify-between">
   <div>
-    <p class="text-xs text-violet-300 font-semibold uppercase tracking-wider mb-1">CBOP · King Rocks Wind Farm</p>
+    <p class="text-xs text-violet-300 font-semibold uppercase tracking-wider mb-1">{{ active_project.name if active_project else 'QA Manager' }}</p>
     <h2 class="text-2xl font-bold">Inspection & Test Plans</h2>
-    <p class="text-violet-200 text-sm mt-1">ITP#2 Access Road · ITP#3 Hardstand / Crane Pads / Blade Laydowns</p>
+    <p class="text-violet-200 text-sm mt-1">Select an element and ITP type to view or sign</p>
   </div>
   <div class="w-16 h-16 rounded-2xl bg-white/20 flex items-center justify-center">
     <i class="fa-solid fa-clipboard-list text-white text-3xl"></i>
@@ -44,10 +44,10 @@
   <h3 class="text-sm font-bold text-slate-700 uppercase tracking-wider mb-4">Open an ITP</h3>
   <form method="GET" action="#" id="quick-form" class="flex flex-wrap gap-4 items-end">
     <div class="flex-1 min-w-[200px]">
-      <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">WTG</label>
+      <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{{ proj_profile.element_label if proj_profile else 'Element' }}</label>
       <select id="sel-wtg" name="wtg"
         class="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm font-medium focus:border-violet-500 focus:ring-2 focus:ring-violet-100 outline-none">
-        <option value="">— Select WTG —</option>
+        <option value="">— Select {{ proj_profile.element_label if proj_profile else 'Element' }} —</option>
         {% for wtg in wtgs %}
         <option value="{{ wtg.id }}">{{ wtg.name }}</option>
         {% endfor %}

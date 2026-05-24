@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block title %}Custom Fields – King Rocks QA{% endblock %}
+{% block title %}Custom Fields – {{ active_project.name if active_project else 'QA Manager' }}{% endblock %}
 {% block page_title %}Custom Tracking Fields{% endblock %}
 {% block page_sub %}Engineer-configurable data fields per test type{% endblock %}
 

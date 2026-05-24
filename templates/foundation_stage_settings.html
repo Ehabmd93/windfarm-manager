@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
-{% block title %}Stage Settings – King Rocks QA{% endblock %}
+{% block title %}Stage Settings – {{ active_project.name if active_project else 'QA Manager' }}{% endblock %}
 {% block page_title %}Foundation Stage Settings{% endblock %}
-{% block page_sub %}Edit the global stage list — changes apply to all {{ templates|length }} stages across every WTG{% endblock %}
+{% block page_sub %}Edit the global stage list — changes apply to all {{ templates|length }} stages across every element{% endblock %}
 
 {% block head %}
 <style>

@@ -30,6 +30,8 @@ from models import (db, User, WTG, Area, QATest, TestRecord,
 from itp_definitions import ITP_DEFINITIONS, CLIENTS
 from seed import seed
 import kml_parser
+from project_config import (PROJECT_TYPE_PROFILES, get_profile,
+                             is_wind_farm, GENERIC_ELEMENT_TYPE_LABELS)
 from kml_parser import get_geojson
 from email_utils import email_client_invitation, email_client_signed
 import r2_storage
@@ -145,6 +147,13 @@ def inject_now():
         'COMPANY_TYPES':        COMPANY_TYPES,
         'PROJECT_ROLES':        PROJECT_ROLES,
         'ITP_REVIEW_ACTIONS':   ITP_REVIEW_ACTIONS,
+        'PROJECT_TYPE_PROFILES': PROJECT_TYPE_PROFILES,
+        # Project type profile for the active project (controls UI labels/types)
+        'proj_profile': (get_profile(getattr(g, 'project', None).project_type)
+                         if getattr(g, 'project', None) else
+                         get_profile('Other')),
+        'is_wind_farm': (is_wind_farm(getattr(g, 'project', None).project_type)
+                         if getattr(g, 'project', None) else False),
     }
 
 # ─── Context helpers ─────────────────────────────────────────────────────────
@@ -1751,11 +1760,16 @@ def api_wtg_status(wtg_id):
         }
     return jsonify({'wtg': wtg.name, 'pct': wtg.completion_pct, 'areas': areas})
 
-# ─── API: All WTGs summary ────────────────────────────────────────────────────
+# ─── API: All elements summary (scoped to active project) ────────────────────
 @app.route('/api/dashboard')
 @login_required
 def api_dashboard():
-    wtgs = WTG.query.order_by(WTG.name).all()
+    from flask import g
+    proj = getattr(g, 'project', None)
+    q = WTG.query.order_by(WTG.name)
+    if proj:
+        q = q.filter_by(project_id=proj.id)
+    wtgs = q.all()
     return jsonify([{'id':w.id,'name':w.name,'pct':w.completion_pct} for w in wtgs])
 
 # ─── Interactive Map ─────────────────────────────────────────────────────────
@@ -2154,10 +2168,17 @@ def api_get_zones():
 @app.route('/itp')
 @login_required
 def itp_index():
-    """Landing: choose WTG + ITP type."""
-    wtgs = WTG.query.order_by(WTG.name).all()
-    # Existing ITP records so we can show status badges
-    records = ITPRecord.query.all()
+    """Landing: choose Element + ITP type — scoped to active project."""
+    proj = getattr(g, 'project', None)
+    if proj:
+        wtgs    = WTG.query.filter_by(project_id=proj.id).order_by(WTG.name).all()
+        wtg_ids = [w.id for w in wtgs]
+        records = (ITPRecord.query
+                   .filter(ITPRecord.wtg_id.in_(wtg_ids)).all()
+                   if wtg_ids else [])
+    else:
+        wtgs    = WTG.query.order_by(WTG.name).all()
+        records = ITPRecord.query.all()
     by_key = {(r.wtg_id, r.itp_type): r for r in records}
     return render_template('itp_index.html',
                            wtgs=wtgs,
@@ -2277,7 +2298,7 @@ def project_itp_detail(pid, tid, eid):
             project_itp_template_id=tid,
             created_by=current_user.id, status='draft',
             engineer_name=current_user.name,
-            engineer_company='CBOP',
+            engineer_company=(current_user.company or ''),
         )
         db.session.add(record)
         db.session.flush()
@@ -2362,7 +2383,7 @@ def api_project_itp_save_meta(pid, tid, eid):
     data = request.get_json(silent=True) or {}
     record.lot_number       = (data.get('lot_number') or '').strip()
     record.engineer_name    = (data.get('engineer_name') or current_user.name).strip()
-    record.engineer_company = (data.get('engineer_company') or 'CBOP').strip()
+    record.engineer_company = (data.get('engineer_company') or current_user.company or '').strip()
     db.session.commit()
     return jsonify({'ok': True})
 
@@ -2510,7 +2531,7 @@ def itp_detail(wtg_id, itp_type):
         record = ITPRecord(wtg_id=wtg_id, itp_type=itp_type,
                            created_by=current_user.id, status='draft',
                            engineer_name=current_user.name,
-                           engineer_company='CBOP')
+                           engineer_company=(current_user.company or ''))
         db.session.add(record)
         db.session.flush()
 
@@ -2544,8 +2565,8 @@ def itp_detail(wtg_id, itp_type):
         if action == 'save_meta':
             record.lot_number = request.form.get('lot_number', '').strip()
             record.location   = request.form.get('location', '').strip()
-            record.engineer_name    = request.form.get('engineer_name', 'Lucas').strip()
-            record.engineer_company = request.form.get('engineer_company', 'CBOP').strip()
+            record.engineer_name    = request.form.get('engineer_name', current_user.name or '').strip()
+            record.engineer_company = request.form.get('engineer_company', current_user.company or '').strip()
             db.session.commit()
             flash('ITP details saved.', 'success')
             return redirect(url_for('itp_detail', wtg_id=wtg_id, itp_type=itp_type))
@@ -2858,7 +2879,7 @@ def api_itp_sign_criterion(record_id, item_no, crit_idx):
         if not record.engineer_name:
             record.engineer_name = current_user.name
         if not record.engineer_company:
-            record.engineer_company = 'CBOP'
+            record.engineer_company = (current_user.company or '')
 
     db.session.commit()
     return jsonify({
@@ -2960,9 +2981,18 @@ def itp_print(record_id):
 @app.route('/itp/export')
 @login_required
 def itp_export():
-    """Page to select and bulk-download ITPs as PDFs."""
-    wtgs    = WTG.query.order_by(WTG.name).all()
-    records = ITPRecord.query.order_by(ITPRecord.wtg_id, ITPRecord.itp_type).all()
+    """Page to select and bulk-download ITPs as PDFs — scoped to active project."""
+    proj = getattr(g, 'project', None)
+    if proj:
+        wtgs    = WTG.query.filter_by(project_id=proj.id).order_by(WTG.name).all()
+        wtg_ids = [w.id for w in wtgs]
+        records = (ITPRecord.query
+                   .filter(ITPRecord.wtg_id.in_(wtg_ids))
+                   .order_by(ITPRecord.wtg_id, ITPRecord.itp_type).all()
+                   if wtg_ids else [])
+    else:
+        wtgs    = WTG.query.order_by(WTG.name).all()
+        records = ITPRecord.query.order_by(ITPRecord.wtg_id, ITPRecord.itp_type).all()
     return render_template('itp_export.html', wtgs=wtgs, records=records,
                            itp_types=list(ITP_DEFINITIONS.keys()))
 
@@ -3149,7 +3179,10 @@ def foundation_index():
     wtgs = q.all()
 
     active_stages = get_active_stages()
-    existing = {(s.wtg_id, s.stage_key) for s in FoundationStage.query.all()}
+    wtg_ids = [w.id for w in wtgs]
+    existing = {(s.wtg_id, s.stage_key) for s in
+                FoundationStage.query.filter(FoundationStage.wtg_id.in_(wtg_ids)).all()
+                if wtg_ids} if wtg_ids else set()
     new_stages = []
     for wtg in wtgs:
         for key, label in active_stages:
@@ -3158,7 +3191,9 @@ def foundation_index():
     if new_stages:
         db.session.add_all(new_stages)
         db.session.commit()
-    all_stages = FoundationStage.query.all()
+    all_stages = (FoundationStage.query
+                  .filter(FoundationStage.wtg_id.in_(wtg_ids)).all()
+                  if wtg_ids else [])
     stage_map = {}
     for s in all_stages:
         stage_map.setdefault(s.wtg_id, {})[s.stage_key] = s
@@ -3345,11 +3380,11 @@ def api_foundation_stages_add():
     max_order = db.session.query(db.func.max(FoundationStageTemplate.sort_order)).scalar() or 0
     t = FoundationStageTemplate(stage_key=key, stage_label=label, sort_order=max_order + 1)
     db.session.add(t)
-    # Create FoundationStage rows for every WTG
+    # Create FoundationStage rows for all WTGs across all projects (global template)
     wtgs = WTG.query.all()
-    existing_keys = {s.stage_key for s in FoundationStage.query.all()}
     for wtg in wtgs:
-        if key not in {s.stage_key for s in FoundationStage.query.filter_by(wtg_id=wtg.id).all()}:
+        exists = FoundationStage.query.filter_by(wtg_id=wtg.id, stage_key=key).first()
+        if not exists:
             db.session.add(FoundationStage(wtg_id=wtg.id, stage_key=key, stage_label=label))
     db.session.commit()
     return jsonify(t.to_dict())
@@ -3403,18 +3438,28 @@ def api_foundation_stages_reorder():
 @app.route('/progress')
 @login_required
 def progress_tracker():
+    from flask import g
+    proj = getattr(g, 'project', None)
     widgets = ProgressWidget.query.order_by(ProgressWidget.sort_order).all()
-    wtgs    = WTG.query.order_by(WTG.name).all()
+    q = WTG.query.order_by(WTG.name)
+    if proj:
+        q = q.filter_by(project_id=proj.id)
+    wtgs = q.all()
     return render_template('progress_tracker.html', widgets=widgets, wtgs=wtgs)
 
 
 @app.route('/api/progress/data/<source>')
 @login_required
 def api_progress_data(source):
-    """Return JSON data for a given chart data source."""
+    """Return JSON data for a given chart data source (scoped to active project)."""
+    from flask import g
+    proj    = getattr(g, 'project', None)
+    wtg_q   = WTG.query.order_by(WTG.name)
+    if proj:
+        wtg_q = wtg_q.filter_by(project_id=proj.id)
 
     if source == 'wtg_completion':
-        wtgs = WTG.query.order_by(WTG.name).all()
+        wtgs = wtg_q.all()
         return jsonify({
             'labels': [w.name for w in wtgs],
             'datasets': [{
@@ -3429,21 +3474,24 @@ def api_progress_data(source):
         })
 
     elif source == 'foundation_stages':
-        wtgs = WTG.query.order_by(WTG.name).all()
-        stage_labels = [label for _, label in FOUNDATION_STAGES]
+        wtgs    = wtg_q.all()
+        wtg_ids = [w.id for w in wtgs]
         complete_counts = []
-        for _, key in [(k,k) for k,_ in FOUNDATION_STAGES]:
-            n = FoundationStage.query.filter_by(stage_key=key, status='complete').count()
-            complete_counts.append(n)
+        total = len(wtgs)
+        for key, _ in FOUNDATION_STAGES:
+            q = FoundationStage.query.filter_by(stage_key=key, status='complete')
+            if wtg_ids:
+                q = q.filter(FoundationStage.wtg_id.in_(wtg_ids))
+            complete_counts.append(q.count())
         return jsonify({
-            'labels': [lbl.split('–')[1].strip()[:25] for _, lbl in FOUNDATION_STAGES],
+            'labels': [lbl.split('–')[-1].strip()[:25] for _, lbl in FOUNDATION_STAGES],
             'datasets': [{
-                'label': 'WTGs Complete',
+                'label': 'Elements Complete',
                 'data': complete_counts,
                 'backgroundColor': '#7c3aed'
             }, {
-                'label': 'Total WTGs',
-                'data': [17] * len(FOUNDATION_STAGES),
+                'label': 'Total Elements',
+                'data': [total] * len(FOUNDATION_STAGES),
                 'backgroundColor': '#ede9fe',
                 'type': 'line',
                 'borderColor': '#7c3aed',
@@ -3452,9 +3500,9 @@ def api_progress_data(source):
         })
 
     elif source == 'status_breakdown':
-        wtgs = WTG.query.order_by(WTG.name).all()
-        complete  = sum(1 for w in wtgs if w.completion_pct == 100)
-        in_prog   = sum(1 for w in wtgs if 0 < w.completion_pct < 100)
+        wtgs = wtg_q.all()
+        complete    = sum(1 for w in wtgs if w.completion_pct == 100)
+        in_prog     = sum(1 for w in wtgs if 0 < w.completion_pct < 100)
         not_started = sum(1 for w in wtgs if w.completion_pct == 0)
         return jsonify({
             'labels': ['Complete', 'In Progress', 'Not Started'],
@@ -3463,20 +3511,24 @@ def api_progress_data(source):
         })
 
     elif source == 'area_completion':
-        areas = ['hardstand','crane_pad','boom_pad','blade_fingers']
-        labels = ['Hardstand','Crane Pad','Boom Pad','Blade Fingers']
-        data = []
-        for at in areas:
-            all_a = Area.query.filter_by(area_type=at).all()
-            if all_a:
-                avg = sum(a.completion_pct for a in all_a) / len(all_a)
-            else:
-                avg = 0
+        wtg_ids = [w.id for w in wtg_q.all()]
+        # Get unique area types for this project
+        if wtg_ids:
+            all_areas = Area.query.filter(Area.wtg_id.in_(wtg_ids)).all()
+        else:
+            all_areas = []
+        area_types = list(dict.fromkeys(a.area_type for a in all_areas))[:8]  # max 8
+        labels = [at.replace('_', ' ').title() for at in area_types]
+        data   = []
+        for at in area_types:
+            type_areas = [a for a in all_areas if a.area_type == at]
+            avg = sum(a.completion_pct for a in type_areas) / len(type_areas) if type_areas else 0
             data.append(round(avg, 1))
+        colors = ['#fca5a5','#86efac','#fde047','#93c5fd','#c4b5fd','#fdba74','#6ee7b7','#f9a8d4']
         return jsonify({
             'labels': labels,
             'datasets': [{'data': data,
-                          'backgroundColor': ['#fca5a5','#86efac','#fde047','#93c5fd']}]
+                          'backgroundColor': colors[:len(labels)]}]
         })
 
     elif source == 'daily_tests':

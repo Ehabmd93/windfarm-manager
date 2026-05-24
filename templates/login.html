@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Login – King Rocks Wind Farm QA</title>
+  <title>Login – QA Manager</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
   <style>
@@ -27,11 +27,11 @@
     <div class="bg-white rounded-3xl shadow-2xl overflow-hidden">
       <!-- Header -->
       <div class="bg-gradient-to-r from-blue-900 to-blue-700 px-8 py-8 text-center">
-        <div class="w-16 h-16 bg-green-400 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-          <i class="fa-solid fa-wind text-white text-2xl"></i>
+        <div class="w-16 h-16 bg-blue-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+          <i class="fa-solid fa-clipboard-check text-white text-2xl"></i>
         </div>
-        <h1 class="text-white text-2xl font-bold">King Rocks Wind Farm</h1>
-        <p class="text-blue-200 text-sm mt-1">QA Management System · CBOP</p>
+        <h1 class="text-white text-2xl font-bold">QA Manager</h1>
+        <p class="text-blue-200 text-sm mt-1">Construction Quality Management System</p>
       </div>
 
       <!-- Form -->
@@ -51,7 +51,7 @@
               <label class="block text-sm font-semibold text-slate-700 mb-2">Email Address</label>
               <div class="relative">
                 <i class="fa-solid fa-envelope absolute left-3.5 top-3.5 text-slate-400 text-sm"></i>
-                <input type="email" name="email" required placeholder="you@cbop.com"
+                <input type="email" name="email" required placeholder="you@company.com"
                   class="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition"/>
               </div>
             </div>
@@ -74,19 +74,19 @@
         <div class="mt-6 pt-6 border-t border-slate-100">
           <p class="text-xs text-slate-500 text-center font-semibold mb-3">Demo Accounts</p>
           <div class="grid grid-cols-2 gap-2 text-xs">
-            <button onclick="fill('engineer@cbop.com','engineer123')"
+            <button onclick="fill('engineer@demo.com','engineer123')"
               class="px-3 py-2 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition font-medium border border-green-200">
               <i class="fa-solid fa-helmet-safety mr-1"></i>Engineer
             </button>
-            <button onclick="fill('supervisor@cbop.com','supervisor123')"
+            <button onclick="fill('supervisor@demo.com','supervisor123')"
               class="px-3 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition font-medium border border-blue-200">
               <i class="fa-solid fa-user-tie mr-1"></i>Supervisor
             </button>
-            <button onclick="fill('manager@cbop.com','manager123')"
+            <button onclick="fill('manager@demo.com','manager123')"
               class="px-3 py-2 bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 transition font-medium border border-purple-200">
               <i class="fa-solid fa-briefcase mr-1"></i>Manager
             </button>
-            <button onclick="fill('client@client.com','client123')"
+            <button onclick="fill('client@demo.com','client123')"
               class="px-3 py-2 bg-orange-50 text-orange-700 rounded-lg hover:bg-orange-100 transition font-medium border border-orange-200">
               <i class="fa-solid fa-building mr-1"></i>Client
             </button>

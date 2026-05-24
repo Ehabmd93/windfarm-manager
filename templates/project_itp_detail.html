@@ -468,7 +468,7 @@
             </div>
             <div>
               <label class="form-label">Company</label>
-              <input type="text" name="engineer_company" class="form-input" value="{{ record.engineer_company or 'CBOP' }}"/>
+              <input type="text" name="engineer_company" class="form-input" value="{{ record.engineer_company or (current_user.company if current_user.company else '') }}"/>
             </div>
             <div>
               <label class="form-label">Lot Number</label>

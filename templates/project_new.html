@@ -132,7 +132,7 @@
 
           <div>
             <label class="form-label">Project Name <span style="color:#ef4444;">*</span></label>
-            <input name="name" class="form-input" placeholder="e.g. King Rocks Wind Farm" required/>
+            <input name="name" class="form-input" id="proj-name-input" placeholder="e.g. Northfield Wind Farm" required/>
           </div>
 
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
@@ -184,11 +184,11 @@
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
             <div>
               <label class="form-label">Client / Company</label>
-              <input name="client_name" class="form-input" placeholder="e.g. CBOP"/>
+              <input name="client_name" class="form-input" placeholder="e.g. Client Company"/>
             </div>
             <div>
               <label class="form-label">Contract Reference</label>
-              <input name="contract_ref" class="form-input" placeholder="e.g. KRWF-2024"/>
+              <input name="contract_ref" class="form-input" placeholder="e.g. PROJ-2024-001"/>
             </div>
           </div>
 
@@ -411,8 +411,9 @@
         } %}
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:11px;">
-          {% for key, label, icon, color in ALL_FEATURES %}
-          {% set default_on = key in ('proof_rolling','geo_testing','itp','foundation','progress_tracker') %}
+          {% set wind_defaults = ['proof_rolling','geo_testing','itp','foundation','progress_tracker','documents'] %}
+        {% for key, label, icon, color in ALL_FEATURES %}
+          {% set default_on = key in wind_defaults %}
           <div class="feat-card {% if default_on %}on{% endif %}" id="ft-{{ key }}"
                onclick="toggleFeat('{{ key }}')" style="min-height:0;">
             <div style="display:flex;align-items:flex-start;gap:12px;">
@@ -606,6 +607,37 @@ function renderMemberList() {
 
   hint.style.display = teamMembers.length === 0 ? 'block' : 'none';
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// Feature defaults per project type (mirrors project_config.py)
+// ─────────────────────────────────────────────────────────────────────
+const PROJ_TYPE_DEFAULTS = {
+  {% for ptype, profile in PROJECT_TYPE_PROFILES.items() %}
+  {{ ptype|tojson }}: {{ profile.default_features|tojson }},
+  {% endfor %}
+};
+
+function applyTypeDefaults(projType) {
+  const defaults = PROJ_TYPE_DEFAULTS[projType] || PROJ_TYPE_DEFAULTS['Wind Farm'];
+  document.querySelectorAll('.feat-card').forEach(card => {
+    const key = card.id.replace('ft-','');
+    const on  = defaults.includes(key);
+    card.classList.toggle('on', on);
+    const val = document.getElementById(`fval-${key}`);
+    if (val) val.value = on ? '1' : '0';
+  });
+  updateFeatCount();
+}
+
+// Bind project type select
+document.addEventListener('DOMContentLoaded', () => {
+  const ptSel = document.querySelector('select[name=project_type]');
+  if (ptSel) {
+    ptSel.addEventListener('change', () => applyTypeDefaults(ptSel.value));
+    // Apply immediately for initial value
+    applyTypeDefaults(ptSel.value);
+  }
+});
 
 // ─────────────────────────────────────────────────────────────────────
 // Feature cards

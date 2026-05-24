@@ -267,17 +267,21 @@
     <div style="font-size:11px;font-weight:800;color:#4f46e5;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">
       <i class="fa-solid fa-location-dot" style="margin-right:5px;"></i>Name this element
     </div>
-    <input id="pin-name" type="text" placeholder="e.g. WTG01"
+    <input id="pin-name" type="text" placeholder="{{ proj_profile.map_placeholder if proj_profile else 'e.g. Element 1' }}"
       style="width:100%;padding:9px 12px;border:2px solid #c7d2fe;border-radius:10px;font-size:13px;font-weight:700;outline:none;margin-bottom:8px;"
       onkeydown="if(event.key==='Enter') confirmPin()"/>
     <select id="pin-type"
       style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:12px;outline:none;background:white;margin-bottom:12px;">
-      <option value="wtg">Wind Turbine (WTG)</option>
-      <option value="hardstand">Hardstand</option>
-      <option value="crane_pad">Crane Pad</option>
-      <option value="access_track">Access Track</option>
-      <option value="substation">Substation</option>
-      <option value="other">Other</option>
+      {% set type_labels = {
+        'wtg': 'Wind Turbine (WTG)', 'access_track': 'Access Track',
+        'hardstand': 'Hardstand', 'crane_pad': 'Crane Pad',
+        'substation': 'Substation', 'section': 'Section', 'lot': 'Lot',
+        'zone': 'Zone', 'structure': 'Structure', 'road_section': 'Road Section',
+        'drainage': 'Drainage', 'element': 'Element', 'other': 'Other'
+      } %}
+      {% for etype in (proj_profile.element_types if proj_profile else ['element','other']) %}
+      <option value="{{ etype }}">{{ type_labels.get(etype, etype|title) }}</option>
+      {% endfor %}
     </select>
     <div style="display:flex;gap:8px;">
       <button onclick="cancelPin()"
@@ -882,8 +886,20 @@ function flyToEl(name){
   if(el)map.flyTo([el.lat,el.lon],16,{duration:0.8});
 }
 
-function typeColor(type){return{wtg:'#3b82f6',hardstand:'#ef4444',crane_pad:'#22c55e',access_track:'#f59e0b',substation:'#a855f7',other:'#64748b'}[type]||'#64748b';}
-function typeLabel(type){return{wtg:'Wind Turbine',hardstand:'Hardstand',crane_pad:'Crane Pad',access_track:'Access Track',substation:'Substation',other:'Other'}[type]||type;}
+const _TYPE_COLORS = {
+  wtg:'#3b82f6', access_track:'#f59e0b', hardstand:'#ef4444', crane_pad:'#22c55e',
+  substation:'#a855f7', section:'#6366f1', lot:'#14b8a6', zone:'#f97316',
+  structure:'#f43f5e', road_section:'#eab308', drainage:'#06b6d4',
+  element:'#64748b', other:'#94a3b8'
+};
+const _TYPE_LABELS = {
+  wtg:'Wind Turbine (WTG)', access_track:'Access Track', hardstand:'Hardstand',
+  crane_pad:'Crane Pad', substation:'Substation', section:'Section', lot:'Lot',
+  zone:'Zone', structure:'Structure', road_section:'Road Section',
+  drainage:'Drainage', element:'Element', other:'Other'
+};
+function typeColor(type){return _TYPE_COLORS[type]||'#64748b';}
+function typeLabel(type){return _TYPE_LABELS[type]||type;}
 
 async function saveToProject(){
   if(identifiedElements.length===0){flash('No elements to save — drop some pins first','#f59e0b');return;}

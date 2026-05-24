@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block title %}{{ wtg.name }} – King Rocks QA{% endblock %}
+{% block title %}{{ wtg.name }} – {{ active_project.name if active_project else 'QA Manager' }}{% endblock %}
 {% block page_title %}{{ wtg.name }}{% endblock %}
 {% block page_sub %}Geotechnical QA Tracker · {{ wtg.completion_pct }}% Complete{% endblock %}
 
@@ -31,9 +31,10 @@
   </span>
 </div>
 
-<div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+<div class="grid grid-cols-1 {% if is_wind_farm %}xl:grid-cols-2{% endif %} gap-6">
 
-  <!-- ── LEFT: Interactive Hardstand Map ──────────────────────────── -->
+{% if is_wind_farm %}
+  <!-- ── LEFT: Interactive Hardstand Map (Wind Farm only) ─────────── -->
   <div class="card">
     <h2 class="font-bold text-slate-800 mb-1">Hardstand Layout</h2>
     <p class="text-xs text-slate-400 mb-4">Click an area to view its QA tests</p>
@@ -155,6 +156,7 @@
       <i class="fa-solid fa-hand-pointer mr-1"></i>Click a coloured area to view tests
     </p>
   </div>
+{% endif %}
 
   <!-- ── RIGHT: Test Panel ─────────────────────────────────────────── -->
   <div>

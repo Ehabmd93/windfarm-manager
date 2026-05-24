@@ -34,7 +34,7 @@
 <!-- Header -->
 <div class="bg-gradient-to-r from-green-800 to-green-600 text-white rounded-2xl p-6 mb-6 flex items-center justify-between">
   <div>
-    <p class="text-xs text-green-300 font-semibold uppercase tracking-wider mb-1">CBOP · King Rocks Wind Farm</p>
+    <p class="text-xs text-green-300 font-semibold uppercase tracking-wider mb-1">{{ active_project.name if active_project else 'QA Manager' }}</p>
     <h2 class="text-xl font-bold">{{ test.display_name }}</h2>
     <p class="text-green-200 text-sm mt-1">{{ wtg.name }} · {{ area.label }}</p>
   </div>

@@ -429,22 +429,21 @@ body { font-family: Arial, Helvetica, sans-serif; background:#e8edf2; min-height
   <!-- ══ COMPANY HEADER ═══════════════════════════════════════════ -->
   <div class="doc-header">
 
-    <!-- Logo box — Lucas TCS logo (replace lucas_logo.svg with your PNG for exact match) -->
+    <!-- Logo box — Company logo (replace lucas_logo.png with your company logo) -->
     <div class="hdr-logo-box">
       <img src="{{ url_for('static', filename='img/lucas_logo.png') }}"
-           onerror="this.src='{{ url_for('static', filename='img/lucas_logo.svg') }}'"
-           alt="Lucas Total Contract Solutions"
+           onerror="this.style.display='none'"
+           alt="Company Logo"
            style="width:190px; height:auto; display:block;"/>
     </div>
 
     <!-- Title box -->
     <div class="hdr-title-box">
       <div class="hdr-form-title">Proof Roll Record</div>
-      <div class="hdr-form-sub">King Rocks Wind Farm — QA Manager</div>
+      <div class="hdr-form-sub">{{ active_project.name if active_project else 'QA Manager' }}</div>
       <div class="hdr-form-sub2">{{ test.display_name }} &nbsp;·&nbsp; {{ area.label }}</div>
       <div style="margin-top:8px;display:flex;align-items:center;gap:8px;">
-        <span style="background:#f59e0b;color:#1a1a1a;font-size:9px;font-weight:800;padding:2px 8px;border-radius:10px;letter-spacing:.06em;text-transform:uppercase;">CBOP</span>
-        <span style="color:#475569;font-size:10px;">King Rocks Wind Farm</span>
+        <span style="color:#475569;font-size:10px;">{{ active_project.name if active_project else '' }}</span>
       </div>
     </div>
 
@@ -639,7 +638,7 @@ body { font-family: Arial, Helvetica, sans-serif; background:#e8edf2; min-height
             <div class="sig-num" style="background:{{ '#1d4ed8' if sig.role=='tcs_rep' else '#16a34a' }};">{{ loop.index }}</div>
             <div>
               <div class="sig-role" style="color:{{ '#1e40af' if sig.role=='tcs_rep' else '#15803d' }};">
-                {{ 'Lucas TCS Representative' if sig.role=='tcs_rep' else 'Client Representative' }}
+                {{ 'QA Representative' if sig.role=='tcs_rep' else 'Client Representative' }}
               </div>
             </div>
           </div>
@@ -686,7 +685,7 @@ body { font-family: Arial, Helvetica, sans-serif; background:#e8edf2; min-height
 
       {% else %}
         {# No signatures yet — show empty boxes #}
-        {% for role, label, color, bg in [('tcs_rep','Lucas TCS Representative','#1d4ed8','#eff6ff'),('client_rep','Client Representative','#16a34a','#f0fdf4')] %}
+        {% for role, label, color, bg in [('tcs_rep','QA Representative','#1d4ed8','#eff6ff'),('client_rep','Client Representative','#16a34a','#f0fdf4')] %}
         <div class="sig-box">
           <div class="sig-box-head" style="background:{{ bg }};">
             <div class="sig-num" style="background:{{ color }};">{{ loop.index }}</div>
@@ -716,11 +715,11 @@ body { font-family: Arial, Helvetica, sans-serif; background:#e8edf2; min-height
     <div class="doc-footer">
       <div class="footer-logo">
       <img src="{{ url_for('static', filename='img/lucas_logo.png') }}"
-           onerror="this.src='{{ url_for('static', filename='img/lucas_logo.svg') }}'"
-           alt="Lucas TCS" style="height:26px;width:auto;display:block;"/>
+           onerror="this.style.display='none'"
+           alt="Company Logo" style="height:26px;width:auto;display:block;"/>
     </div>
       <div class="footer-center">
-        King Rocks Wind Farm QA Manager &nbsp;·&nbsp; CBOP<br/>
+        {{ active_project.name if active_project else 'QA Manager' }}<br/>
         <strong>Uncontrolled When Printed</strong> &nbsp;·&nbsp; Generated {{ pr.entered_at.strftime('%d %b %Y') if pr.entered_at else '' }}
       </div>
       <div class="footer-right">
@@ -744,8 +743,8 @@ body { font-family: Arial, Helvetica, sans-serif; background:#e8edf2; min-height
   <!-- Mini branded header on each photo page -->
   <div class="pp-header">
     <img src="{{ url_for('static', filename='img/lucas_logo.png') }}"
-         onerror="this.src='{{ url_for('static', filename='img/lucas_logo.svg') }}'"
-         alt="Lucas TCS" class="pp-logo"/>
+         onerror="this.style.display='none'"
+         alt="Company Logo" class="pp-logo"/>
     <div class="pp-header-mid">
       <span class="pp-title">Proof Roll Record — Photo Appendix</span>
       <span class="pp-subtitle">

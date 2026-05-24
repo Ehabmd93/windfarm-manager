@@ -309,8 +309,8 @@ td.sig-cell { padding:2pt; }
         <ellipse cx="20" cy="8" rx="1.5" ry="5.5" transform="rotate(105,20,14)"/>
         <ellipse cx="20" cy="8" rx="1.5" ry="5.5" transform="rotate(225,20,14)"/>
       </svg>
-      <div class="logo-text">CBOP</div>
-      <div class="logo-sub">King Rocks Wind Farm</div>
+      <div class="logo-text">{{ record.engineer_company or (active_project.name[:8] if active_project else 'QA') }}</div>
+      <div class="logo-sub">{{ active_project.name if active_project else (record.wtg.project.name if record.wtg and record.wtg.project else 'QA Manager') }}</div>
     </div>
     <div class="hdr-title">
       <h1>Inspection &amp; Test Plan</h1>
@@ -361,9 +361,9 @@ td.sig-cell { padding:2pt; }
     <tbody>
       <tr>
         <td class="label-cell">Project</td>
-        <td class="wide-value">King Rocks Wind Farm</td>
+        <td class="wide-value">{{ active_project.name if active_project else (record.wtg.project.name if record.wtg and record.wtg.project else '') }}</td>
         <td class="label-cell">Client</td>
-        <td class="value-cell">Vestas</td>
+        <td class="value-cell">{{ record.client_company or '' }}</td>
       </tr>
       <tr>
         <td class="label-cell">Works</td>
@@ -478,7 +478,7 @@ td.sig-cell { padding:2pt; }
       </tr>
       <tr class="tbl-hdr-2">
         <th></th><th></th><th></th><th></th><th></th>
-        <th>Lucas TCS</th>
+        <th>{{ record.engineer_company or 'QA Rep' }}</th>
         <th>Client</th>
         <th></th><th></th>
       </tr>
@@ -530,7 +530,7 @@ td.sig-cell { padding:2pt; }
         {% if s and s.lucas_complete %}
         <div class="sig-signed">
           {% if s.lucas_signature %}<img src="{{ s.lucas_signature }}" alt="sig"/>{% endif %}
-          <div class="sig-who">✓ {{ record.engineer_name or 'Lucas TCS' }}</div>
+          <div class="sig-who">✓ {{ record.engineer_name or '' }}</div>
           <div class="sig-when">
             {% if s.lucas_signed_at %}{{ s.lucas_signed_at.strftime('%d %b %Y %H:%M') }}{% endif %}
           </div>
@@ -597,7 +597,7 @@ td.sig-cell { padding:2pt; }
         {% if s and s.lucas_complete %}
         <div class="sig-signed">
           {% if s.lucas_signature %}<img src="{{ s.lucas_signature }}" alt="sig"/>{% endif %}
-          <div class="sig-who">✓ {{ record.engineer_name or 'Lucas TCS' }}</div>
+          <div class="sig-who">✓ {{ record.engineer_name or '' }}</div>
           <div class="sig-when">{% if s.lucas_signed_at %}{{ s.lucas_signed_at.strftime('%d %b %Y %H:%M') }}{% endif %}</div>
           {% if s.lucas_comments %}<div class="sig-when" style="font-style:italic;">{{ s.lucas_comments }}</div>{% endif %}
         </div>
@@ -684,7 +684,7 @@ td.sig-cell { padding:2pt; }
       <!-- Engineer sign-off -->
       <tr>
         <td>{{ record.engineer_name or '' }}</td>
-        <td>{{ record.engineer_company or 'CBOP' }}</td>
+        <td>{{ record.engineer_company or '' }}</td>
         <td class="ack-sig-cell">
           {% if record.engineer_signature %}
           <img src="{{ record.engineer_signature }}" class="ack-sig-img" alt="engineer sig"/>
@@ -695,7 +695,7 @@ td.sig-cell { padding:2pt; }
       <!-- Client sign-off -->
       <tr>
         <td>{{ record.client_name or '' }}</td>
-        <td>{{ record.client_company or 'Vestas' }}</td>
+        <td>{{ record.client_company or '' }}</td>
         <td class="ack-sig-cell">
           {% if record.client_signature %}
           <img src="{{ record.client_signature }}" class="ack-sig-img" alt="client sig"/>

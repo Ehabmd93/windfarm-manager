@@ -106,7 +106,7 @@
 <div style="background:linear-gradient(135deg,#0f2942 0%,#1e4976 100%);border-radius:16px;padding:18px 20px;margin-bottom:14px;">
   <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
     <div>
-      <p style="color:#93c5fd;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;margin:0 0 5px;">CBOP · King Rocks Wind Farm</p>
+      <p style="color:#93c5fd;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;margin:0 0 5px;">{{ active_project.name if active_project else 'QA Manager' }}</p>
       <h2 style="color:white;font-size:20px;font-weight:800;margin:0 0 4px;line-height:1.2;">Proof Roll Record</h2>
       <p style="color:#bfdbfe;font-size:12px;margin:0;">{{ test.display_name }} · {{ area.label }}</p>
     </div>
@@ -286,13 +286,13 @@
     </div>
     <div class="sb" style="display:flex;flex-direction:column;gap:14px;">
 
-      <!-- ── Signatory 1: Lucas TCS ── -->
+      <!-- ── Signatory 1: QA Representative ── -->
       <div class="sig-card sig-card-tcs">
         <div class="sig-head sig-head-tcs">
           <div class="sig-num" style="background:#1d4ed8;">1</div>
           <div>
-            <p style="font-size:13px;font-weight:700;color:#1e40af;margin:0;">Lucas TCS Representative</p>
-            <p style="font-size:11px;color:#64748b;margin:2px 0 0;">CBOP Quality Assurance</p>
+            <p style="font-size:13px;font-weight:700;color:#1e40af;margin:0;">QA Representative</p>
+            <p style="font-size:11px;color:#64748b;margin:2px 0 0;">{{ active_project.name if active_project else 'Quality Assurance' }}</p>
           </div>
         </div>
         <input type="hidden" name="sig_role_1" value="tcs_rep"/>
@@ -306,7 +306,7 @@
           <div>
             <label class="fl">Company</label>
             <input type="text" name="sig_company_1" class="fi"
-              value="{{ current_user.company if current_user.can_enter_data() else 'CBOP' }}"
+              value="{{ current_user.company if current_user.company else '' }}"
               placeholder="Company"/>
           </div>
           <div>

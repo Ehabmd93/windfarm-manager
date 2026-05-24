@@ -64,7 +64,7 @@
   <!-- Document header -->
   <div style="background:linear-gradient(135deg,#0f2942,#1e4976);border-radius:16px 16px 0 0;padding:20px 24px;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
     <div>
-      <p style="color:#93c5fd;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;margin:0 0 5px;">CBOP · King Rocks Wind Farm</p>
+      <p style="color:#93c5fd;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;margin:0 0 5px;">{{ active_project.name if active_project else 'QA Manager' }}</p>
       <h1 style="color:white;font-size:22px;font-weight:800;margin:0 0 4px;">Proof Roll Record</h1>
       <p style="color:#bfdbfe;font-size:13px;margin:0;">{{ test.display_name }} · {{ area.label }}</p>
     </div>
@@ -251,7 +251,7 @@
           <div style="padding:10px 14px;display:flex;align-items:center;gap:8px;background:{{ '#eff6ff' if sig.role=='tcs_rep' else '#f0fdf4' }};border-bottom:1px solid {{ '#dbeafe' if sig.role=='tcs_rep' else '#dcfce7' }};">
             <div style="width:26px;height:26px;border-radius:50%;background:{{ '#1d4ed8' if sig.role=='tcs_rep' else '#16a34a' }};color:white;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;flex-shrink:0;">{{ loop.index }}</div>
             <p style="font-size:12px;font-weight:700;color:{{ '#1e40af' if sig.role=='tcs_rep' else '#15803d' }};margin:0;">
-              {{ 'Lucas TCS Representative' if sig.role=='tcs_rep' else 'Client Representative' }}
+              {{ 'QA Representative' if sig.role=='tcs_rep' else 'Client Representative' }}
             </p>
           </div>
           <div class="sig-row">
