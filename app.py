@@ -237,8 +237,14 @@ def invite_accept(token):
         state = 'expired'
 
     else:
-        # status == 'pending' — check whether it has since expired
-        if invite.expires_at and invite.expires_at < datetime.now(timezone.utc):
+        # status == 'pending' — check whether it has since expired.
+        # SQLite returns naive datetimes; PostgreSQL returns aware ones.
+        # Normalise expires_at to UTC-aware before comparing.
+        now = datetime.now(timezone.utc)
+        expires_at = invite.expires_at
+        if expires_at is not None and expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if expires_at is not None and expires_at < now:
             try:
                 invite.status = 'expired'
                 db.session.commit()
