@@ -3989,64 +3989,87 @@ def _user_can_sign(project_id):
 
 # ─── Safe column migrations ───────────────────────────────────────────────────
 def run_migrations():
+    """Add missing columns to existing tables.
+
+    Compatible with both SQLite (local dev) and PostgreSQL (production).
+    Never uses ADD COLUMN IF NOT EXISTS — SQLite rejects that syntax.
+    Instead, each column is checked via SQLAlchemy Inspector before being added.
+    """
     try:
         with app.app_context():
+            from sqlalchemy import inspect as _sa_inspect, text as _sa_text
+
+            insp           = _sa_inspect(db.engine)
+            existing_tables = set(insp.get_table_names())
+
+            # (table, new_column_name, column_type_sql)
+            # No database-side DEFAULTs here — Python-model defaults cover new rows;
+            # explicit UPDATE backfills (below) cover pre-existing rows.
+            cols_to_add = [
+                # ── users ───────────────────────────────────────────────────────
+                ("users", "position",            "VARCHAR(100)"),
+                ("users", "avatar_color",        "VARCHAR(20)"),
+                # Phase 1 identity / security fields
+                ("users", "is_active",           "BOOLEAN"),   # backfilled → 1 below
+                ("users", "email_verified",      "BOOLEAN"),
+                ("users", "email_verified_at",   "TIMESTAMP"),
+                ("users", "last_login_at",       "TIMESTAMP"),
+                ("users", "password_changed_at", "TIMESTAMP"),
+                ("users", "failed_login_count",  "INTEGER"),   # backfilled → 0 below
+                ("users", "locked_until",        "TIMESTAMP"),
+                # ── itp_item_statuses ────────────────────────────────────────────
+                ("itp_item_statuses",  "client_action", "VARCHAR(50)"),
+                # ── itp_client_invites ────────────────────────────────────────────
+                ("itp_client_invites", "expires_at",  "TIMESTAMP"),
+                ("itp_client_invites", "is_revoked",  "BOOLEAN"),
+                ("itp_client_invites", "revoked_at",  "TIMESTAMP"),
+                # ── itp_records ──────────────────────────────────────────────────
+                ("itp_records", "revision",         "INTEGER"),
+                ("itp_records", "reopened_at",      "TIMESTAMP"),
+                ("itp_records", "reopened_by_id",   "INTEGER"),
+                ("itp_records", "reopen_reason",    "TEXT"),
+            ]
+
             with db.engine.connect() as conn:
-                cols_to_add = [
-                    ("users",              "position",            "VARCHAR(100) DEFAULT ''"),
-                    ("users",              "avatar_color",        "VARCHAR(20)  DEFAULT '#4f46e5'"),
-                    # Phase 1: identity / security fields on users
-                    # is_active DEFAULT TRUE so that existing accounts remain accessible.
-                    ("users",              "is_active",           "BOOLEAN DEFAULT TRUE"),
-                    ("users",              "email_verified",      "BOOLEAN DEFAULT FALSE"),
-                    ("users",              "email_verified_at",   "TIMESTAMP"),
-                    ("users",              "last_login_at",       "TIMESTAMP"),
-                    ("users",              "password_changed_at", "TIMESTAMP"),
-                    ("users",              "failed_login_count",  "INTEGER DEFAULT 0"),
-                    ("users",              "locked_until",        "TIMESTAMP"),
-                    # ITP extended client review action
-                    ("itp_item_statuses",  "client_action",       "VARCHAR(50)"),
-                    # ITP client invite expiry + revocation
-                    ("itp_client_invites", "expires_at",          "TIMESTAMP"),
-                    ("itp_client_invites", "is_revoked",          "BOOLEAN DEFAULT FALSE"),
-                    ("itp_client_invites", "revoked_at",          "TIMESTAMP"),
-                    # ITP record reopen / revision tracking
-                    ("itp_records",        "revision",            "INTEGER DEFAULT 0"),
-                    ("itp_records",        "reopened_at",         "TIMESTAMP"),
-                    ("itp_records",        "reopened_by_id",      "INTEGER"),
-                    ("itp_records",        "reopen_reason",       "TEXT"),
-                ]
                 for table, col, typedef in cols_to_add:
+                    if table not in existing_tables:
+                        continue   # table not yet created; db.create_all() handles it
+                    existing_cols = {c["name"] for c in insp.get_columns(table)}
+                    if col in existing_cols:
+                        continue   # already present — nothing to do
                     try:
-                        conn.execute(db.text(
-                            f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col} {typedef}"
+                        conn.execute(_sa_text(
+                            f"ALTER TABLE {table} ADD COLUMN {col} {typedef}"
                         ))
                         conn.commit()
                     except Exception:
                         try: conn.rollback()
                         except Exception: pass
 
-                # ── Backfill is_active so no existing user is locked out ──────
-                # Flask-Login checks user.is_active before allowing login;
-                # NULL evaluates as falsy and would block existing accounts.
-                try:
-                    conn.execute(db.text(
-                        "UPDATE users SET is_active = TRUE WHERE is_active IS NULL"
-                    ))
-                    conn.commit()
-                except Exception:
-                    try: conn.rollback()
-                    except Exception: pass
+                # ── Backfill is_active → 1 for every pre-existing user row ──────
+                # Flask-Login evaluates user.is_active before allowing login.
+                # A NULL value is falsy and would silently block every existing account.
+                # Use integer 1 (not TRUE) so the statement works on SQLite and Postgres.
+                if 'users' in existing_tables:
+                    try:
+                        conn.execute(_sa_text(
+                            "UPDATE users SET is_active = 1 WHERE is_active IS NULL"
+                        ))
+                        conn.commit()
+                    except Exception:
+                        try: conn.rollback()
+                        except Exception: pass
 
-                # ── Backfill failed_login_count null → 0 ────────────────────
-                try:
-                    conn.execute(db.text(
-                        "UPDATE users SET failed_login_count = 0 WHERE failed_login_count IS NULL"
-                    ))
-                    conn.commit()
-                except Exception:
-                    try: conn.rollback()
-                    except Exception: pass
+                    # ── Backfill failed_login_count NULL → 0 ────────────────────
+                    try:
+                        conn.execute(_sa_text(
+                            "UPDATE users SET failed_login_count = 0"
+                            " WHERE failed_login_count IS NULL"
+                        ))
+                        conn.commit()
+                    except Exception:
+                        try: conn.rollback()
+                        except Exception: pass
 
     except Exception:
         pass  # migration errors must never crash startup
