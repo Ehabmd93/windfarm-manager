@@ -2126,7 +2126,10 @@ def api_edit_team_member(pid, mid):
     company_id     = None
     company_name   = ''
     if company_id_raw:
-        company_id = int(company_id_raw)
+        try:
+            company_id = int(company_id_raw)
+        except (ValueError, TypeError):
+            return jsonify({'error': 'Invalid company_id.'}), 400
         co = ProjectCompany.query.filter_by(id=company_id, project_id=pid).first()
         if co is None:
             return jsonify({'error': 'Company not found or does not belong to this project.'}), 400
