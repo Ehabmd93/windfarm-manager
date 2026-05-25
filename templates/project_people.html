@@ -403,6 +403,21 @@
     </div>
   {% endif %}
 
+  <!-- ── No people at all ─────────────────────────────── -->
+  {% if members|length == 0 %}
+  <div style="background:#fff;border-radius:16px;border:2px dashed #e2e8f0;padding:40px 20px;
+              text-align:center;color:#94a3b8;margin-bottom:20px;">
+    <i class="fa-solid fa-users" style="font-size:28px;margin-bottom:10px;display:block;opacity:.4;"></i>
+    <p style="font-size:14px;font-weight:700;color:#64748b;margin:0 0 4px;">No people added yet.</p>
+    {% if can_manage %}
+    <p style="font-size:12px;color:#94a3b8;margin:0 0 14px;">Add project team members to manage access, invite status and signing permissions.</p>
+    <button onclick="openAddMember()" class="btn-primary" style="font-size:12px;padding:8px 16px;">
+      <i class="fa-solid fa-user-plus"></i> Add person
+    </button>
+    {% endif %}
+  </div>
+  {% endif %}
+
   <!-- ── Unassigned members ─────────────────────────────── -->
   {% set unassigned = members|selectattr('company_id', 'none')|list %}
   {% if unassigned %}
@@ -803,7 +818,7 @@ async function revokeInvite(btn) {
   location.reload();
 }
 
-/* ── Copy new invite link — reads ID from data-* attribute ── */
+/* ── Generate new invite link — reads ID from data-* attribute ── */
 async function copyInviteLink(btn) {
   if (!_requireManage()) return;
   const inviteId = btn.dataset.iid;
