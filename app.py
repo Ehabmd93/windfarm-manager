@@ -2285,10 +2285,10 @@ def api_revoke_invite(pid, invite_id):
 @app.route('/projects/<int:pid>/team/invites/<int:invite_id>/copy-link', methods=['POST'])
 @login_required
 def api_copy_invite_link(pid, invite_id):
-    """AJAX — rotate token and return a fresh invite URL for copying.
+    """AJAX — generate a new invite link (rotate token) and return the URL.
 
-    Raw tokens are never stored, so we must rotate to produce a new link.
-    The old token (wherever it was) becomes invalid immediately.
+    Raw tokens are never stored, so a new token must be generated each time.
+    The previous token becomes invalid immediately upon rotation.
     """
     if not _validate_csrf_token():
         return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
@@ -2310,7 +2310,7 @@ def api_copy_invite_link(pid, invite_id):
     _base      = (os.environ.get('APP_URL') or request.host_url.rstrip('/')).rstrip('/')
     invite_url = f"{_base}/invite/{raw_token}"
 
-    log_audit('user_invite_link_copied', project_id=pid, actor=current_user,
+    log_audit('user_invite_link_generated', project_id=pid, actor=current_user,
               entity_type='user_invite', entity_id=invite.id,
               entity_label=invite.email)
     db.session.commit()
