@@ -2400,10 +2400,22 @@ def api_element(eid):
         el.element_type = data['element_type']
     if 'group_id' in data:
         gid = data['group_id']
-        el.group_id = int(gid) if gid else None
+        if gid:
+            grp = WTGGroup.query.get(int(gid))
+            if grp is None or grp.project_id != el.project_id:
+                return jsonify({'error': 'Invalid group_id for this project'}), 400
+            el.group_id = grp.id
+        else:
+            el.group_id = None
     if 'work_package_id' in data:
         wpid = data['work_package_id']
-        el.work_package_id = int(wpid) if wpid else None
+        if wpid:
+            wp_ref = WorkPackage.query.get(int(wpid))
+            if wp_ref is None or wp_ref.project_id != el.project_id:
+                return jsonify({'error': 'Invalid work_package_id for this project'}), 400
+            el.work_package_id = wp_ref.id
+        else:
+            el.work_package_id = None
     db.session.commit()
     return jsonify({'id': el.id, 'name': el.name, 'element_type': el.element_type,
                     'element_type_label': el.element_type_label,
@@ -2502,7 +2514,14 @@ def api_work_package(wpid):
     if 'icon' in data:
         wp.icon = data['icon']
     if 'group_id' in data:
-        wp.group_id = int(data['group_id']) if data['group_id'] else None
+        gid = data['group_id']
+        if gid:
+            grp = WTGGroup.query.get(int(gid))
+            if grp is None or grp.project_id != wp.project_id:
+                return jsonify({'error': 'Invalid group_id for this project'}), 400
+            wp.group_id = grp.id
+        else:
+            wp.group_id = None
     db.session.commit()
     return jsonify({'id': wp.id, 'name': wp.name, 'color': wp.color, 'icon': wp.icon,
                     'group_id': wp.group_id})
