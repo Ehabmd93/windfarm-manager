@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% block title %}People & Companies — {{ proj.name }}{% endblock %}
-{% block page_title %}People & Companies{% endblock %}
-{% block page_sub %}{{ proj.name }} · Team Structure{% endblock %}
+{% block title %}People & Access — {{ proj.name }}{% endblock %}
+{% block page_title %}People & Access{% endblock %}
+{% block page_sub %}{{ proj.name }} · Project access, roles and invite status{% endblock %}
 
 {% block head %}
 <style>
@@ -45,6 +45,9 @@
     border-radius:99px;font-size:10px;font-weight:700;
     background:#eff6ff;color:#2563eb;
   }
+  .user-verified   { background:#dcfce7;color:#15803d; }
+  .user-noverify   { background:#fef9c3;color:#92400e; }
+  .no-access-badge { background:#f1f5f9;color:#64748b; }
   .member-actions {
     display:flex;align-items:center;gap:6px;margin-top:8px;flex-wrap:wrap;
   }
@@ -116,63 +119,93 @@
     </div>
 
     <div class="member-body">
-      <!-- Name / position / role / can-sign -->
+      {# ── Name / position / role pills ── #}
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         <span style="font-weight:700;color:#1e293b;font-size:13px;">{{ m.name }}</span>
-        {% if m.position %}<span style="font-size:11px;color:#94a3b8;">· {{ m.position }}</span>{% endif %}
+        {% if m.position %}
+          <span style="font-size:11px;color:#94a3b8;">{{ m.position }}</span>
+        {% endif %}
         <span class="tag-pill" style="background:{{ m.role_color }}15;color:{{ m.role_color }};">
-          {{ m.role_label }}
+          <i class="fa-solid {{ m.role_icon }}" style="font-size:8px;"></i> {{ m.role_label }}
         </span>
         {% if m.can_sign %}
         <span class="tag-pill" style="background:#dcfce7;color:#16a34a;">
-          <i class="fa-solid fa-signature" style="font-size:8px;"></i> Can Sign
+          <i class="fa-solid fa-pen-nib" style="font-size:8px;"></i> Can Sign
         </span>
         {% endif %}
       </div>
 
-      <!-- Email / phone -->
-      {% if m.email %}
-      <div style="font-size:11px;color:#64748b;margin-top:3px;">
-        <a href="mailto:{{ m.email }}" style="color:#2563eb;text-decoration:none;">{{ m.email }}</a>
-        {% if m.phone %} · {{ m.phone }}{% endif %}
+      {# ── Contact line: email · phone ── #}
+      {% if m.email or m.phone %}
+      <div style="font-size:11px;color:#64748b;margin-top:3px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        {% if m.email %}
+          <span><i class="fa-solid fa-envelope" style="font-size:9px;color:#94a3b8;margin-right:3px;"></i><a href="mailto:{{ m.email }}" style="color:#2563eb;text-decoration:none;">{{ m.email }}</a></span>
+        {% endif %}
+        {% if m.phone %}
+          <span><i class="fa-solid fa-phone" style="font-size:9px;color:#94a3b8;margin-right:3px;"></i>{{ m.phone }}</span>
+        {% endif %}
       </div>
       {% endif %}
 
-      <!-- Status badges: linked-user status + invite status -->
-      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:5px;">
-        {% if m.user_id %}
-        <span class="user-badge">
-          <i class="fa-solid fa-circle-check" style="font-size:9px;"></i> Active User
-        </span>
+      {# ── Access / invite status badges ── #}
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px;">
+
+        {# Account status for linked users #}
+        {% if m.user_id and m.user %}
+          {% if m.user.email_verified %}
+          <span class="user-badge user-verified">
+            <i class="fa-solid fa-circle-check" style="font-size:9px;"></i> Verified account
+          </span>
+          {% else %}
+          <span class="user-badge user-noverify">
+            <i class="fa-solid fa-circle-exclamation" style="font-size:9px;"></i> Email not verified
+          </span>
+          {% endif %}
+          {% if m.user.last_login_at %}
+          <span style="font-size:10px;color:#94a3b8;">
+            <i class="fa-solid fa-clock-rotate-left" style="font-size:8px;"></i>
+            Last login {{ m.user.last_login_at.strftime('%d %b %Y') }}
+          </span>
+          {% endif %}
+        {% elif m.user_id %}
+          <span class="user-badge">
+            <i class="fa-solid fa-circle-check" style="font-size:9px;"></i> Linked account
+          </span>
         {% endif %}
 
+        {# Invite status #}
         {% if eff_status == 'pending' %}
         <span class="invite-badge pending">
           <i class="fa-solid fa-clock" style="font-size:9px;"></i>
-          Pending Invite
-          {% if inv and inv.expires_at %} · expires {{ inv.expires_at.strftime('%d %b %Y') }}{% endif %}
+          Invite pending{% if inv and inv.expires_at %} · expires {{ inv.expires_at.strftime('%d %b') }}{% endif %}
         </span>
         {% elif eff_status == 'accepted' %}
         <span class="invite-badge accepted">
-          <i class="fa-solid fa-envelope-open-text" style="font-size:9px;"></i> Accepted
+          <i class="fa-solid fa-envelope-open-text" style="font-size:9px;"></i> Invite accepted
         </span>
         {% elif eff_status == 'revoked' %}
         <span class="invite-badge revoked">
-          <i class="fa-solid fa-ban" style="font-size:9px;"></i> Invite Revoked
+          <i class="fa-solid fa-ban" style="font-size:9px;"></i> Invite revoked
         </span>
         {% elif eff_status == 'expired' %}
         <span class="invite-badge expired">
-          <i class="fa-solid fa-triangle-exclamation" style="font-size:9px;"></i> Invite Expired
+          <i class="fa-solid fa-triangle-exclamation" style="font-size:9px;"></i> Invite expired
         </span>
-        {% elif m.email and not inv %}
-        <span style="font-size:10px;color:#94a3b8;font-style:italic;">No invite sent</span>
+        {% elif not m.user_id and m.email %}
+        <span class="no-access-badge invite-badge">
+          <i class="fa-solid fa-envelope" style="font-size:9px;"></i> No invite sent
+        </span>
+        {% elif not m.user_id and not m.email %}
+        <span class="no-access-badge invite-badge">
+          <i class="fa-solid fa-user-slash" style="font-size:9px;"></i> No portal access
+        </span>
         {% endif %}
-      </div>
+
+      </div>{# /badges #}
 
       {#
         Action buttons: only rendered when can_manage is True.
         IDs go in data-* attributes; JS reads them via element.dataset.
-        This is correct for any name content including quotes and apostrophes.
       #}
       {% if can_manage %}
       <div class="member-actions">
@@ -180,17 +213,17 @@
         <button class="btn-xs btn-xs-primary"
                 data-iid="{{ inv.id }}" data-mname="{{ m.name }}"
                 onclick="resendInvite(this)">
-          <i class="fa-solid fa-paper-plane" style="font-size:9px;"></i> Resend Invite
+          <i class="fa-solid fa-paper-plane" style="font-size:9px;"></i> Resend invite
         </button>
         <button class="btn-xs btn-xs-amber"
                 data-iid="{{ inv.id }}"
                 onclick="copyInviteLink(this)">
-          <i class="fa-solid fa-link" style="font-size:9px;"></i> Copy New Link
+          <i class="fa-solid fa-rotate-right" style="font-size:9px;"></i> Generate new link
         </button>
         <button class="btn-xs btn-xs-danger"
                 data-iid="{{ inv.id }}" data-mname="{{ m.name }}"
                 onclick="revokeInvite(this)">
-          <i class="fa-solid fa-ban" style="font-size:9px;"></i> Revoke
+          <i class="fa-solid fa-ban" style="font-size:9px;"></i> Revoke invite
         </button>
         {% endif %}
         <button class="btn-xs btn-xs-gray"
@@ -208,10 +241,10 @@
         <button class="btn-xs btn-xs-danger"
                 data-mid="{{ m.id }}" data-mname="{{ m.name }}"
                 onclick="deleteMember(this)">
-          <i class="fa-solid fa-times" style="font-size:9px;"></i> Remove
+          <i class="fa-solid fa-user-minus" style="font-size:9px;"></i> Remove access
         </button>
       </div>
-      {% endif %}{# end can_manage — engineers see NO action buttons #}
+      {% endif %}{# end can_manage #}
 
     </div><!-- /member-body -->
   </div><!-- /member-top -->
@@ -223,12 +256,12 @@
   <!-- ── Page header ────────────────────────────────────────── -->
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
     <div>
-      <h2 style="font-size:22px;font-weight:800;color:#1e293b;margin:0;">People & Companies</h2>
+      <h2 style="font-size:22px;font-weight:800;color:#1e293b;margin:0;">People & Access</h2>
       <p style="color:#64748b;font-size:13px;margin-top:4px;">
         {% if can_manage %}
-          Manage all companies and personnel involved in <strong>{{ proj.name }}</strong>
+          Manage companies, project users, invite status and signing permissions for <strong>{{ proj.name }}</strong>
         {% else %}
-          Viewing team directory for <strong>{{ proj.name }}</strong>
+          View project companies, people, roles and signing permissions for <strong>{{ proj.name }}</strong>
         {% endif %}
       </p>
     </div>
@@ -253,25 +286,39 @@
     </div>
   </div>
 
-  <!-- ── Summary chips ─────────────────────────────────────── -->
-  {% set pending_count = invites_by_member.values()|selectattr('status','equalto','pending')|list|length %}
-  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:24px;">
-    <div style="background:#f0f7ff;border:1px solid #bfdbfe;border-radius:12px;padding:10px 16px;">
-      <div style="font-size:20px;font-weight:800;color:#1d4ed8;">{{ companies|length }}</div>
-      <div style="font-size:11px;color:#3b82f6;font-weight:600;">Companies</div>
+  <!-- ── Summary bar ───────────────────────────────────────── -->
+  {# Active users = team members with a linked user_id #}
+  {% set active_user_count  = members|selectattr('user_id')|list|length %}
+  {# Pending invites = usable (pending + not expired) #}
+  {% set pending_inv_count  = invites_by_member.values()|selectattr('is_usable')|list|length %}
+  {# Expired invites = status expired + pending-but-past-expiry #}
+  {% set hard_expired_count = invites_by_member.values()|selectattr('status','equalto','expired')|list|length %}
+  {% set soft_expired_count = invites_by_member.values()|selectattr('status','equalto','pending')|rejectattr('is_usable')|list|length %}
+  {% set expired_inv_count  = hard_expired_count + soft_expired_count %}
+  {% set can_sign_count     = members|selectattr('can_sign')|list|length %}
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:24px;">
+    <div style="background:#f0f7ff;border:1px solid #bfdbfe;border-radius:12px;padding:9px 16px;min-width:80px;">
+      <div style="font-size:18px;font-weight:800;color:#1d4ed8;line-height:1.2;">{{ companies|length }}</div>
+      <div style="font-size:10px;color:#3b82f6;font-weight:700;text-transform:uppercase;letter-spacing:.04em;">Companies</div>
     </div>
-    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:10px 16px;">
-      <div style="font-size:20px;font-weight:800;color:#16a34a;">{{ members|length }}</div>
-      <div style="font-size:11px;color:#22c55e;font-weight:600;">Team Members</div>
+    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:9px 16px;min-width:80px;">
+      <div style="font-size:18px;font-weight:800;color:#16a34a;line-height:1.2;">{{ active_user_count }}</div>
+      <div style="font-size:10px;color:#22c55e;font-weight:700;text-transform:uppercase;letter-spacing:.04em;">Active Users</div>
     </div>
-    <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:12px;padding:10px 16px;">
-      <div style="font-size:20px;font-weight:800;color:#d97706;">{{ members|selectattr('can_sign')|list|length }}</div>
-      <div style="font-size:11px;color:#f59e0b;font-weight:600;">Can Sign</div>
+    <div style="background:#ede9fe;border:1px solid #ddd6fe;border-radius:12px;padding:9px 16px;min-width:80px;">
+      <div style="font-size:18px;font-weight:800;color:#6d28d9;line-height:1.2;">{{ can_sign_count }}</div>
+      <div style="font-size:10px;color:#7c3aed;font-weight:700;text-transform:uppercase;letter-spacing:.04em;">Can Sign</div>
     </div>
-    {% if pending_count and can_manage %}
-    <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:10px 16px;">
-      <div style="font-size:20px;font-weight:800;color:#d97706;">{{ pending_count }}</div>
-      <div style="font-size:11px;color:#f59e0b;font-weight:600;">Pending Invites</div>
+    {% if pending_inv_count %}
+    <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:9px 16px;min-width:80px;">
+      <div style="font-size:18px;font-weight:800;color:#d97706;line-height:1.2;">{{ pending_inv_count }}</div>
+      <div style="font-size:10px;color:#f59e0b;font-weight:700;text-transform:uppercase;letter-spacing:.04em;">Pending Invites</div>
+    </div>
+    {% endif %}
+    {% if expired_inv_count %}
+    <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:9px 16px;min-width:80px;">
+      <div style="font-size:18px;font-weight:800;color:#dc2626;line-height:1.2;">{{ expired_inv_count }}</div>
+      <div style="font-size:10px;color:#ef4444;font-weight:700;text-transform:uppercase;letter-spacing:.04em;">Expired Invites</div>
     </div>
     {% endif %}
   </div>
@@ -327,16 +374,15 @@
           {{ _member_row(m, inv, eff_status, can_manage) }}
         {% endfor %}
       {% else %}
-        <div class="empty-state">
-          <i class="fa-solid fa-user-plus" style="font-size:20px;margin-bottom:8px;display:block;"></i>
-          No team members assigned to this company yet.
+        <div style="padding:16px 20px;font-size:12px;color:#94a3b8;">
+          No people assigned to this company yet.
           {% if can_manage %}
           <button data-company-id="{{ company.id }}"
                   onclick="openAddMember(parseInt(this.dataset.companyId))"
-                  style="display:inline-block;margin-top:8px;padding:5px 12px;background:#f0f4f8;
-                         border:1.5px solid #e2e8f0;border-radius:8px;font-size:12px;
+                  style="margin-left:10px;padding:3px 10px;background:#f0f4f8;
+                         border:1.5px solid #e2e8f0;border-radius:7px;font-size:11px;
                          font-weight:700;color:#4f46e5;cursor:pointer;">
-            Add Member Here
+            Add person
           </button>
           {% endif %}
         </div>
@@ -344,16 +390,14 @@
     </div>
     {% endfor %}
   {% else %}
-    <div style="background:#fff;border-radius:16px;border:2px dashed #e2e8f0;padding:48px 20px;
+    <div style="background:#fff;border-radius:16px;border:2px dashed #e2e8f0;padding:40px 20px;
                 text-align:center;color:#94a3b8;margin-bottom:20px;">
-      <i class="fa-solid fa-building" style="font-size:32px;margin-bottom:12px;display:block;"></i>
-      <p style="font-size:15px;font-weight:700;color:#64748b;margin:0 0 6px;">No companies yet</p>
-      <p style="font-size:13px;margin:0 0 16px;">
-        {% if can_manage %}Add the companies involved in this project (client, contractors, consultants, labs){% else %}No companies have been added to this project yet.{% endif %}
-      </p>
+      <i class="fa-solid fa-building" style="font-size:28px;margin-bottom:10px;display:block;opacity:.4;"></i>
+      <p style="font-size:14px;font-weight:700;color:#64748b;margin:0 0 4px;">No companies added yet.</p>
       {% if can_manage %}
-      <button onclick="openAddCompany()" class="btn-primary">
-        <i class="fa-solid fa-plus"></i> Add First Company
+      <p style="font-size:12px;margin:0 0 14px;color:#94a3b8;">Add the companies involved in this project — client, contractors, consultants, labs.</p>
+      <button onclick="openAddCompany()" class="btn-primary" style="font-size:12px;padding:8px 16px;">
+        <i class="fa-solid fa-plus"></i> Add company
       </button>
       {% endif %}
     </div>
@@ -727,7 +771,7 @@ async function deleteMember(btn) {
   if (!_requireManage()) return;
   const id   = btn.dataset.mid;
   const name = btn.dataset.mname;
-  if (!confirm(`Remove ${name} from the project?`)) return;
+  if (!confirm(`Remove access for ${name}? This will remove project access and revoke any pending invite.`)) return;
   const r = await fetch(`/projects/${PID}/team/${id}`, { method: 'DELETE', headers: {'X-CSRF-Token': CSRF_TOKEN} });
   const d = await r.json();
   if (d.ok) document.getElementById(`member-${id}`).remove();
@@ -739,7 +783,7 @@ async function resendInvite(btn) {
   if (!_requireManage()) return;
   const inviteId = btn.dataset.iid;
   const name     = btn.dataset.mname;
-  if (!confirm(`Resend invite to ${name}? A new email will be sent and the previous link will stop working.`)) return;
+  if (!confirm(`Resend invite to ${name}? A new email will be sent and the previous invite link will stop working.`)) return;
   const r = await fetch(`/projects/${PID}/team/invites/${inviteId}/resend`, { method: 'POST', headers: {'X-CSRF-Token': CSRF_TOKEN} });
   const d = await r.json();
   if (!d.ok) { alert(d.error); return; }
@@ -763,12 +807,13 @@ async function revokeInvite(btn) {
 async function copyInviteLink(btn) {
   if (!_requireManage()) return;
   const inviteId = btn.dataset.iid;
+  if (!confirm('Generate a new invite link? The previous invite link will stop working.')) return;
   const r = await fetch(`/projects/${PID}/team/invites/${inviteId}/copy-link`, { method: 'POST', headers: {'X-CSRF-Token': CSRF_TOKEN} });
   const d = await r.json();
   if (!d.ok) { alert(d.error); return; }
   try {
     await navigator.clipboard.writeText(d.invite_url);
-    showToast('Link copied to clipboard');
+    showToast('New invite link copied');
   } catch (_) {
     prompt('Copy this invite link:', d.invite_url);
   }
