@@ -1154,8 +1154,12 @@ class UserInvite(db.Model):
         """True only if the invite can still be accepted right now."""
         if self.status != 'pending':
             return False
-        if self.expires_at and self.expires_at < datetime.now(timezone.utc):
-            return False
+        expires_at = self.expires_at
+        if expires_at is not None:
+            if expires_at.tzinfo is None:          # SQLite returns naive datetimes
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            if expires_at < datetime.now(timezone.utc):
+                return False
         return True
 
 
@@ -1192,6 +1196,10 @@ class PasswordResetToken(db.Model):
         """True only if the token can still be used to reset a password."""
         if self.used_at or self.revoked_at:
             return False
-        if self.expires_at and self.expires_at < datetime.now(timezone.utc):
-            return False
+        expires_at = self.expires_at
+        if expires_at is not None:
+            if expires_at.tzinfo is None:          # SQLite returns naive datetimes
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            if expires_at < datetime.now(timezone.utc):
+                return False
         return True
