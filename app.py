@@ -1295,6 +1295,13 @@ def documents_list():
     from flask import g
     proj = getattr(g, 'project', None)
 
+    # Non-admin users with no active project cannot see any documents or folders
+    if proj is None and current_user.role != 'admin':
+        return render_template('documents.html',
+                               docs=[], sub_folders=[], folder_tree=[],
+                               all_folders=[], current_folder=None,
+                               ancestors=[], folder_id=None, search='', total_count=0)
+
     folder_id = request.args.get('folder', type=int)
     search    = request.args.get('q', '').strip()
 
@@ -1431,6 +1438,9 @@ def document_upload():
         if not _validate_csrf_token():
             flash('Your session expired. Please try again.', 'danger')
             return redirect(request.url)
+        if proj is None and current_user.role != 'admin':
+            flash('No active project. Please select a project first.', 'danger')
+            return redirect(url_for('documents_list'))
         if proj and not _user_in_project(proj.id):
             abort(403)
         f = request.files.get('file')
@@ -1448,7 +1458,10 @@ def document_upload():
         folder_id_up = request.form.get('folder_id', type=int) or None
         if folder_id_up:
             upload_folder = DocumentFolder.query.get(folder_id_up)
-            if upload_folder and proj and upload_folder.project_id != proj.id:
+            if upload_folder is None:
+                flash('Folder not found.', 'danger')
+                return redirect(request.url)
+            if proj and upload_folder.project_id != proj.id:
                 flash('Invalid folder for this project.', 'danger')
                 return redirect(request.url)
 
@@ -1490,10 +1503,13 @@ def document_upload():
     # Pass folder context to upload page
     from flask import g as _g
     _proj = getattr(_g, 'project', None)
-    _fq   = DocumentFolder.query
-    if _proj:
-        _fq = _fq.filter_by(project_id=_proj.id)
-    upload_folders = _fq.order_by(DocumentFolder.name).all()
+    if _proj is None and current_user.role != 'admin':
+        upload_folders = []
+    else:
+        _fq = DocumentFolder.query
+        if _proj:
+            _fq = _fq.filter_by(project_id=_proj.id)
+        upload_folders = _fq.order_by(DocumentFolder.name).all()
     pre_folder     = request.args.get('folder', type=int)
     return render_template('document_upload.html',
                            upload_folders=upload_folders,
@@ -1508,13 +1524,15 @@ def document_upload_presign():
     """Return a presigned PUT URL so the browser can upload straight to R2."""
     if not _validate_csrf_token():
         return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
+    from flask import g
+    proj = getattr(g, 'project', None)
+    if proj is None and current_user.role != 'admin':
+        return jsonify({'error': 'No active project.'}), 403
     if not r2_storage.r2_enabled():
         return jsonify({'error': 'R2 not configured'}), 400
     data         = request.get_json(force=True) or {}
     filename     = data.get('filename', 'file')
     content_type = data.get('content_type', 'application/octet-stream')
-    from flask import g
-    proj = getattr(g, 'project', None)
     key  = r2_storage.make_key(filename, proj.id if proj else None)
     url  = r2_storage.presigned_upload_url(key, content_type)
     return jsonify({'upload_url': url, 'key': key})
@@ -1530,6 +1548,9 @@ def document_upload_complete():
         return redirect(url_for('document_upload'))
     from flask import g
     proj      = getattr(g, 'project', None)
+    if proj is None and current_user.role != 'admin':
+        flash('No active project. Please select a project first.', 'danger')
+        return redirect(url_for('document_upload'))
     if proj and not _user_in_project(proj.id):
         abort(403)
     file_key  = request.form.get('file_key', '').strip()
