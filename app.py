@@ -1304,8 +1304,10 @@ def documents_list():
     all_folders   = fq.order_by(DocumentFolder.name).all()
     folder_tree   = _build_folder_tree(all_folders)
 
-    # Current folder object
+    # Current folder object — verify it belongs to the active project
     current_folder = DocumentFolder.query.get(folder_id) if folder_id else None
+    if current_folder and proj and current_folder.project_id != proj.id:
+        abort(403)
     ancestors      = _folder_ancestors(current_folder) if current_folder else []
 
     # Sub-folders to show in the main panel
@@ -1343,14 +1345,25 @@ def documents_list():
 @app.route('/documents/folder/new', methods=['POST'])
 @login_required
 def folder_create():
+    if not _validate_csrf_token():
+        flash('Your session expired. Please try again.', 'danger')
+        return redirect(url_for('documents_list'))
     from flask import g
     proj      = getattr(g, 'project', None)
+    if proj and not _user_in_project(proj.id):
+        abort(403)
     name      = request.form.get('name', '').strip()
     parent_id = request.form.get('parent_id', type=int)
 
     if not name:
         flash('Folder name is required.', 'danger')
         return redirect(url_for('documents_list', folder=parent_id or ''))
+
+    # Verify parent folder belongs to the same project
+    if parent_id:
+        parent_folder = DocumentFolder.query.get(parent_id)
+        if parent_folder and proj and parent_folder.project_id != proj.id:
+            abort(403)
 
     folder = DocumentFolder(
         project_id = proj.id if proj else None,
@@ -1367,7 +1380,12 @@ def folder_create():
 @app.route('/documents/folder/<int:folder_id>/delete', methods=['POST'])
 @login_required
 def folder_delete(folder_id):
+    if not _validate_csrf_token():
+        flash('Your session expired. Please try again.', 'danger')
+        return redirect(url_for('documents_list'))
     folder = DocumentFolder.query.get_or_404(folder_id)
+    if folder.project_id and not _user_can_manage_project(folder.project_id):
+        abort(403)
     parent = folder.parent_id
     # Move all documents in this folder to the parent (or root)
     for doc in folder.documents:
@@ -1381,8 +1399,18 @@ def folder_delete(folder_id):
 @app.route('/documents/<int:doc_id>/move', methods=['POST'])
 @login_required
 def document_move(doc_id):
-    doc       = Document.query.filter_by(id=doc_id, is_active=True).first_or_404()
+    if not _validate_csrf_token():
+        return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
+    doc = Document.query.filter_by(id=doc_id, is_active=True).first_or_404()
+    if doc.project_id and not _user_in_project(doc.project_id):
+        return jsonify({'error': 'Forbidden'}), 403
     folder_id = request.form.get('folder_id', type=int)   # None / 0 = root
+    if folder_id:
+        dest_folder = DocumentFolder.query.get(folder_id)
+        if dest_folder is None:
+            return jsonify({'error': 'Destination folder not found.'}), 400
+        if doc.project_id and dest_folder.project_id != doc.project_id:
+            return jsonify({'error': 'Cannot move document into a folder from another project.'}), 400
     doc.folder_id = folder_id if folder_id else None
     db.session.commit()
     return jsonify({'ok': True})
@@ -1394,6 +1422,11 @@ def document_upload():
     from flask import g
     proj = getattr(g, 'project', None)
     if request.method == 'POST':
+        if not _validate_csrf_token():
+            flash('Your session expired. Please try again.', 'danger')
+            return redirect(request.url)
+        if proj and not _user_in_project(proj.id):
+            abort(403)
         f = request.files.get('file')
         if not f or not f.filename:
             flash('No file selected.', 'danger')
@@ -1407,6 +1440,11 @@ def document_upload():
         title = request.form.get('title','').strip() or f.filename.rsplit('.',1)[0]
 
         folder_id_up = request.form.get('folder_id', type=int) or None
+        if folder_id_up:
+            upload_folder = DocumentFolder.query.get(folder_id_up)
+            if upload_folder and proj and upload_folder.project_id != proj.id:
+                flash('Invalid folder for this project.', 'danger')
+                return redirect(request.url)
 
         # ── Choose storage backend ────────────────────────────────────────
         file_key  = None
@@ -1462,6 +1500,8 @@ def document_upload():
 @login_required
 def document_upload_presign():
     """Return a presigned PUT URL so the browser can upload straight to R2."""
+    if not _validate_csrf_token():
+        return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
     if not r2_storage.r2_enabled():
         return jsonify({'error': 'R2 not configured'}), 400
     data         = request.get_json(force=True) or {}
@@ -1479,8 +1519,13 @@ def document_upload_presign():
 @login_required
 def document_upload_complete():
     """Save Document metadata after browser has uploaded the file directly to R2."""
+    if not _validate_csrf_token():
+        flash('Your session expired. Please try again.', 'danger')
+        return redirect(url_for('document_upload'))
     from flask import g
     proj      = getattr(g, 'project', None)
+    if proj and not _user_in_project(proj.id):
+        abort(403)
     file_key  = request.form.get('file_key', '').strip()
     filename  = request.form.get('filename', '').strip()
     file_size = request.form.get('file_size', 0, type=int)
@@ -1517,6 +1562,8 @@ def document_upload_complete():
 @login_required
 def document_detail(doc_id):
     doc  = Document.query.filter_by(id=doc_id, is_active=True).first_or_404()
+    if doc.project_id and not _user_in_project(doc.project_id):
+        abort(403)
     from flask import g
     proj = getattr(g, 'project', None)
 
@@ -1595,6 +1642,8 @@ def document_detail(doc_id):
 def document_view(doc_id):
     """Open file inline in browser (PDF viewer / image). No Railway timeout."""
     doc = Document.query.filter_by(id=doc_id, is_active=True).first_or_404()
+    if doc.project_id and not _user_in_project(doc.project_id):
+        abort(403)
     if doc.stored_in_r2:
         url = r2_storage.presigned_url(doc.file_key, doc.original_filename,
                                         disposition='inline')
@@ -1613,6 +1662,8 @@ def document_view(doc_id):
 def document_download(doc_id):
     """Force-download the file."""
     doc = Document.query.filter_by(id=doc_id, is_active=True).first_or_404()
+    if doc.project_id and not _user_in_project(doc.project_id):
+        abort(403)
     if doc.stored_in_r2:
         url = r2_storage.presigned_url(doc.file_key, doc.original_filename,
                                         disposition='attachment')
@@ -1628,8 +1679,19 @@ def document_download(doc_id):
 @app.route('/documents/<int:doc_id>/delete', methods=['POST'])
 @login_required
 def document_delete(doc_id):
+    if not _validate_csrf_token():
+        flash('Your session expired. Please try again.', 'danger')
+        return redirect(url_for('documents_list'))
     doc = Document.query.filter_by(id=doc_id, is_active=True).first_or_404()
-    if current_user.role not in ('engineer','manager','admin') and doc.uploaded_by != current_user.id:
+    # Project boundary: user must be in the document's project
+    if doc.project_id and not _user_in_project(doc.project_id):
+        abort(403)
+    # Permission: uploader can delete their own doc; otherwise require project manage access
+    is_manager = (
+        _user_can_manage_project(doc.project_id) if doc.project_id
+        else current_user.role in ('manager', 'admin')
+    )
+    if doc.uploaded_by != current_user.id and not is_manager:
         abort(403)
     # Remove from R2 if stored there
     if doc.stored_in_r2:
@@ -1643,7 +1705,12 @@ def document_delete(doc_id):
 @app.route('/documents/<int:doc_id>/link', methods=['POST'])
 @login_required
 def document_add_link(doc_id):
+    if not _validate_csrf_token():
+        flash('Your session expired. Please try again.', 'danger')
+        return redirect(url_for('document_detail', doc_id=doc_id))
     doc       = Document.query.filter_by(id=doc_id, is_active=True).first_or_404()
+    if doc.project_id and not _user_in_project(doc.project_id):
+        abort(403)
     link_type = request.form.get('link_type','').strip()
     link_id   = request.form.get('link_id','0')
     note      = request.form.get('note','').strip()
@@ -1674,7 +1741,13 @@ def document_add_link(doc_id):
 @app.route('/documents/links/<int:link_id>/delete', methods=['POST'])
 @login_required
 def document_remove_link(link_id):
+    if not _validate_csrf_token():
+        flash('Your session expired. Please try again.', 'danger')
+        return redirect(url_for('documents_list'))
     lnk = DocumentLink.query.get_or_404(link_id)
+    linked_doc = lnk.document
+    if linked_doc and linked_doc.project_id and not _user_in_project(linked_doc.project_id):
+        abort(403)
     doc_id = lnk.document_id
     db.session.delete(lnk)
     db.session.commit()
@@ -1691,6 +1764,8 @@ def api_docs_for_record(link_type, link_id):
     for lnk in links:
         doc = lnk.document
         if doc and doc.is_active:
+            if doc.project_id and not _user_in_project(doc.project_id):
+                continue
             result.append({
                 'id':       doc.id,
                 'title':    doc.title,
