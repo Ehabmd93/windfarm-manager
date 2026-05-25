@@ -5043,25 +5043,30 @@ def _user_in_project(project_id):
     ).first() is not None
 
 
+_MANAGE_PROJ_ROLES = frozenset({'owner', 'admin', 'lead'})
+
 def _user_can_manage_project(project_id):
     """True if the current user may mutate People/Company data for project_id.
 
-    Rules:
-      - admin role    → always allowed (global super-admin, project-agnostic)
-      - manager role  → only if they are an explicit ProjectMember of this project
-      - other roles   → never
+    Rules (in priority order):
+      1. Global admin role → always allowed (project-agnostic super-admin).
+      2. ProjectMember with proj_role in ('owner', 'admin', 'lead') → allowed,
+         regardless of User.role (e.g. an engineer who owns a project can manage it).
+      3. Everyone else (viewer, member, non-member) → denied.
 
-    This intentionally does NOT give global managers blanket access to every
-    project.  A manager from Project A cannot manage Project B unless they
-    have a ProjectMember row for Project B.
+    Global manager role alone is NOT sufficient — the user must also be a
+    ProjectMember with an elevated proj_role.  This prevents a manager of
+    Project A from mutating Project B unless they hold a management proj_role
+    on Project B.
     """
     if current_user.role == 'admin':
         return True
-    if current_user.role == 'manager':
-        return ProjectMember.query.filter_by(
-            project_id=project_id, user_id=current_user.id
-        ).first() is not None
-    return False
+    pm = ProjectMember.query.filter_by(
+        project_id=project_id, user_id=current_user.id
+    ).first()
+    if pm is None:
+        return False
+    return pm.proj_role in _MANAGE_PROJ_ROLES
 
 
 def _user_can_sign(project_id):
