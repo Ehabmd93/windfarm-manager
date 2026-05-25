@@ -300,6 +300,9 @@ def login():
             return render_template('login.html')
         user = User.query.filter_by(email=request.form['email'].strip()).first()
         if user and check_password_hash(user.password, request.form['password']):
+            if not user.is_active:
+                flash('This account is disabled. Contact your project administrator.', 'danger')
+                return render_template('login.html')
             # Record last login before starting the session
             user.last_login_at = datetime.now(timezone.utc)
             try:
@@ -939,6 +942,13 @@ def invite_accept(token):
     except Exception:
         db.session.rollback()
         return _render('acceptance_error', invite, proj, role_label)
+
+    # Set last_login_at before auto-login (best-effort, non-fatal)
+    new_user.last_login_at = datetime.now(timezone.utc)
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
 
     # Login & redirect
     login_user(new_user)
