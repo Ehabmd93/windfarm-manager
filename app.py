@@ -2007,17 +2007,92 @@ def api_add_team_member(pid):
 @app.route('/projects/<int:pid>/team/<int:mid>', methods=['DELETE'])
 @login_required
 def api_delete_team_member(pid, mid):
-    """AJAX — remove (deactivate) a team member. Requires manager or admin."""
+    """AJAX — remove a team member and clean up their project access.
+
+    Steps:
+      1. CSRF + permission guards.
+      2. Soft-delete the ProjectTeamMember row.
+      3. Revoke any pending/expired UserInvite rows for this team member.
+      4. Delete the ProjectMember row (project access) for the linked user,
+         or fall back to looking them up by email if user_id is not set.
+      5. Audit every action taken.
+    """
     if not _validate_csrf_token():
         return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
     if not _user_can_manage_project(pid):
         return jsonify({'error': 'You do not have permission to manage this project.'}), 403
+
     m = ProjectTeamMember.query.filter_by(id=mid, project_id=pid).first_or_404()
+    now = datetime.now(timezone.utc)
+
+    # ── 1. Soft-delete the team member row ───────────────────────────────────
     m.is_active = False
-    log_audit('member_removed', project_id=pid, actor=current_user,
-              entity_type='member', entity_id=mid, entity_label=m.name)
+
+    # ── 2. Revoke pending/expired invites for this team member ───────────────
+    invites_revoked = 0
+    revocable_invites = UserInvite.query.filter(
+        UserInvite.project_id == pid,
+        UserInvite.project_team_member_id == mid,
+        UserInvite.status.in_(['pending', 'expired']),
+    ).all()
+    for inv in revocable_invites:
+        inv.status     = 'revoked'
+        inv.revoked_at = now
+        log_audit('user_invite_revoked',
+                  project_id=pid,
+                  actor=current_user,
+                  entity_type='user_invite',
+                  entity_id=inv.id,
+                  entity_label=inv.email,
+                  detail={'name': inv.name, 'reason': 'team_member_removed'})
+        invites_revoked += 1
+
+    # ── 3. Remove ProjectMember access ───────────────────────────────────────
+    access_removed = False
+
+    # Primary: user_id is linked directly on the team member row
+    target_user_id = m.user_id
+
+    # Fallback: team member has an email — look up a registered User by email
+    if target_user_id is None and m.email:
+        email_norm = m.email.strip().lower()
+        fallback_user = User.query.filter_by(email=email_norm).first()
+        if fallback_user:
+            target_user_id = fallback_user.id
+
+    if target_user_id is not None:
+        pm = ProjectMember.query.filter_by(
+            project_id=pid, user_id=target_user_id
+        ).first()
+        if pm is not None:
+            db.session.delete(pm)
+            log_audit('project_access_removed',
+                      project_id=pid,
+                      actor=current_user,
+                      entity_type='project_member',
+                      entity_id=pm.id,
+                      entity_label=m.name,
+                      detail={'user_id': target_user_id,
+                              'team_member_id': mid})
+            access_removed = True
+
+    # ── 4. Always-logged: member removed ─────────────────────────────────────
+    log_audit('member_removed',
+              project_id=pid,
+              actor=current_user,
+              entity_type='member',
+              entity_id=mid,
+              entity_label=m.name,
+              detail={'invites_revoked': invites_revoked,
+                      'project_access_removed': access_removed})
+
     db.session.commit()
-    return jsonify({'ok': True})
+    return jsonify({
+        'ok':                    True,
+        'member_removed':        True,
+        'invites_revoked':       invites_revoked,
+        'project_access_removed': access_removed,
+    })
 
 
 @app.route('/projects/<int:pid>/team/invites/<int:invite_id>/resend', methods=['POST'])
