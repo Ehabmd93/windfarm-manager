@@ -1,0 +1,379 @@
+{% extends 'base.html' %}
+{% block title %}My Account — QA Manager{% endblock %}
+{% block page_title %}My Account{% endblock %}
+{% block page_sub %}Profile, security settings and project memberships{% endblock %}
+
+{% block head %}
+<style>
+.account-card {
+  background: white;
+  border-radius: 16px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 4px rgba(0,0,0,.05);
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+.account-card-header {
+  padding: 16px 24px;
+  border-bottom: 1px solid #f1f5f9;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.account-card-header h2 {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0;
+}
+.account-card-header p {
+  font-size: 12px;
+  color: #94a3b8;
+  margin: 2px 0 0;
+}
+.account-card-body { padding: 24px; }
+.field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+@media (max-width: 640px) { .field-row { grid-template-columns: 1fr; } }
+.field-group label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  margin-bottom: 6px;
+}
+.field-input {
+  width: 100%;
+  padding: 9px 13px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+  font-size: 13px;
+  color: #1e293b;
+  transition: border-color .15s, box-shadow .15s;
+  box-sizing: border-box;
+}
+.field-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59,130,246,.15);
+  background: white;
+}
+.field-input[readonly] {
+  background: #f1f5f9;
+  color: #64748b;
+  cursor: not-allowed;
+}
+.btn-primary {
+  background: linear-gradient(135deg, #1e3a5f, #2563eb);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  padding: 9px 20px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity .15s;
+}
+.btn-primary:hover { opacity: .88; }
+.info-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 13px;
+}
+.info-row:last-child { border-bottom: none; }
+.info-label { color: #64748b; font-weight: 600; font-size: 12px; }
+.info-value { color: #1e293b; }
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 10px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.badge-green  { background: #dcfce7; color: #166534; }
+.badge-red    { background: #fee2e2; color: #991b1b; }
+.badge-slate  { background: #f1f5f9; color: #475569; }
+.badge-blue   { background: #dbeafe; color: #1d4ed8; }
+.badge-purple { background: #ede9fe; color: #6d28d9; }
+.badge-orange { background: #ffedd5; color: #9a3412; }
+.proj-table   { width: 100%; border-collapse: collapse; font-size: 13px; }
+.proj-table th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  padding: 8px 12px;
+  border-bottom: 1px solid #f1f5f9;
+}
+.proj-table td {
+  padding: 11px 12px;
+  border-bottom: 1px solid #f8fafc;
+  color: #334155;
+  vertical-align: middle;
+}
+.proj-table tr:last-child td { border-bottom: none; }
+.proj-table tr:hover td { background: #f8fafc; }
+.divider { border: none; border-top: 1px solid #f1f5f9; margin: 20px 0; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div style="max-width:860px;">
+
+  {# ════════════════════════════════════════════════════════════
+     CARD 1 — Profile
+  ════════════════════════════════════════════════════════════ #}
+  <div class="account-card">
+    <div class="account-card-header">
+      <div style="width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#0ea5e9,#6366f1);
+                  display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <i class="fa-solid fa-user" style="color:white;font-size:14px;"></i>
+      </div>
+      <div>
+        <h2>Profile</h2>
+        <p>Update your display name, company and job title</p>
+      </div>
+    </div>
+    <div class="account-card-body">
+      <form method="POST" action="/account/profile">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div class="field-row">
+          <div class="field-group">
+            <label for="prof-name">Full name <span style="color:#ef4444;">*</span></label>
+            <input id="prof-name" type="text" name="name" class="field-input"
+                   value="{{ current_user.name }}" required maxlength="100"
+                   placeholder="Your full name"/>
+          </div>
+          <div class="field-group">
+            <label for="prof-email">Email address</label>
+            <input id="prof-email" type="email" class="field-input"
+                   value="{{ current_user.email }}" readonly
+                   title="Email cannot be changed here"/>
+          </div>
+        </div>
+
+        <div class="field-row">
+          <div class="field-group">
+            <label for="prof-company">Company</label>
+            <input id="prof-company" type="text" name="company" class="field-input"
+                   value="{{ current_user.company or '' }}" maxlength="100"
+                   placeholder="Your company name"/>
+          </div>
+          <div class="field-group">
+            <label for="prof-position">Job title / position</label>
+            <input id="prof-position" type="text" name="position" class="field-input"
+                   value="{{ current_user.position or '' }}" maxlength="100"
+                   placeholder="e.g. QA Engineer"/>
+          </div>
+        </div>
+
+        <button type="submit" class="btn-primary">
+          <i class="fa-solid fa-floppy-disk" style="margin-right:6px;"></i>Save changes
+        </button>
+      </form>
+    </div>
+  </div>
+
+  {# ════════════════════════════════════════════════════════════
+     CARD 2 — Account security
+  ════════════════════════════════════════════════════════════ #}
+  <div class="account-card">
+    <div class="account-card-header">
+      <div style="width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#1e3a5f,#0f4c81);
+                  display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <i class="fa-solid fa-shield-halved" style="color:white;font-size:14px;"></i>
+      </div>
+      <div>
+        <h2>Security</h2>
+        <p>Account status, verification and password</p>
+      </div>
+    </div>
+    <div class="account-card-body">
+
+      <!-- Info rows -->
+      <div class="info-row">
+        <span class="info-label">Account status</span>
+        {% if current_user.is_active %}
+          <span class="badge badge-green"><i class="fa-solid fa-circle-check" style="font-size:10px;"></i> Active</span>
+        {% else %}
+          <span class="badge badge-red"><i class="fa-solid fa-ban" style="font-size:10px;"></i> Disabled</span>
+        {% endif %}
+      </div>
+
+      <div class="info-row">
+        <span class="info-label">Email verified</span>
+        {% if current_user.email_verified %}
+          <span class="badge badge-green"><i class="fa-solid fa-envelope-circle-check" style="font-size:10px;"></i> Verified</span>
+        {% else %}
+          <span class="badge badge-red"><i class="fa-solid fa-envelope" style="font-size:10px;"></i> Not verified</span>
+        {% endif %}
+      </div>
+
+      <div class="info-row">
+        <span class="info-label">Platform role</span>
+        <span class="badge badge-blue" style="text-transform:capitalize;">
+          <i class="fa-solid fa-id-badge" style="font-size:10px;"></i>
+          {{ current_user.role }}
+        </span>
+      </div>
+
+      <div class="info-row">
+        <span class="info-label">Last sign-in</span>
+        <span class="info-value">
+          {% if current_user.last_login_at %}
+            {{ current_user.last_login_at.strftime('%d %b %Y at %H:%M UTC') }}
+          {% else %}
+            <span style="color:#94a3b8;">—</span>
+          {% endif %}
+        </span>
+      </div>
+
+      <div class="info-row">
+        <span class="info-label">Password last changed</span>
+        <span class="info-value">
+          {% if current_user.password_changed_at %}
+            {{ current_user.password_changed_at.strftime('%d %b %Y at %H:%M UTC') }}
+          {% else %}
+            <span style="color:#94a3b8;">—</span>
+          {% endif %}
+        </span>
+      </div>
+
+      <hr class="divider">
+
+      <!-- Change password sub-section -->
+      <p style="font-size:13px;font-weight:700;color:#1e293b;margin:0 0 14px;">Change password</p>
+      <form method="POST" action="/account/password">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div style="margin-bottom:12px;">
+          <div class="field-group">
+            <label for="cur-pw">Current password <span style="color:#ef4444;">*</span></label>
+            <input id="cur-pw" type="password" name="current_password" class="field-input"
+                   autocomplete="current-password" required placeholder="Your current password"
+                   style="max-width:380px;"/>
+          </div>
+        </div>
+
+        <div class="field-row" style="max-width:760px;">
+          <div class="field-group">
+            <label for="new-pw">New password <span style="color:#ef4444;">*</span></label>
+            <input id="new-pw" type="password" name="new_password" class="field-input"
+                   autocomplete="new-password" required
+                   placeholder="At least 8 characters"/>
+            <p style="font-size:11px;color:#94a3b8;margin:4px 0 0;">Must be at least 8 characters.</p>
+          </div>
+          <div class="field-group">
+            <label for="new-pw2">Confirm new password <span style="color:#ef4444;">*</span></label>
+            <input id="new-pw2" type="password" name="new_password2" class="field-input"
+                   autocomplete="new-password" required
+                   placeholder="Re-enter new password"/>
+          </div>
+        </div>
+
+        <button type="submit" class="btn-primary">
+          <i class="fa-solid fa-lock" style="margin-right:6px;"></i>Update password
+        </button>
+      </form>
+    </div>
+  </div>
+
+  {# ════════════════════════════════════════════════════════════
+     CARD 3 — Project memberships
+  ════════════════════════════════════════════════════════════ #}
+  <div class="account-card">
+    <div class="account-card-header">
+      <div style="width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#059669,#10b981);
+                  display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <i class="fa-solid fa-diagram-project" style="color:white;font-size:14px;"></i>
+      </div>
+      <div>
+        <h2>Project memberships</h2>
+        <p>Projects you have access to and your role on each</p>
+      </div>
+    </div>
+    <div class="account-card-body" style="padding:0;">
+
+      {% if memberships %}
+      <table class="proj-table">
+        <thead>
+          <tr>
+            <th>Project</th>
+            <th>Platform role</th>
+            <th>Can sign</th>
+            <th>Joined</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for pm in memberships %}
+          {% set proj = pm.project %}
+          {% set tm   = team_member_map.get(pm.project_id) %}
+          <tr>
+            <td>
+              {% if proj %}
+                <a href="{{ url_for('projects_list') }}"
+                   style="color:#2563eb;font-weight:600;text-decoration:none;">
+                  {{ proj.name }}
+                </a>
+                {% if proj.status != 'active' %}
+                  <span class="badge badge-slate" style="margin-left:6px;font-size:10px;">{{ proj.status }}</span>
+                {% endif %}
+              {% else %}
+                <span style="color:#94a3b8;">Deleted project</span>
+              {% endif %}
+            </td>
+            <td>
+              {% set role = pm.proj_role or 'member' %}
+              {% if role == 'lead' %}
+                <span class="badge badge-purple">Lead</span>
+              {% elif role == 'viewer' %}
+                <span class="badge badge-slate">Viewer</span>
+              {% else %}
+                <span class="badge badge-blue">Member</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if tm and tm.can_sign %}
+                <span class="badge badge-green"><i class="fa-solid fa-pen-nib" style="font-size:9px;"></i> Yes</span>
+              {% elif tm %}
+                <span class="badge badge-slate">No</span>
+              {% else %}
+                <span style="color:#94a3b8;font-size:12px;">—</span>
+              {% endif %}
+            </td>
+            <td style="color:#64748b;">
+              {% if pm.added_at %}
+                {{ pm.added_at.strftime('%d %b %Y') }}
+              {% else %}—{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div style="text-align:center;padding:40px 24px;color:#94a3b8;">
+        <i class="fa-solid fa-folder-open" style="font-size:32px;margin-bottom:12px;display:block;opacity:.5;"></i>
+        <p style="font-size:14px;font-weight:600;margin:0 0 6px;color:#475569;">No project memberships yet</p>
+        <p style="font-size:13px;margin:0;">You'll appear here once you've been added to a project.</p>
+      </div>
+      {% endif %}
+
+    </div>
+  </div>
+
+</div>
+{% endblock %}

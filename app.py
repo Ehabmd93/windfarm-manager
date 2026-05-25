@@ -1,4 +1,4 @@
-import os, json, base64, uuid, unicodedata, re, secrets, hashlib
+import os, json, base64, uuid, unicodedata, re, secrets, hashlib, hmac as _hmac
 import urllib.request, urllib.parse
 from urllib.parse import quote as _urlquote
 from datetime import datetime, date, timezone, timedelta
@@ -35,7 +35,8 @@ from project_config import (PROJECT_TYPE_PROFILES, get_profile,
                              is_wind_farm, GENERIC_ELEMENT_TYPE_LABELS)
 from kml_parser import get_geojson
 from email_utils import (email_client_invitation, email_client_signed,
-                         email_project_invitation, email_password_reset)
+                         email_project_invitation, email_password_reset,
+                         email_password_changed)
 import r2_storage
 
 # ─── App setup ──────────────────────────────────────────────────────────────
@@ -107,6 +108,29 @@ def _is_safe_local_next(next_url):
     if lo.startswith('http:') or lo.startswith('https:'):
         return False
     return True
+
+
+# ── CSRF token helpers (Phase 5C) ────────────────────────────────────────────
+
+def _generate_csrf_token():
+    """Return the per-session CSRF token; generate and store if absent."""
+    from flask import session
+    if '_csrf_token' not in session:
+        session['_csrf_token'] = secrets.token_hex(32)
+    return session['_csrf_token']
+
+
+def _validate_csrf_token():
+    """Return True iff the submitted csrf_token field matches the session token.
+
+    Uses hmac.compare_digest to prevent timing-based attacks.
+    """
+    from flask import session
+    session_tok = session.get('_csrf_token', '')
+    form_tok    = request.form.get('csrf_token', '')
+    if not session_tok or not form_tok:
+        return False
+    return _hmac.compare_digest(session_tok, form_tok)
 
 
 # ── Invite role → User/ProjectMember role mappings (Phase 4B) ─────────────────
@@ -238,6 +262,26 @@ def inject_now():
                          if getattr(g, 'project', None) else False),
     }
 
+
+# ── CSRF Jinja2 global (Phase 5C) ─────────────────────────────────────────────
+# Makes csrf_token() available in every template without explicit passing.
+app.jinja_env.globals['csrf_token'] = _generate_csrf_token
+
+
+# ── Referrer-Policy for auth/token pages (Phase 5C) ──────────────────────────
+_SENSITIVE_AUTH_ENDPOINTS = frozenset({
+    'login', 'forgot_password', 'reset_password', 'invite_accept',
+})
+
+@app.after_request
+def _set_auth_security_headers(response):
+    """Add Referrer-Policy: no-referrer on routes that handle sensitive tokens
+    (reset links, invite links) so those URLs are never sent in Referer headers."""
+    if getattr(request, 'endpoint', None) in _SENSITIVE_AUTH_ENDPOINTS:
+        response.headers.setdefault('Referrer-Policy', 'no-referrer')
+    return response
+
+
 # ─── Context helpers ─────────────────────────────────────────────────────────
 def wtg_summary():
     from flask import g
@@ -251,8 +295,17 @@ def wtg_summary():
 @app.route('/login', methods=['GET','POST'])
 def login():
     if request.method == 'POST':
+        if not _validate_csrf_token():
+            flash('Your session expired. Please try again.', 'danger')
+            return render_template('login.html')
         user = User.query.filter_by(email=request.form['email'].strip()).first()
         if user and check_password_hash(user.password, request.form['password']):
+            # Record last login before starting the session
+            user.last_login_at = datetime.now(timezone.utc)
+            try:
+                db.session.commit()
+            except Exception:
+                db.session.rollback()  # non-fatal — login still proceeds
             login_user(user)
             # Respect ?next= for invite accept-flow redirects.
             next_url = request.args.get('next', '')
@@ -285,6 +338,10 @@ def forgot_password():
         return render_template('forgot_password.html', submitted=False)
 
     # ── POST ──────────────────────────────────────────────────────────────────
+    if not _validate_csrf_token():
+        flash('Your session expired. Please try again.', 'danger')
+        return render_template('forgot_password.html', submitted=False)
+
     email = (request.form.get('email') or '').strip().lower()
 
     if email:
@@ -427,6 +484,10 @@ def reset_password(token):
         return _render('valid', user_email=user.email, expires_at=expires_at)
 
     # ── POST ──────────────────────────────────────────────────────────────────
+    if not _validate_csrf_token():
+        flash('Your session expired. Please try again.', 'danger')
+        return redirect(url_for('reset_password', token=token))
+
     password  = (request.form.get('password')  or '').strip()
     password2 = (request.form.get('password2') or '').strip()
 
@@ -484,9 +545,21 @@ def reset_password(token):
                        form_error='An unexpected error occurred. Please try again.',
                        user_email=user.email, expires_at=expires_at)
 
+    # ── Send notification email (swallow failure) ─────────────────────────────
+    try:
+        email_password_changed(user.email, user.name)
+    except Exception:
+        pass
+
     # ── Login or blocked ──────────────────────────────────────────────────────
     if not user.is_active:
         return _render('disabled', user_email=user.email)
+
+    user.last_login_at = datetime.now(timezone.utc)
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()  # non-fatal — login still proceeds
 
     login_user(user)
     flash('Your password has been reset. You are now signed in.', 'success')
@@ -588,6 +661,11 @@ def invite_accept(token):
                                form_error=form_error,
                                existing_sub_state=existing_sub_state,
                                token=token)
+
+    # ── CSRF guard for all POST operations ───────────────────────────────────
+    if request.method == 'POST' and not _validate_csrf_token():
+        flash('Your session expired. Please try again.', 'danger')
+        return redirect(url_for('invite_accept', token=token))
 
     # ── Resolve invite state ─────────────────────────────────────────────────
     invite, proj, state = _resolve_invite_state(token)
@@ -869,6 +947,116 @@ def invite_accept(token):
 
     flash('Welcome! Your account has been created and you have been added to the project.', 'success')
     return redirect(url_for('projects_list'))
+
+# ─── Account (Phase 5C) ───────────────────────────────────────────────────────
+
+@app.route('/account')
+@login_required
+def account():
+    """User account overview: profile, security info, project memberships."""
+    memberships = (
+        ProjectMember.query
+        .filter_by(user_id=current_user.id)
+        .order_by(ProjectMember.added_at.desc())
+        .all()
+    )
+    team_member_map = {
+        tm.project_id: tm
+        for tm in ProjectTeamMember.query.filter_by(user_id=current_user.id).all()
+    }
+    return render_template('account.html',
+                           memberships=memberships,
+                           team_member_map=team_member_map)
+
+
+@app.route('/account/profile', methods=['POST'])
+@login_required
+def account_profile():
+    """Update display name, company, and position."""
+    if not _validate_csrf_token():
+        flash('Your session expired. Please try again.', 'danger')
+        return redirect(url_for('account'))
+
+    name     = (request.form.get('name')     or '').strip()
+    company  = (request.form.get('company')  or '').strip()
+    position = (request.form.get('position') or '').strip()
+
+    if not name:
+        flash('Name cannot be blank.', 'danger')
+        return redirect(url_for('account'))
+
+    current_user.name     = name
+    current_user.company  = company
+    current_user.position = position
+
+    log_audit('account_profile_updated',
+              actor=current_user,
+              entity_type='user',
+              entity_id=current_user.id,
+              entity_label=current_user.email,
+              detail={'name': name, 'company': company, 'position': position})
+
+    try:
+        db.session.commit()
+        flash('Profile updated.', 'success')
+    except Exception:
+        db.session.rollback()
+        flash('Could not save changes. Please try again.', 'danger')
+
+    return redirect(url_for('account'))
+
+
+@app.route('/account/password', methods=['POST'])
+@login_required
+def account_password():
+    """Change password from account page (requires current password)."""
+    if not _validate_csrf_token():
+        flash('Your session expired. Please try again.', 'danger')
+        return redirect(url_for('account'))
+
+    current_pw  = (request.form.get('current_password') or '').strip()
+    new_pw      = (request.form.get('new_password')     or '').strip()
+    new_pw2     = (request.form.get('new_password2')    or '').strip()
+
+    # Validate current password
+    if not check_password_hash(current_user.password, current_pw):
+        flash('Current password is incorrect.', 'danger')
+        return redirect(url_for('account'))
+
+    if len(new_pw) < 8:
+        flash('New password must be at least 8 characters.', 'danger')
+        return redirect(url_for('account'))
+
+    if new_pw != new_pw2:
+        flash('New passwords do not match.', 'danger')
+        return redirect(url_for('account'))
+
+    current_user.password           = generate_password_hash(new_pw)
+    current_user.password_changed_at = datetime.now(timezone.utc)
+
+    log_audit('password_changed',
+              actor=current_user,
+              entity_type='user',
+              entity_id=current_user.id,
+              entity_label=current_user.email,
+              detail={'via': 'account_page'})
+
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        flash('Could not save changes. Please try again.', 'danger')
+        return redirect(url_for('account'))
+
+    # Send confirmation email (non-fatal)
+    try:
+        email_password_changed(current_user.email, current_user.name)
+    except Exception:
+        pass
+
+    flash('Password updated successfully.', 'success')
+    return redirect(url_for('account'))
+
 
 # ─── Projects ────────────────────────────────────────────────────────────────
 @app.route('/projects')

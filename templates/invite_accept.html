@@ -566,6 +566,7 @@
       {# ── Ready: correct user, active account ── #}
       {% elif existing_sub_state == 'ready' %}
       <form method="POST" action="/invite/{{ token }}" novalidate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn-submit">
           <i class="fa-solid fa-circle-check" style="margin-right:7px;"></i>
           Accept invite &amp; join project
@@ -599,6 +600,7 @@
     {% endif %}
 
     <form method="POST" action="/invite/{{ token }}" novalidate>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="form-group">
         <label class="form-label" for="password">Create a password</label>
         <input class="form-input" type="password" id="password" name="password"

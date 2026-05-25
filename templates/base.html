@@ -353,6 +353,10 @@
           <p style="color:#e2e8f0;font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ current_user.name }}</p>
           <p style="color:#64748b;font-size:10px;text-transform:capitalize;">{{ current_user.role }}</p>
         </div>
+        <a href="{{ url_for('account') }}" style="color:#475569;text-decoration:none;font-size:13px;padding:4px;" title="Account"
+           onmouseover="this.style.color='#94a3b8'" onmouseout="this.style.color='#475569'">
+          <i class="fa-solid fa-user-gear"></i>
+        </a>
         <a href="{{ url_for('logout') }}" style="color:#475569;text-decoration:none;font-size:13px;padding:4px;" title="Logout"
            onmouseover="this.style.color='#94a3b8'" onmouseout="this.style.color='#475569'">
           <i class="fa-solid fa-right-from-bracket"></i>
