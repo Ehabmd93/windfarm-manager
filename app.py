@@ -221,8 +221,9 @@ def load_active_project():
     if not current_user.is_authenticated:
         return
     try:
-        # Admin/engineer/manager/supervisor see all active projects; clients see only assigned ones
-        if current_user.role in ('admin', 'manager', 'engineer', 'supervisor'):
+        # Global admin sees all active projects; everyone else only sees projects
+        # where they have an explicit ProjectMember row.
+        if current_user.role == 'admin':
             projects = Project.query.filter_by(is_active=True).order_by(Project.name).all()
         else:
             ids = [m.project_id for m in ProjectMember.query.filter_by(user_id=current_user.id).all()]
@@ -1304,8 +1305,10 @@ def documents_list():
     all_folders   = fq.order_by(DocumentFolder.name).all()
     folder_tree   = _build_folder_tree(all_folders)
 
-    # Current folder object — verify it belongs to the active project
+    # Current folder object — verify it exists and belongs to the active project
     current_folder = DocumentFolder.query.get(folder_id) if folder_id else None
+    if folder_id and current_folder is None:
+        return redirect(url_for('documents_list'))
     if current_folder and proj and current_folder.project_id != proj.id:
         abort(403)
     ancestors      = _folder_ancestors(current_folder) if current_folder else []
@@ -1359,10 +1362,13 @@ def folder_create():
         flash('Folder name is required.', 'danger')
         return redirect(url_for('documents_list', folder=parent_id or ''))
 
-    # Verify parent folder belongs to the same project
+    # Verify parent folder exists and belongs to the same project
     if parent_id:
         parent_folder = DocumentFolder.query.get(parent_id)
-        if parent_folder and proj and parent_folder.project_id != proj.id:
+        if parent_folder is None:
+            flash('Parent folder not found.', 'danger')
+            return redirect(url_for('documents_list'))
+        if proj and parent_folder.project_id != proj.id:
             abort(403)
 
     folder = DocumentFolder(
@@ -1729,22 +1735,28 @@ def document_add_link(doc_id):
         flash('Please choose a record to link.', 'danger')
         return redirect(url_for('document_detail', doc_id=doc_id))
 
+    # Safe int conversion — reject malformed link_id early
+    try:
+        link_id_int = int(link_id)
+    except (ValueError, TypeError):
+        flash('Invalid link target.', 'danger')
+        return redirect(url_for('document_detail', doc_id=doc_id))
+
     # Validate the link target belongs to the same project as the document
     if doc.project_id:
-        lid = int(link_id)
         valid_target = True
         try:
             if link_type == 'wtg':
-                w = WTG.query.get(lid)
+                w = WTG.query.get(link_id_int)
                 valid_target = w is not None and w.project_id == doc.project_id
             elif link_type == 'qa_test':
-                qt = QATest.query.get(lid)
+                qt = QATest.query.get(link_id_int)
                 valid_target = qt is not None and qt.area.wtg.project_id == doc.project_id
             elif link_type == 'proof_roll':
-                pr = ProofRollRecord.query.get(lid)
+                pr = ProofRollRecord.query.get(link_id_int)
                 valid_target = pr is not None and pr.qa_test.area.wtg.project_id == doc.project_id
             elif link_type == 'itp_record':
-                it = ITPRecord.query.get(lid)
+                it = ITPRecord.query.get(link_id_int)
                 valid_target = it is not None and _itp_project_id(it) == doc.project_id
             # 'project' link type: allowed — no target record to validate
         except Exception:
@@ -1756,12 +1768,12 @@ def document_add_link(doc_id):
     # Prevent duplicates
     exists = DocumentLink.query.filter_by(document_id=doc.id,
                                           link_type=link_type,
-                                          link_id=int(link_id)).first()
+                                          link_id=link_id_int).first()
     if not exists:
         db.session.add(DocumentLink(
             document_id = doc.id,
             link_type   = link_type,
-            link_id     = int(link_id),
+            link_id     = link_id_int,
             note        = note,
             linked_by   = current_user.id,
         ))
@@ -5365,10 +5377,16 @@ def _itp_project_id(record):
 
 
 def _user_in_project(project_id):
-    """True if the current authenticated user is a member of project_id."""
+    """True if the current authenticated user is a member of project_id.
+
+    Only the global admin role bypasses explicit ProjectMember membership.
+    All other roles (manager, engineer, supervisor, client, etc.) require
+    a ProjectMember row for the given project.
+    Legacy records with project_id=None are always accessible.
+    """
     if project_id is None:
         return True   # legacy records without project — allow
-    if current_user.role in ('manager', 'admin'):
+    if current_user.role == 'admin':
         return True
     return ProjectMember.query.filter_by(
         project_id=project_id, user_id=current_user.id
