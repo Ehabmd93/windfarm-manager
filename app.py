@@ -121,16 +121,20 @@ def _generate_csrf_token():
 
 
 def _validate_csrf_token():
-    """Return True iff the submitted csrf_token field matches the session token.
+    """Return True iff the submitted CSRF token matches the session token.
 
+    Accepts the token from either:
+      - X-CSRF-Token request header  (fetch/AJAX JSON routes)
+      - csrf_token form field         (traditional HTML form POST)
     Uses hmac.compare_digest to prevent timing-based attacks.
     """
     from flask import session
     session_tok = session.get('_csrf_token', '')
-    form_tok    = request.form.get('csrf_token', '')
-    if not session_tok or not form_tok:
+    # Header takes priority (JSON routes); fall back to form field (HTML forms)
+    submitted = request.headers.get('X-CSRF-Token', '') or request.form.get('csrf_token', '')
+    if not session_tok or not submitted:
         return False
-    return _hmac.compare_digest(session_tok, form_tok)
+    return _hmac.compare_digest(session_tok, submitted)
 
 
 # ── Invite role → User/ProjectMember role mappings (Phase 4B) ─────────────────
@@ -1796,7 +1800,10 @@ def project_setup(pid):
 @login_required
 def project_people(pid):
     """Companies + team members management page."""
-    if current_user.role not in ('engineer', 'manager', 'admin'):
+    # Admin can view any project; everyone else must be an explicit ProjectMember.
+    if current_user.role != 'admin' and not ProjectMember.query.filter_by(
+        project_id=pid, user_id=current_user.id
+    ).first():
         abort(403)
     proj     = Project.query.get_or_404(pid)
     from flask import session as fsession
@@ -1818,7 +1825,7 @@ def project_people(pid):
             existing = invites_by_member.get(inv.project_team_member_id)
             if existing is None or inv.id > existing.id:
                 invites_by_member[inv.project_team_member_id] = inv
-    can_manage = current_user.role in ('manager', 'admin')
+    can_manage = _user_can_manage_project(pid)
     return render_template('project_people.html',
                            proj=proj,
                            companies=companies,
@@ -1833,8 +1840,10 @@ def project_people(pid):
 @login_required
 def api_add_company(pid):
     """AJAX — add a company to the project. Requires manager or admin."""
-    if current_user.role not in ('manager', 'admin'):
-        return jsonify({'error': 'Forbidden — only managers and admins can add companies.'}), 403
+    if not _validate_csrf_token():
+        return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
+    if not _user_can_manage_project(pid):
+        return jsonify({'error': 'You do not have permission to manage this project.'}), 403
     proj = Project.query.get_or_404(pid)
     data = request.get_json(silent=True) or {}
     name = (data.get('name') or '').strip()
@@ -1867,8 +1876,10 @@ def api_add_company(pid):
 @login_required
 def api_delete_company(pid, cid):
     """AJAX — remove a company from the project. Requires manager or admin."""
-    if current_user.role not in ('manager', 'admin'):
-        return jsonify({'error': 'Forbidden — only managers and admins can remove companies.'}), 403
+    if not _validate_csrf_token():
+        return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
+    if not _user_can_manage_project(pid):
+        return jsonify({'error': 'You do not have permission to manage this project.'}), 403
     c = ProjectCompany.query.filter_by(id=cid, project_id=pid).first_or_404()
     log_audit('company_removed', project_id=pid, actor=current_user,
               entity_type='company', entity_id=cid, entity_label=c.name)
@@ -1881,8 +1892,10 @@ def api_delete_company(pid, cid):
 @login_required
 def api_add_team_member(pid):
     """AJAX — add a team member to the project, creating a UserInvite if email is provided."""
-    if current_user.role not in ('manager', 'admin'):
-        return jsonify({'error': 'Forbidden — only managers and admins can add team members.'}), 403
+    if not _validate_csrf_token():
+        return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
+    if not _user_can_manage_project(pid):
+        return jsonify({'error': 'You do not have permission to manage this project.'}), 403
     proj = Project.query.get_or_404(pid)
     data = request.get_json(silent=True) or {}
     name = (data.get('name') or '').strip()
@@ -1995,8 +2008,10 @@ def api_add_team_member(pid):
 @login_required
 def api_delete_team_member(pid, mid):
     """AJAX — remove (deactivate) a team member. Requires manager or admin."""
-    if current_user.role not in ('manager', 'admin'):
-        return jsonify({'error': 'Forbidden — only managers and admins can remove team members.'}), 403
+    if not _validate_csrf_token():
+        return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
+    if not _user_can_manage_project(pid):
+        return jsonify({'error': 'You do not have permission to manage this project.'}), 403
     m = ProjectTeamMember.query.filter_by(id=mid, project_id=pid).first_or_404()
     m.is_active = False
     log_audit('member_removed', project_id=pid, actor=current_user,
@@ -2009,8 +2024,10 @@ def api_delete_team_member(pid, mid):
 @login_required
 def api_resend_invite(pid, invite_id):
     """AJAX — rotate token and re-send an invite email."""
-    if current_user.role not in ('manager', 'admin'):
-        return jsonify({'error': 'Only project managers or admins can resend invites.'}), 403
+    if not _validate_csrf_token():
+        return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
+    if not _user_can_manage_project(pid):
+        return jsonify({'error': 'You do not have permission to manage this project.'}), 403
     invite = UserInvite.query.filter_by(id=invite_id, project_id=pid).first_or_404()
     if invite.status == 'accepted':
         return jsonify({'error': 'Cannot resend an already-accepted invite.'}), 400
@@ -2057,8 +2074,10 @@ def api_resend_invite(pid, invite_id):
 @login_required
 def api_revoke_invite(pid, invite_id):
     """AJAX — permanently revoke an invite."""
-    if current_user.role not in ('manager', 'admin'):
-        return jsonify({'error': 'Only project managers or admins can revoke invites.'}), 403
+    if not _validate_csrf_token():
+        return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
+    if not _user_can_manage_project(pid):
+        return jsonify({'error': 'You do not have permission to manage this project.'}), 403
     invite = UserInvite.query.filter_by(id=invite_id, project_id=pid).first_or_404()
     if invite.status == 'revoked':
         return jsonify({'error': 'Invite is already revoked.'}), 400
@@ -2085,8 +2104,10 @@ def api_copy_invite_link(pid, invite_id):
     Raw tokens are never stored, so we must rotate to produce a new link.
     The old token (wherever it was) becomes invalid immediately.
     """
-    if current_user.role not in ('manager', 'admin'):
-        return jsonify({'error': 'Only project managers or admins can generate invite links.'}), 403
+    if not _validate_csrf_token():
+        return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
+    if not _user_can_manage_project(pid):
+        return jsonify({'error': 'You do not have permission to manage this project.'}), 403
     invite = UserInvite.query.filter_by(id=invite_id, project_id=pid).first_or_404()
     if invite.status == 'accepted':
         return jsonify({'error': 'Cannot generate a new link for an accepted invite.'}), 400
@@ -5020,6 +5041,27 @@ def _user_in_project(project_id):
     return ProjectMember.query.filter_by(
         project_id=project_id, user_id=current_user.id
     ).first() is not None
+
+
+def _user_can_manage_project(project_id):
+    """True if the current user may mutate People/Company data for project_id.
+
+    Rules:
+      - admin role    → always allowed (global super-admin, project-agnostic)
+      - manager role  → only if they are an explicit ProjectMember of this project
+      - other roles   → never
+
+    This intentionally does NOT give global managers blanket access to every
+    project.  A manager from Project A cannot manage Project B unless they
+    have a ProjectMember row for Project B.
+    """
+    if current_user.role == 'admin':
+        return True
+    if current_user.role == 'manager':
+        return ProjectMember.query.filter_by(
+            project_id=project_id, user_id=current_user.id
+        ).first() is not None
+    return False
 
 
 def _user_can_sign(project_id):

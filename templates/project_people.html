@@ -499,8 +499,9 @@
 <div id="link-toast">Link copied to clipboard</div>
 
 <script>
-const PID = {{ proj.id }};
+const PID        = {{ proj.id }};
 const CAN_MANAGE = {{ 'true' if can_manage else 'false' }};
+const CSRF_TOKEN = "{{ csrf_token() }}";
 
 /* ── Guard: prevents engineers from accidentally calling management APIs ── */
 function _requireManage() {
@@ -526,7 +527,7 @@ async function submitAddCompany() {
   if (!name) { alert('Company name is required'); return; }
   const r = await fetch(`/projects/${PID}/companies`, {
     method: 'POST',
-    headers: {'Content-Type':'application/json'},
+    headers: {'Content-Type':'application/json', 'X-CSRF-Token': CSRF_TOKEN},
     body: JSON.stringify({
       company_type:  document.getElementById('c-type').value,
       name,
@@ -563,7 +564,7 @@ async function submitAddMember() {
   const cid = document.getElementById('m-company').value;
   const r = await fetch(`/projects/${PID}/team`, {
     method: 'POST',
-    headers: {'Content-Type':'application/json'},
+    headers: {'Content-Type':'application/json', 'X-CSRF-Token': CSRF_TOKEN},
     body: JSON.stringify({
       name,
       position:     document.getElementById('m-position').value.trim(),
@@ -586,7 +587,7 @@ async function deleteCompany(btn) {
   const id   = btn.dataset.cid;
   const name = btn.dataset.cname;
   if (!confirm(`Remove company "${name}" and all their team members?`)) return;
-  const r = await fetch(`/projects/${PID}/companies/${id}`, { method: 'DELETE' });
+  const r = await fetch(`/projects/${PID}/companies/${id}`, { method: 'DELETE', headers: {'X-CSRF-Token': CSRF_TOKEN} });
   const d = await r.json();
   if (d.ok) document.getElementById(`company-${id}`).remove();
   else alert(d.error);
@@ -598,7 +599,7 @@ async function deleteMember(btn) {
   const id   = btn.dataset.mid;
   const name = btn.dataset.mname;
   if (!confirm(`Remove ${name} from the project?`)) return;
-  const r = await fetch(`/projects/${PID}/team/${id}`, { method: 'DELETE' });
+  const r = await fetch(`/projects/${PID}/team/${id}`, { method: 'DELETE', headers: {'X-CSRF-Token': CSRF_TOKEN} });
   const d = await r.json();
   if (d.ok) document.getElementById(`member-${id}`).remove();
   else alert(d.error);
@@ -610,7 +611,7 @@ async function resendInvite(btn) {
   const inviteId = btn.dataset.iid;
   const name     = btn.dataset.mname;
   if (!confirm(`Resend invite to ${name}? A new email will be sent and the previous link will stop working.`)) return;
-  const r = await fetch(`/projects/${PID}/team/invites/${inviteId}/resend`, { method: 'POST' });
+  const r = await fetch(`/projects/${PID}/team/invites/${inviteId}/resend`, { method: 'POST', headers: {'X-CSRF-Token': CSRF_TOKEN} });
   const d = await r.json();
   if (!d.ok) { alert(d.error); return; }
   alert('Invite resent successfully.');
@@ -623,7 +624,7 @@ async function revokeInvite(btn) {
   const inviteId = btn.dataset.iid;
   const name     = btn.dataset.mname;
   if (!confirm(`Revoke the invite for ${name}? They will no longer be able to accept it.`)) return;
-  const r = await fetch(`/projects/${PID}/team/invites/${inviteId}/revoke`, { method: 'POST' });
+  const r = await fetch(`/projects/${PID}/team/invites/${inviteId}/revoke`, { method: 'POST', headers: {'X-CSRF-Token': CSRF_TOKEN} });
   const d = await r.json();
   if (!d.ok) { alert(d.error); return; }
   location.reload();
@@ -633,7 +634,7 @@ async function revokeInvite(btn) {
 async function copyInviteLink(btn) {
   if (!_requireManage()) return;
   const inviteId = btn.dataset.iid;
-  const r = await fetch(`/projects/${PID}/team/invites/${inviteId}/copy-link`, { method: 'POST' });
+  const r = await fetch(`/projects/${PID}/team/invites/${inviteId}/copy-link`, { method: 'POST', headers: {'X-CSRF-Token': CSRF_TOKEN} });
   const d = await r.json();
   if (!d.ok) { alert(d.error); return; }
   try {
