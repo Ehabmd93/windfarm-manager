@@ -115,6 +115,7 @@
         <form method="POST" action="{{ url_for('document_delete', doc_id=doc.id) }}"
               onsubmit="return confirm('Delete this document? This cannot be undone.');"
               style="margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
           <button type="submit" class="action-btn"
                   style="width:100%; justify-content:center; background:#fff; color:#dc2626;
                          border:1.5px solid #fecaca;">
@@ -168,6 +169,7 @@
         </div>
         <form method="POST" action="{{ url_for('document_remove_link', link_id=lnk.id) }}"
               onsubmit="return confirm('Remove this link?');" style="flex-shrink:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
           <button type="submit"
                   style="width:30px; height:30px; border-radius:8px; background:#fef2f2;
                          border:1px solid #fecaca; color:#dc2626; cursor:pointer;
@@ -192,6 +194,7 @@
     </p>
 
     <form method="POST" action="{{ url_for('document_add_link', doc_id=doc.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
 
         <div>

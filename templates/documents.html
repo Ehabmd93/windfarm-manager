@@ -160,6 +160,7 @@
 
     <!-- ── New-folder inline form ───────────────────────────────────────── -->
     <form id="new-folder-form" method="POST" action="{{ url_for('folder_create') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
       <input type="hidden" name="parent_id" value="{{ folder_id or '' }}"/>
       <i class="fa-solid fa-folder-plus" style="color:#f59e0b;font-size:16px;"></i>
       <input type="text" name="name" id="nf-input" placeholder="Folder name…"
@@ -213,7 +214,8 @@
       <!-- Delete folder -->
       {% if current_folder %}
       <form method="POST" action="{{ url_for('folder_delete', folder_id=current_folder.id) }}"
-            onsubmit="return confirm('Delete folder "{{ current_folder.name }}"? Files will move to parent folder.');">
+            onsubmit="return confirm('Delete folder &quot;{{ current_folder.name }}&quot;? Files will move to parent folder.');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
         <button type="submit" class="btn btn-danger" style="padding:5px 10px;"
                 title="Delete this folder">
           <i class="fa-solid fa-folder-minus"></i>
@@ -393,6 +395,8 @@
 
 {% block scripts %}
 <script>
+const CSRF_TOKEN = "{{ csrf_token() }}";
+
 /* ── New-folder bar toggle ─────────────────────────────────────────────── */
 function toggleNewFolderBar() {
   const bar = document.getElementById('new-folder-form');
@@ -415,7 +419,11 @@ function toggleMove(docId, e) {
 
 function moveDoc(docId, folderId, el) {
   const body = new URLSearchParams({ folder_id: folderId });
-  fetch(`/documents/${docId}/move`, { method:'POST', body })
+  fetch(`/documents/${docId}/move`, {
+    method: 'POST',
+    headers: { 'X-CSRF-Token': CSRF_TOKEN },
+    body,
+  })
     .then(r => r.json())
     .then(data => {
       if (data.ok) {

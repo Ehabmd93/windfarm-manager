@@ -110,6 +110,8 @@
         enctype="{{ 'application/x-www-form-urlencoded' if r2_active else 'multipart/form-data' }}"
         onsubmit="return handleSubmit(event)">
 
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+
     {% if not r2_active %}
     <!-- DB path needs the actual file in the form -->
     <input type="file" name="file" id="db-file-hidden" style="display:none;"/>
@@ -192,6 +194,7 @@
 <script>
 const R2_ACTIVE   = {{ 'true' if r2_active else 'false' }};
 const PRESIGN_URL = '{{ url_for("document_upload_presign") }}';
+const CSRF_TOKEN  = "{{ csrf_token() }}";
 
 const FILE_ICONS = {
   pdf:'📕', docx:'📘', doc:'📘', xlsx:'📗', xls:'📗',
@@ -269,7 +272,7 @@ async function handleSubmit(e) {
   try {
     const r = await fetch(PRESIGN_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
       body: JSON.stringify({
         filename:     selectedFile.name,
         content_type: selectedFile.type || 'application/octet-stream',

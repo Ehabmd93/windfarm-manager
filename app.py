@@ -1531,6 +1531,16 @@ def document_upload_complete():
     file_size = request.form.get('file_size', 0, type=int)
     folder_id = request.form.get('folder_id', type=int) or None
 
+    # Validate folder belongs to the active project
+    if folder_id:
+        upload_folder = DocumentFolder.query.get(folder_id)
+        if upload_folder is None:
+            flash('Folder not found.', 'danger')
+            return redirect(url_for('document_upload'))
+        if proj and upload_folder.project_id != proj.id:
+            flash('Invalid folder for this project.', 'danger')
+            return redirect(url_for('document_upload'))
+
     if not file_key or not filename:
         flash('Upload failed — missing file information.', 'danger')
         return redirect(url_for('document_upload'))
@@ -1718,6 +1728,30 @@ def document_add_link(doc_id):
     if not link_type or not link_id or link_id == '0':
         flash('Please choose a record to link.', 'danger')
         return redirect(url_for('document_detail', doc_id=doc_id))
+
+    # Validate the link target belongs to the same project as the document
+    if doc.project_id:
+        lid = int(link_id)
+        valid_target = True
+        try:
+            if link_type == 'wtg':
+                w = WTG.query.get(lid)
+                valid_target = w is not None and w.project_id == doc.project_id
+            elif link_type == 'qa_test':
+                qt = QATest.query.get(lid)
+                valid_target = qt is not None and qt.area.wtg.project_id == doc.project_id
+            elif link_type == 'proof_roll':
+                pr = ProofRollRecord.query.get(lid)
+                valid_target = pr is not None and pr.qa_test.area.wtg.project_id == doc.project_id
+            elif link_type == 'itp_record':
+                it = ITPRecord.query.get(lid)
+                valid_target = it is not None and _itp_project_id(it) == doc.project_id
+            # 'project' link type: allowed — no target record to validate
+        except Exception:
+            valid_target = False
+        if not valid_target:
+            flash('Invalid link target for this project.', 'danger')
+            return redirect(url_for('document_detail', doc_id=doc_id))
 
     # Prevent duplicates
     exists = DocumentLink.query.filter_by(document_id=doc.id,
