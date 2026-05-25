@@ -1360,6 +1360,9 @@ def folder_create():
         return redirect(url_for('documents_list'))
     from flask import g
     proj      = getattr(g, 'project', None)
+    if proj is None and current_user.role != 'admin':
+        flash('No active project. Please select a project first.', 'danger')
+        return redirect(url_for('documents_list'))
     if proj and not _user_in_project(proj.id):
         abort(403)
     name      = request.form.get('name', '').strip()
