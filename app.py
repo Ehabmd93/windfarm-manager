@@ -2095,6 +2095,114 @@ def api_delete_team_member(pid, mid):
     })
 
 
+@app.route('/projects/<int:pid>/team/<int:mid>', methods=['PATCH'])
+@login_required
+def api_edit_team_member(pid, mid):
+    """AJAX — edit an existing team member's details."""
+    if not _validate_csrf_token():
+        return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
+    if not _user_can_manage_project(pid):
+        return jsonify({'error': 'You do not have permission to manage this project.'}), 403
+
+    m    = ProjectTeamMember.query.filter_by(id=mid, project_id=pid).first_or_404()
+    data = request.get_json(silent=True) or {}
+
+    # ── Validate ──────────────────────────────────────────────────────────────
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify({'error': 'Name is required.'}), 400
+
+    project_role  = data.get('project_role', m.project_role)
+    valid_roles   = {k for k, *_ in PROJECT_ROLES}
+    if project_role not in valid_roles:
+        return jsonify({'error': f'Invalid project role: {project_role}'}), 400
+
+    can_sign_raw = data.get('can_sign')
+    if not isinstance(can_sign_raw, bool):
+        return jsonify({'error': 'can_sign must be a boolean.'}), 400
+
+    # Resolve company — None / missing / 0 all mean "unassigned"
+    company_id_raw = data.get('company_id') or None
+    company_id     = None
+    company_name   = ''
+    if company_id_raw:
+        company_id = int(company_id_raw)
+        co = ProjectCompany.query.filter_by(id=company_id, project_id=pid).first()
+        if co is None:
+            return jsonify({'error': 'Company not found or does not belong to this project.'}), 400
+        company_name = co.name
+
+    # ── Capture old values for audit ──────────────────────────────────────────
+    old_project_role = m.project_role
+    old_can_sign     = m.can_sign
+
+    # ── Apply changes ─────────────────────────────────────────────────────────
+    m.name         = name
+    m.company_id   = company_id
+    m.position     = (data.get('position') or '').strip()
+    m.phone        = (data.get('phone')    or '').strip()
+    m.project_role = project_role
+    m.can_sign     = can_sign_raw
+
+    # ── Sync ProjectMember.proj_role if role changed and user is linked ───────
+    old_pm_proj_role = None
+    new_pm_proj_role = None
+    if m.user_id is not None and project_role != old_project_role:
+        pm = ProjectMember.query.filter_by(project_id=pid, user_id=m.user_id).first()
+        if pm is not None:
+            old_pm_proj_role = pm.proj_role
+            new_pm_proj_role = _invite_role_to_proj_role(project_role)
+            pm.proj_role     = new_pm_proj_role
+
+    # ── Audit ─────────────────────────────────────────────────────────────────
+    log_audit('member_updated',
+              project_id=pid,
+              actor=current_user,
+              entity_type='member',
+              entity_id=mid,
+              entity_label=m.name,
+              detail={'project_role': project_role, 'can_sign': can_sign_raw,
+                      'company_id': company_id})
+
+    if project_role != old_project_role:
+        log_audit('user_role_changed',
+                  project_id=pid,
+                  actor=current_user,
+                  entity_type='member',
+                  entity_id=mid,
+                  entity_label=m.name,
+                  detail={'old_project_role':  old_project_role,
+                          'new_project_role':  project_role,
+                          'old_pm_proj_role':  old_pm_proj_role,
+                          'new_pm_proj_role':  new_pm_proj_role})
+
+    if can_sign_raw != old_can_sign:
+        log_audit('user_can_sign_changed',
+                  project_id=pid,
+                  actor=current_user,
+                  entity_type='member',
+                  entity_id=mid,
+                  entity_label=m.name,
+                  detail={'old': old_can_sign, 'new': can_sign_raw})
+
+    db.session.commit()
+
+    return jsonify({
+        'ok':           True,
+        'id':           m.id,
+        'name':         m.name,
+        'company_id':   m.company_id,
+        'company_name': company_name,
+        'position':     m.position,
+        'phone':        m.phone,
+        'project_role': m.project_role,
+        'role_label':   m.role_label,
+        'role_color':   m.role_color,
+        'role_icon':    m.role_icon,
+        'can_sign':     m.can_sign,
+    })
+
+
 @app.route('/projects/<int:pid>/team/invites/<int:invite_id>/resend', methods=['POST'])
 @login_required
 def api_resend_invite(pid, invite_id):
