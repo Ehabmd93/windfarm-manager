@@ -2378,9 +2378,11 @@ def api_add_element(pid):
 @app.route('/api/elements/<int:eid>', methods=['PATCH', 'DELETE'])
 @login_required
 def api_element(eid):
-    if current_user.role not in ('engineer', 'manager', 'admin'):
-        return jsonify({'error': 'Forbidden'}), 403
+    if not _validate_csrf_token():
+        return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
     el = WTG.query.get_or_404(eid)
+    if not _user_can_manage_project(el.project_id):
+        return jsonify({'error': 'Forbidden'}), 403
     if request.method == 'DELETE':
         db.session.delete(el)
         db.session.commit()
@@ -2430,9 +2432,11 @@ def api_add_group(pid):
 @app.route('/api/groups/<int:gid>', methods=['PATCH', 'DELETE'])
 @login_required
 def api_group(gid):
-    if current_user.role not in ('engineer', 'manager', 'admin'):
-        return jsonify({'error': 'Forbidden'}), 403
+    if not _validate_csrf_token():
+        return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
     g = WTGGroup.query.get_or_404(gid)
+    if not _user_can_manage_project(g.project_id):
+        return jsonify({'error': 'Forbidden'}), 403
     if request.method == 'DELETE':
         # Unlink elements from this group before deleting
         for el in g.elements:
@@ -2479,9 +2483,11 @@ def api_add_work_package(pid):
 @app.route('/api/work-packages/<int:wpid>', methods=['PATCH', 'DELETE'])
 @login_required
 def api_work_package(wpid):
-    if current_user.role not in ('engineer', 'manager', 'admin'):
-        return jsonify({'error': 'Forbidden'}), 403
+    if not _validate_csrf_token():
+        return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
     wp = WorkPackage.query.get_or_404(wpid)
+    if not _user_can_manage_project(wp.project_id):
+        return jsonify({'error': 'Forbidden'}), 403
     if request.method == 'DELETE':
         for el in wp.elements:
             el.work_package_id = None
@@ -2513,7 +2519,9 @@ def api_area_activities(aid):
             'status_label': a.status_label, 'status_color': a.status_color,
             'sort_order': a.sort_order
         } for a in sorted(area.activities, key=lambda x: (x.sort_order, x.name))])
-    if current_user.role not in ('engineer', 'manager', 'admin'):
+    if not _validate_csrf_token():
+        return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
+    if not _user_can_manage_project(area.wtg.project_id):
         return jsonify({'error': 'Forbidden'}), 403
     data          = request.get_json() or {}
     name          = data.get('name', '').strip()
@@ -2532,9 +2540,11 @@ def api_area_activities(aid):
 @app.route('/api/activities/<int:actid>', methods=['PATCH', 'DELETE'])
 @login_required
 def api_activity(actid):
-    if current_user.role not in ('engineer', 'manager', 'admin'):
-        return jsonify({'error': 'Forbidden'}), 403
+    if not _validate_csrf_token():
+        return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
     act = Activity.query.get_or_404(actid)
+    if not _user_can_manage_project(act.area.wtg.project_id):
+        return jsonify({'error': 'Forbidden'}), 403
     if request.method == 'DELETE':
         db.session.delete(act)
         db.session.commit()
@@ -2555,7 +2565,9 @@ def api_activity(actid):
 @app.route('/api/projects/<int:pid>/deploy', methods=['POST'])
 @login_required
 def api_deploy_project(pid):
-    if current_user.role not in ('engineer', 'manager', 'admin'):
+    if not _validate_csrf_token():
+        return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
+    if not _user_can_manage_project(pid):
         return jsonify({'error': 'Forbidden'}), 403
     data    = request.get_json() or {}
     modules = set(data.get('modules', []))
@@ -2579,9 +2591,11 @@ def api_deploy_project(pid):
 @app.route('/api/projects/<int:pid>/reset-setup', methods=['DELETE'])
 @login_required
 def api_reset_project_setup(pid):
-    if current_user.role not in ('engineer', 'manager', 'admin'):
-        return jsonify({'error': 'Forbidden'}), 403
+    if not _validate_csrf_token():
+        return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
     Project.query.get_or_404(pid)
+    if not _user_can_manage_project(pid):
+        return jsonify({'error': 'Forbidden'}), 403
     try:
         # Walk all elements → areas → tests/activities → delete bottom-up
         for el in list(WTG.query.filter_by(project_id=pid).all()):
@@ -2613,9 +2627,11 @@ def api_reset_project_setup(pid):
 @app.route('/api/elements/<int:eid>/areas', methods=['POST'])
 @login_required
 def api_add_area(eid):
-    if current_user.role not in ('engineer', 'manager', 'admin'):
-        return jsonify({'error': 'Forbidden'}), 403
+    if not _validate_csrf_token():
+        return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
     el   = WTG.query.get_or_404(eid)
+    if not _user_can_manage_project(el.project_id):
+        return jsonify({'error': 'Forbidden'}), 403
     data = request.get_json() or {}
     area_type = data.get('area_type', '').strip()
     label     = data.get('label', '').strip() or area_type.replace('_', ' ').title()
@@ -2635,9 +2651,11 @@ def api_add_area(eid):
 @app.route('/api/areas/<int:aid>', methods=['DELETE'])
 @login_required
 def api_delete_area(aid):
-    if current_user.role not in ('engineer', 'manager', 'admin'):
-        return jsonify({'error': 'Forbidden'}), 403
+    if not _validate_csrf_token():
+        return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
     area = Area.query.get_or_404(aid)
+    if not _user_can_manage_project(area.wtg.project_id):
+        return jsonify({'error': 'Forbidden'}), 403
     try:
         # Explicitly cascade to avoid FK constraint issues on PostgreSQL
         for test in list(area.required_tests):
