@@ -34,7 +34,7 @@
       display: flex;
       flex-direction: column;
       justify-content: center;
-      padding: 64px 72px;
+      padding: 48px 64px;
     }
 
     /* Engineering grid — minor lines */
@@ -101,24 +101,24 @@
     .sg-brand { position: relative; z-index: 1; }
 
     .sg-logomark {
-      width: 54px;
-      height: 54px;
-      border-radius: 15px;
+      width: 50px;
+      height: 50px;
+      border-radius: 14px;
       background: linear-gradient(135deg, #0ea5e9 0%, #0369a1 100%);
       display: flex;
       align-items: center;
       justify-content: center;
-      margin-bottom: 32px;
+      margin-bottom: 24px;
       box-shadow: 0 8px 28px rgba(14,165,233,0.38), 0 0 0 1px rgba(14,165,233,0.2);
     }
 
     .sg-appname {
-      font-size: 42px;
+      font-size: 40px;
       font-weight: 900;
       color: #ffffff;
       letter-spacing: -1.5px;
       line-height: 1;
-      margin-bottom: 12px;
+      margin-bottom: 10px;
     }
     .sg-appname-accent { color: #0ea5e9; }
 
@@ -128,60 +128,23 @@
       color: #475569;
       text-transform: uppercase;
       letter-spacing: 0.1em;
-      margin-bottom: 22px;
+      margin-bottom: 16px;
     }
 
     .sg-trust {
       font-size: 18px;
       font-weight: 400;
       color: #94a3b8;
-      line-height: 1.65;
+      line-height: 1.6;
       max-width: 380px;
-      margin-bottom: 52px;
+      margin-bottom: 10px;
     }
 
-    /* Feature list */
-    .sg-features {
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-    }
-    .sg-feat {
-      display: flex;
-      align-items: flex-start;
-      gap: 14px;
-      color: #64748b;
+    .sg-trust-sub {
       font-size: 13px;
-      line-height: 1.5;
-      font-weight: 500;
-    }
-    .sg-feat-icon {
-      width: 28px;
-      height: 28px;
-      border-radius: 8px;
-      background: rgba(14,165,233,0.1);
-      border: 1px solid rgba(14,165,233,0.18);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-      font-size: 11px;
-      color: #0ea5e9;
-      margin-top: 1px;
-    }
-
-    /* Left footer */
-    .sg-left-footer {
-      position: absolute;
-      bottom: 28px;
-      left: 72px;
-      right: 72px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      font-size: 11px;
-      color: #334155;
-      z-index: 1;
+      color: #475569;
+      line-height: 1.6;
+      max-width: 340px;
     }
 
     /* ══════════════════════════════════════
@@ -506,26 +469,7 @@
       <h1 class="sg-appname">Site<span class="sg-appname-accent">Grid</span></h1>
       <div class="sg-product-line">Construction QA, ITPs &amp; Project Handover</div>
       <p class="sg-trust">Connect every inspection,<br>record, and handover.</p>
-
-      <div class="sg-features">
-        <div class="sg-feat">
-          <div class="sg-feat-icon"><i class="fa-solid fa-clipboard-list"></i></div>
-          <span>Digital ITPs with per-criterion sign-off and client review</span>
-        </div>
-        <div class="sg-feat">
-          <div class="sg-feat-icon"><i class="fa-solid fa-vial"></i></div>
-          <span>Structured QA test records linked to proof rolls</span>
-        </div>
-        <div class="sg-feat">
-          <div class="sg-feat-icon"><i class="fa-solid fa-file-signature"></i></div>
-          <span>Complete audit trail from first inspection to handover</span>
-        </div>
-      </div>
-    </div>
-
-    <div class="sg-left-footer">
-      <span>Secure quality records from site to handover</span>
-      <span>&copy; 2026 SiteGrid</span>
+      <p class="sg-trust-sub">Project-controlled QA records, ITPs,<br>and sign-off evidence.</p>
     </div>
   </div>
 
@@ -536,8 +480,8 @@
       <div class="sg-card">
 
         <div class="sg-card-eyebrow">Secure sign in</div>
-        <div class="sg-card-title">Welcome back</div>
-        <div class="sg-card-sub">Sign in to your SiteGrid account</div>
+        <div class="sg-card-title">Sign in to SiteGrid</div>
+        <div class="sg-card-sub">Access your project quality records</div>
 
         <!-- Flash / error messages -->
         {% with messages = get_flashed_messages(with_categories=true) %}
@@ -602,7 +546,7 @@
 
       <div class="sg-invite">
         <i class="fa-solid fa-shield-halved"></i>
-        <span>Access is by project invitation only. Contact your project manager to request access.</span>
+        <span>Access is invite-only. Ask your project manager to add you to a project.</span>
       </div>
 
       <div class="sg-bottom-note">
