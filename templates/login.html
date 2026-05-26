@@ -3,138 +3,654 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Login – QA Manager</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <title>Sign In — SiteGrid</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
-    .wind-bg { background: linear-gradient(135deg, #072f52 0%, #0f4c81 50%, #1a6fa0 100%); }
+    /* ── Reset ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+      color: #0f172a;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ══════════════════════════════════════
+       SHELL — side-by-side on desktop
+    ══════════════════════════════════════ */
+    .sg-shell {
+      display: flex;
+      min-height: 100vh;
+    }
+
+    /* ══════════════════════════════════════
+       LEFT PANEL — brand + visual
+    ══════════════════════════════════════ */
+    .sg-left {
+      flex: 0 0 56%;
+      background: #0b1929;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 64px 72px;
+    }
+
+    /* Engineering grid — minor lines */
+    .sg-grid {
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px);
+      background-size: 36px 36px;
+      pointer-events: none;
+    }
+    /* Major grid — every 5th line */
+    .sg-grid::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.065) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.065) 1px, transparent 1px);
+      background-size: 180px 180px;
+    }
+
+    /* Glow accent top-left */
+    .sg-glow {
+      position: absolute;
+      top: -120px;
+      left: -80px;
+      width: 480px;
+      height: 480px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(14,165,233,0.12) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    /* Decorative corner pulse */
+    .sg-pulse {
+      position: absolute;
+      top: 36px;
+      right: 36px;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #0ea5e9;
+      box-shadow: 0 0 0 0 rgba(14,165,233,0.5);
+      animation: sg-pulse 2.8s ease-out infinite;
+    }
+    @keyframes sg-pulse {
+      0%   { box-shadow: 0 0 0 0   rgba(14,165,233,0.5); }
+      70%  { box-shadow: 0 0 0 12px rgba(14,165,233,0);   }
+      100% { box-shadow: 0 0 0 0   rgba(14,165,233,0);   }
+    }
+
+    /* Site-plan / inspection motif (bottom-right, very faint) */
+    .sg-motif {
+      position: absolute;
+      right: -40px;
+      bottom: -30px;
+      opacity: 0.055;
+      pointer-events: none;
+    }
+
+    /* ── Brand content ── */
+    .sg-brand { position: relative; z-index: 1; }
+
+    .sg-logomark {
+      width: 54px;
+      height: 54px;
+      border-radius: 15px;
+      background: linear-gradient(135deg, #0ea5e9 0%, #0369a1 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 32px;
+      box-shadow: 0 8px 28px rgba(14,165,233,0.38), 0 0 0 1px rgba(14,165,233,0.2);
+    }
+
+    .sg-appname {
+      font-size: 42px;
+      font-weight: 900;
+      color: #ffffff;
+      letter-spacing: -1.5px;
+      line-height: 1;
+      margin-bottom: 12px;
+    }
+    .sg-appname-accent { color: #0ea5e9; }
+
+    .sg-product-line {
+      font-size: 11px;
+      font-weight: 700;
+      color: #475569;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 22px;
+    }
+
+    .sg-trust {
+      font-size: 18px;
+      font-weight: 400;
+      color: #94a3b8;
+      line-height: 1.65;
+      max-width: 380px;
+      margin-bottom: 52px;
+    }
+
+    /* Feature list */
+    .sg-features {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .sg-feat {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      color: #64748b;
+      font-size: 13px;
+      line-height: 1.5;
+      font-weight: 500;
+    }
+    .sg-feat-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      background: rgba(14,165,233,0.1);
+      border: 1px solid rgba(14,165,233,0.18);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      font-size: 11px;
+      color: #0ea5e9;
+      margin-top: 1px;
+    }
+
+    /* Left footer */
+    .sg-left-footer {
+      position: absolute;
+      bottom: 28px;
+      left: 72px;
+      right: 72px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11px;
+      color: #334155;
+      z-index: 1;
+    }
+
+    /* ══════════════════════════════════════
+       RIGHT PANEL — login form
+    ══════════════════════════════════════ */
+    .sg-right {
+      flex: 0 0 44%;
+      background: #f1f5f9;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 52px 44px;
+    }
+
+    .sg-form-wrap {
+      width: 100%;
+      max-width: 368px;
+    }
+
+    /* Card */
+    .sg-card {
+      background: #ffffff;
+      border-radius: 20px;
+      border: 1px solid #e2e8f0;
+      box-shadow: 0 4px 24px rgba(15,23,42,0.07), 0 1px 4px rgba(15,23,42,0.04);
+      padding: 36px 32px 32px;
+      margin-bottom: 16px;
+    }
+
+    .sg-card-eyebrow {
+      font-size: 11px;
+      font-weight: 700;
+      color: #0ea5e9;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 6px;
+    }
+    .sg-card-title {
+      font-size: 22px;
+      font-weight: 800;
+      color: #0f172a;
+      letter-spacing: -0.4px;
+      margin-bottom: 4px;
+    }
+    .sg-card-sub {
+      font-size: 13px;
+      color: #94a3b8;
+      margin-bottom: 28px;
+    }
+
+    /* Flash messages */
+    .sg-flash {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 12px 14px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 20px;
+      line-height: 1.45;
+    }
+    .sg-flash i { margin-top: 1px; flex-shrink: 0; font-size: 13px; }
+    .sg-flash-danger  { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+    .sg-flash-success { background: #f0f9ff; color: #0369a1; border: 1px solid #bae6fd; }
+    .sg-flash-info    { background: #f0f9ff; color: #0369a1; border: 1px solid #bae6fd; }
+    .sg-flash-warning { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
+
+    /* Form fields */
+    .sg-field {
+      margin-bottom: 18px;
+    }
+    .sg-label {
+      display: block;
+      font-size: 11px;
+      font-weight: 700;
+      color: #374151;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 7px;
+    }
+    .sg-input-wrap {
+      position: relative;
+    }
+    .sg-input-icon {
+      position: absolute;
+      left: 13px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #94a3b8;
+      font-size: 12px;
+      pointer-events: none;
+      transition: color 0.15s;
+    }
+    .sg-input {
+      width: 100%;
+      padding: 12px 14px 12px 40px;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 10px;
+      font-size: 14px;
+      color: #0f172a;
+      background: #f8fafc;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+      font-family: inherit;
+    }
+    .sg-input::placeholder { color: #c0cad8; }
+    .sg-input:focus {
+      border-color: #0ea5e9;
+      box-shadow: 0 0 0 3px rgba(14,165,233,0.13);
+      background: #ffffff;
+    }
+    .sg-input:focus + .sg-input-icon,
+    .sg-input-wrap:focus-within .sg-input-icon {
+      color: #0ea5e9;
+    }
+
+    /* Password toggle */
+    .sg-pw-wrap .sg-input { padding-right: 44px; }
+    .sg-pw-toggle {
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: #94a3b8;
+      font-size: 13px;
+      padding: 4px 6px;
+      transition: color 0.15s;
+      line-height: 1;
+    }
+    .sg-pw-toggle:hover { color: #475569; }
+
+    /* Submit */
+    .sg-submit {
+      width: 100%;
+      margin-top: 26px;
+      padding: 13px 20px;
+      background: #0284c7;
+      color: #ffffff;
+      border: none;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: 0 4px 14px rgba(2,132,199,0.3);
+      transition: background 0.15s, box-shadow 0.15s, transform 0.1s;
+      font-family: inherit;
+    }
+    .sg-submit:hover:not(:disabled) {
+      background: #0369a1;
+      box-shadow: 0 6px 20px rgba(2,132,199,0.38);
+    }
+    .sg-submit:active:not(:disabled) { transform: scale(0.99); }
+    .sg-submit:disabled {
+      background: #7dd3fc;
+      box-shadow: none;
+      cursor: not-allowed;
+    }
+
+    /* Loading spinner */
+    .sg-spinner {
+      display: none;
+      width: 16px;
+      height: 16px;
+      border: 2.5px solid rgba(255,255,255,0.35);
+      border-top-color: #ffffff;
+      border-radius: 50%;
+      animation: sg-spin 0.65s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes sg-spin { to { transform: rotate(360deg); } }
+
+    /* Forgot password */
+    .sg-form-footer {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 16px;
+    }
+    .sg-link {
+      font-size: 12px;
+      color: #64748b;
+      text-decoration: none;
+      transition: color 0.15s;
+    }
+    .sg-link:hover { color: #0284c7; }
+
+    /* Invite note */
+    .sg-invite {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 12px 14px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      font-size: 12px;
+      color: #64748b;
+      line-height: 1.5;
+      margin-top: 14px;
+    }
+    .sg-invite i { color: #0ea5e9; font-size: 12px; margin-top: 1px; flex-shrink: 0; }
+
+    /* Right panel footer */
+    .sg-bottom-note {
+      font-size: 11px;
+      color: #94a3b8;
+      text-align: center;
+      margin-top: 24px;
+      line-height: 1.6;
+    }
+
+    /* ══════════════════════════════════════
+       RESPONSIVE — tablet / mobile
+    ══════════════════════════════════════ */
+    @media (max-width: 900px) {
+      .sg-left { padding: 48px 52px; }
+      .sg-right { padding: 40px 32px; }
+      .sg-appname { font-size: 34px; }
+    }
+
+    @media (max-width: 700px) {
+      .sg-shell { flex-direction: column; }
+
+      .sg-left {
+        flex: none;
+        padding: 40px 28px 36px;
+      }
+      .sg-appname { font-size: 30px; }
+      .sg-trust   { font-size: 15px; margin-bottom: 0; }
+      .sg-features    { display: none; }
+      .sg-left-footer { display: none; }
+      .sg-pulse       { display: none; }
+
+      .sg-right {
+        flex: 1;
+        padding: 32px 20px 44px;
+        background: #f1f5f9;
+        justify-content: flex-start;
+      }
+      .sg-form-wrap { max-width: 100%; }
+    }
+
+    @media (max-width: 440px) {
+      .sg-left { padding: 32px 20px 28px; }
+      .sg-card { padding: 28px 22px 24px; }
+    }
   </style>
 </head>
-<body class="min-h-screen wind-bg flex items-center justify-center p-4">
+<body>
 
-  <!-- Decorative turbine silhouettes -->
-  <div class="absolute inset-0 overflow-hidden pointer-events-none opacity-10">
-    <svg viewBox="0 0 800 600" class="absolute right-0 bottom-0 w-96 h-96 text-white fill-current">
-      <path d="M400,300 L400,100 L420,280 Z M400,300 L230,420 L390,310 Z M400,300 L570,420 L410,310 Z"/>
-      <circle cx="400" cy="300" r="12"/>
-      <rect x="395" y="300" width="10" height="200"/>
+<div class="sg-shell">
+
+  <!-- ══ LEFT: Brand panel ══════════════════════════════════════ -->
+  <div class="sg-left">
+    <div class="sg-grid"></div>
+    <div class="sg-glow"></div>
+    <div class="sg-pulse"></div>
+
+    <!-- Subtle geometric site-plan / inspection motif -->
+    <svg class="sg-motif" width="460" height="420" viewBox="0 0 460 420"
+         fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <!-- Site plan outline -->
+      <rect x="10" y="10" width="180" height="140" rx="5" stroke="white" stroke-width="2"/>
+      <rect x="32" y="32" width="64" height="46" rx="3" stroke="white" stroke-width="1.5"/>
+      <rect x="118" y="32" width="48" height="46" rx="3" stroke="white" stroke-width="1.5"/>
+      <line x1="10" y1="110" x2="190" y2="110" stroke="white" stroke-width="1"/>
+      <line x1="104" y1="10" x2="104" y2="150" stroke="white" stroke-width="1"/>
+      <!-- Road dash lines -->
+      <line x1="190" y1="80" x2="310" y2="80" stroke="white" stroke-width="1.5" stroke-dasharray="9 5"/>
+      <line x1="104" y1="150" x2="104" y2="270" stroke="white" stroke-width="1.5" stroke-dasharray="9 5"/>
+      <!-- Second block -->
+      <rect x="220" y="20" width="160" height="110" rx="5" stroke="white" stroke-width="2"/>
+      <rect x="242" y="40" width="50" height="36" rx="3" stroke="white" stroke-width="1.5"/>
+      <rect x="310" y="40" width="46" height="36" rx="3" stroke="white" stroke-width="1.5"/>
+      <!-- Checklist/ITP document -->
+      <rect x="46" y="195" width="116" height="148" rx="7" stroke="white" stroke-width="2"/>
+      <rect x="46" y="195" width="116" height="22" rx="7" stroke="white" stroke-width="2"/>
+      <line x1="72" y1="242" x2="144" y2="242" stroke="white" stroke-width="1.5"/>
+      <line x1="72" y1="264" x2="144" y2="264" stroke="white" stroke-width="1.5"/>
+      <line x1="72" y1="286" x2="128" y2="286" stroke="white" stroke-width="1.5"/>
+      <line x1="72" y1="308" x2="120" y2="308" stroke="white" stroke-width="1.5"/>
+      <circle cx="62" cy="242" r="5" stroke="white" stroke-width="1.5"/>
+      <circle cx="62" cy="264" r="5" stroke="white" stroke-width="1.5"/>
+      <circle cx="62" cy="286" r="5" stroke="white" stroke-width="1.5"/>
+      <circle cx="62" cy="308" r="5" stroke="white" stroke-width="1.5"/>
+      <!-- Tick marks on first two circles -->
+      <polyline points="58,241 61,246 68,238" stroke="white" stroke-width="1.5" fill="none"/>
+      <polyline points="58,263 61,268 68,260" stroke="white" stroke-width="1.5" fill="none"/>
+      <!-- Approval stamp -->
+      <circle cx="340" cy="248" r="72" stroke="white" stroke-width="2"/>
+      <circle cx="340" cy="248" r="61" stroke="white" stroke-width="1" stroke-dasharray="5 4"/>
+      <polyline points="312,248 330,268 372,224" stroke="white" stroke-width="3.5" fill="none"
+                stroke-linecap="round" stroke-linejoin="round"/>
+      <!-- Dimension lines -->
+      <line x1="10" y1="172" x2="190" y2="172" stroke="white" stroke-width="0.8" stroke-dasharray="3 3"/>
+      <line x1="10" y1="168" x2="10" y2="176" stroke="white" stroke-width="1"/>
+      <line x1="190" y1="168" x2="190" y2="176" stroke="white" stroke-width="1"/>
     </svg>
-  </div>
 
-  <div class="relative w-full max-w-md">
-    <!-- Card -->
-    <div class="bg-white rounded-3xl shadow-2xl overflow-hidden">
-      <!-- Header -->
-      <div class="bg-gradient-to-r from-blue-900 to-blue-700 px-8 py-8 text-center">
-        <div class="w-16 h-16 bg-blue-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-          <i class="fa-solid fa-clipboard-check text-white text-2xl"></i>
-        </div>
-        <h1 class="text-white text-2xl font-bold">QA Manager</h1>
-        <p class="text-blue-200 text-sm mt-1">Construction Quality Management System</p>
+    <!-- Brand -->
+    <div class="sg-brand">
+      <div class="sg-logomark" aria-hidden="true">
+        <!-- 4-quadrant grid icon -->
+        <svg width="30" height="30" viewBox="0 0 30 30" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="2"  y="2"  width="11" height="11" rx="2.5" fill="white"/>
+          <rect x="17" y="2"  width="11" height="11" rx="2.5" fill="white" opacity="0.7"/>
+          <rect x="2"  y="17" width="11" height="11" rx="2.5" fill="white" opacity="0.7"/>
+          <rect x="17" y="17" width="11" height="11" rx="2.5" fill="white"/>
+        </svg>
       </div>
 
-      <!-- Form -->
-      <div class="px-8 py-8">
-        {% with messages = get_flashed_messages(with_categories=true) %}
-          {% for category, msg in messages %}
-            <div class="mb-4 px-4 py-3 rounded-xl text-sm font-medium
-              {% if category=='danger' %}bg-red-50 text-red-700 border border-red-200{% else %}bg-blue-50 text-blue-700 border border-blue-200{% endif %}">
-              {{ msg }}
-            </div>
-          {% endfor %}
-        {% endwith %}
+      <h1 class="sg-appname">Site<span class="sg-appname-accent">Grid</span></h1>
+      <div class="sg-product-line">Construction QA, ITPs &amp; Project Handover</div>
+      <p class="sg-trust">Connect every inspection,<br>record, and handover.</p>
 
-        <form method="POST">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <div class="space-y-5">
-            <div>
-              <label class="block text-sm font-semibold text-slate-700 mb-2">Email Address</label>
-              <div class="relative">
-                <i class="fa-solid fa-envelope absolute left-3.5 top-3.5 text-slate-400 text-sm"></i>
-                <input type="email" name="email" required placeholder="you@company.com"
-                  class="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition"/>
-              </div>
-            </div>
-            <div>
-              <label class="block text-sm font-semibold text-slate-700 mb-2">Password</label>
-              <div class="relative">
-                <i class="fa-solid fa-lock absolute left-3.5 top-3.5 text-slate-400 text-sm"></i>
-                <input type="password" name="password" required placeholder="••••••••"
-                  class="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition"/>
-              </div>
-            </div>
-            <button type="submit"
-              class="w-full bg-gradient-to-r from-blue-800 to-blue-600 text-white py-3 rounded-xl font-semibold text-sm hover:from-blue-700 hover:to-blue-500 transition-all duration-200 shadow-lg shadow-blue-900/30">
-              <i class="fa-solid fa-right-to-bracket mr-2"></i>Sign In
-            </button>
-            <div class="text-center pt-1">
-              <a href="/forgot-password"
-                 class="text-xs text-slate-400 hover:text-blue-600 transition">
-                Forgot password?
-              </a>
-            </div>
-          </div>
-        </form>
-
-        <!-- Demo accounts -->
-        <div class="mt-6 pt-6 border-t border-slate-100">
-          <p class="text-xs text-slate-500 text-center font-semibold mb-3">Demo Accounts</p>
-          <div class="grid grid-cols-2 gap-2 text-xs">
-            <button onclick="demoLogin('engineer')"
-              class="px-3 py-2 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition font-medium border border-green-200">
-              <i class="fa-solid fa-helmet-safety mr-1"></i>Engineer
-            </button>
-            <button onclick="demoLogin('supervisor')"
-              class="px-3 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition font-medium border border-blue-200">
-              <i class="fa-solid fa-user-tie mr-1"></i>Supervisor
-            </button>
-            <button onclick="demoLogin('manager')"
-              class="px-3 py-2 bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 transition font-medium border border-purple-200">
-              <i class="fa-solid fa-briefcase mr-1"></i>Manager
-            </button>
-            <button onclick="demoLogin('client')"
-              class="px-3 py-2 bg-orange-50 text-orange-700 rounded-lg hover:bg-orange-100 transition font-medium border border-orange-200">
-              <i class="fa-solid fa-building mr-1"></i>Client
-            </button>
-          </div>
+      <div class="sg-features">
+        <div class="sg-feat">
+          <div class="sg-feat-icon"><i class="fa-solid fa-clipboard-list"></i></div>
+          <span>Digital ITPs with per-criterion sign-off and client review</span>
+        </div>
+        <div class="sg-feat">
+          <div class="sg-feat-icon"><i class="fa-solid fa-vial"></i></div>
+          <span>Structured QA test records linked to proof rolls</span>
+        </div>
+        <div class="sg-feat">
+          <div class="sg-feat-icon"><i class="fa-solid fa-file-signature"></i></div>
+          <span>Complete audit trail from first inspection to handover</span>
         </div>
       </div>
     </div>
+
+    <div class="sg-left-footer">
+      <span>Secure quality records from site to handover</span>
+      <span>&copy; 2026 SiteGrid</span>
+    </div>
   </div>
 
-  <script>
-    // Demo login — tries @demo.com first, falls back to @cbop.com if that failed
-    const DEMO_CREDS = {
-      engineer:   { pw:'engineer123',   alts:['engineer@demo.com','engineer@cbop.com'] },
-      supervisor: { pw:'supervisor123', alts:['supervisor@demo.com','supervisor@cbop.com'] },
-      manager:    { pw:'manager123',    alts:['manager@demo.com','manager@cbop.com'] },
-      client:     { pw:'client123',     alts:['client@demo.com','client@client.com'] },
-    };
-    function demoLogin(role) {
-      const c = DEMO_CREDS[role];
-      if (!c) return;
-      // Use stored preference if available, otherwise try first option
-      const stored = localStorage.getItem('demo_email_' + role);
-      const email  = stored || c.alts[0];
-      document.querySelector('input[name=email]').value    = email;
-      document.querySelector('input[name=password]').value = c.pw;
-      document.querySelector('form').submit();
+  <!-- ══ RIGHT: Login form ══════════════════════════════════════ -->
+  <div class="sg-right">
+    <div class="sg-form-wrap">
+
+      <div class="sg-card">
+
+        <div class="sg-card-eyebrow">Secure sign in</div>
+        <div class="sg-card-title">Welcome back</div>
+        <div class="sg-card-sub">Sign in to your SiteGrid account</div>
+
+        <!-- Flash / error messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% for category, msg in messages %}
+          <div class="sg-flash sg-flash-{{ category if category in ('danger','success','info','warning') else 'info' }}">
+            <i class="fa-solid {% if category == 'danger' %}fa-circle-exclamation
+                               {% elif category == 'success' %}fa-circle-check
+                               {% elif category == 'warning' %}fa-triangle-exclamation
+                               {% else %}fa-circle-info{% endif %}"></i>
+            <span>{{ msg }}</span>
+          </div>
+          {% endfor %}
+        {% endwith %}
+
+        <form method="POST" id="sg-form" onsubmit="handleSubmit()">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+
+          <!-- Email -->
+          <div class="sg-field">
+            <label class="sg-label" for="sg-email">Email Address</label>
+            <div class="sg-input-wrap">
+              <i class="fa-solid fa-envelope sg-input-icon"></i>
+              <input type="email" id="sg-email" name="email"
+                     required autocomplete="email" spellcheck="false"
+                     placeholder="you@company.com"
+                     class="sg-input"/>
+            </div>
+          </div>
+
+          <!-- Password -->
+          <div class="sg-field sg-pw-wrap">
+            <label class="sg-label" for="sg-password">Password</label>
+            <div class="sg-input-wrap">
+              <i class="fa-solid fa-lock sg-input-icon"></i>
+              <input type="password" id="sg-password" name="password"
+                     required autocomplete="current-password"
+                     placeholder="••••••••"
+                     class="sg-input"/>
+              <button type="button" class="sg-pw-toggle"
+                      onclick="togglePassword()"
+                      aria-label="Toggle password visibility"
+                      tabindex="-1">
+                <i class="fa-solid fa-eye" id="pw-eye-icon"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- Submit -->
+          <button type="submit" id="sg-submit" class="sg-submit">
+            <div class="sg-spinner" id="sg-spinner"></div>
+            <i class="fa-solid fa-right-to-bracket" id="sg-submit-icon"></i>
+            <span id="sg-submit-label">Sign in</span>
+          </button>
+
+        </form>
+
+        <div class="sg-form-footer">
+          <a href="/forgot-password" class="sg-link">Forgot password?</a>
+        </div>
+
+      </div><!-- /.sg-card -->
+
+      <div class="sg-invite">
+        <i class="fa-solid fa-shield-halved"></i>
+        <span>Access is by project invitation only. Contact your project manager to request access.</span>
+      </div>
+
+      <div class="sg-bottom-note">
+        Secure quality records from site to handover
+      </div>
+
+    </div><!-- /.sg-form-wrap -->
+  </div><!-- /.sg-right -->
+
+</div><!-- /.sg-shell -->
+
+<script>
+  /* ── Password visibility toggle ── */
+  function togglePassword() {
+    const input = document.getElementById('sg-password');
+    const icon  = document.getElementById('pw-eye-icon');
+    if (input.type === 'password') {
+      input.type    = 'text';
+      icon.className = 'fa-solid fa-eye-slash';
+    } else {
+      input.type    = 'password';
+      icon.className = 'fa-solid fa-eye';
     }
-    // On page load: if there's an error and email matches a demo account,
-    // cycle to the next alt so the button tries the other one next time
-    (function() {
-      const hasError = document.querySelector('.bg-red-50') !== null;
-      if (!hasError) return;
-      const emailVal = document.querySelector('input[name=email]').value;
-      for (const [role, c] of Object.entries(DEMO_CREDS)) {
-        const idx = c.alts.indexOf(emailVal);
-        if (idx !== -1) {
-          const nextAlt = c.alts[(idx + 1) % c.alts.length];
-          localStorage.setItem('demo_email_' + role, nextAlt);
-        }
-      }
-    })();
-  </script>
+  }
+
+  /* ── Loading state on submit ── */
+  function handleSubmit() {
+    const btn     = document.getElementById('sg-submit');
+    const spinner = document.getElementById('sg-spinner');
+    const icon    = document.getElementById('sg-submit-icon');
+    const label   = document.getElementById('sg-submit-label');
+
+    btn.disabled           = true;
+    spinner.style.display  = 'block';
+    icon.style.display     = 'none';
+    label.textContent      = 'Signing in…';
+
+    // Re-enable after 8 s in case the server is slow / the page didn't redirect
+    setTimeout(() => {
+      btn.disabled           = false;
+      spinner.style.display  = 'none';
+      icon.style.display     = '';
+      label.textContent      = 'Sign in';
+    }, 8000);
+
+    return true; // allow normal form submit
+  }
+</script>
+
 </body>
 </html>
