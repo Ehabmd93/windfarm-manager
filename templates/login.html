@@ -16,7 +16,7 @@
     }
 
     /* ══════════════════════════════════════
-       SHELL — side-by-side on desktop
+       SHELL
     ══════════════════════════════════════ */
     .sg-shell {
       display: flex;
@@ -24,7 +24,7 @@
     }
 
     /* ══════════════════════════════════════
-       LEFT PANEL — brand + visual
+       LEFT PANEL — brand + animation
     ══════════════════════════════════════ */
     .sg-left {
       flex: 0 0 56%;
@@ -42,8 +42,8 @@
       position: absolute;
       inset: 0;
       background-image:
-        linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px);
+        linear-gradient(rgba(255,255,255,0.030) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.030) 1px, transparent 1px);
       background-size: 36px 36px;
       pointer-events: none;
     }
@@ -53,48 +53,81 @@
       position: absolute;
       inset: 0;
       background-image:
-        linear-gradient(rgba(255,255,255,0.065) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255,255,255,0.065) 1px, transparent 1px);
+        linear-gradient(rgba(255,255,255,0.055) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.055) 1px, transparent 1px);
       background-size: 180px 180px;
     }
 
-    /* Glow accent top-left */
+    /* Radial glow — top-left */
     .sg-glow {
       position: absolute;
       top: -120px;
       left: -80px;
-      width: 480px;
-      height: 480px;
+      width: 500px;
+      height: 500px;
       border-radius: 50%;
-      background: radial-gradient(circle, rgba(14,165,233,0.12) 0%, transparent 70%);
+      background: radial-gradient(circle, rgba(14,165,233,0.11) 0%, transparent 68%);
       pointer-events: none;
     }
 
-    /* Decorative corner pulse */
-    .sg-pulse {
+    /* ══════════════════════════════════════
+       CONNECTED DOTS CANVAS
+    ══════════════════════════════════════ */
+    .sg-dots-canvas {
       position: absolute;
-      top: 36px;
-      right: 36px;
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      background: #0ea5e9;
-      box-shadow: 0 0 0 0 rgba(14,165,233,0.5);
-      animation: sg-pulse 2.8s ease-out infinite;
-    }
-    @keyframes sg-pulse {
-      0%   { box-shadow: 0 0 0 0   rgba(14,165,233,0.5); }
-      70%  { box-shadow: 0 0 0 12px rgba(14,165,233,0);   }
-      100% { box-shadow: 0 0 0 0   rgba(14,165,233,0);   }
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 0;
     }
 
-    /* Site-plan / inspection motif (bottom-right, very faint) */
-    .sg-motif {
-      position: absolute;
-      right: -40px;
-      bottom: -30px;
-      opacity: 0.055;
+    /* Connection lines */
+    .sg-conn {
+      fill: none;
+      stroke: #38bdf8;
+      stroke-width: 1;
+      stroke-linecap: round;
+      opacity: 0;
+    }
+
+    /* Node outer ring */
+    .sg-node-ring {
+      fill: none;
+      stroke: #38bdf8;
+      stroke-width: 1;
+      opacity: 0;
+    }
+
+    /* Node core dot */
+    .sg-node-dot {
+      fill: #7dd3fc;
+      opacity: 0;
+      filter: drop-shadow(0 0 5px rgba(56,189,248,0.9));
+    }
+
+    /* Node evidence label */
+    .sg-node-label {
+      fill: #7dd3fc;
+      font-size: 7.5px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      opacity: 0;
       pointer-events: none;
+    }
+
+    /* Pulse keyframe — applied by JS after animation completes */
+    @keyframes sg-ring-pulse {
+      0%   { opacity: 0.32; transform: scale(1);   }
+      65%  { opacity: 0;    transform: scale(2.2); }
+      100% { opacity: 0;    transform: scale(2.2); }
+    }
+    .sg-node-ring.sg-pulsing {
+      animation: sg-ring-pulse 3.2s ease-out infinite;
+      transform-box: fill-box;
+      transform-origin: center;
     }
 
     /* ── Brand content ── */
@@ -143,7 +176,7 @@
     .sg-trust-sub {
       font-size: 13px;
       color: #475569;
-      line-height: 1.6;
+      line-height: 1.65;
       max-width: 340px;
     }
 
@@ -215,9 +248,7 @@
     .sg-flash-warning { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
 
     /* Form fields */
-    .sg-field {
-      margin-bottom: 18px;
-    }
+    .sg-field { margin-bottom: 18px; }
     .sg-label {
       display: block;
       font-size: 11px;
@@ -227,9 +258,7 @@
       letter-spacing: 0.06em;
       margin-bottom: 7px;
     }
-    .sg-input-wrap {
-      position: relative;
-    }
+    .sg-input-wrap { position: relative; }
     .sg-input-icon {
       position: absolute;
       left: 13px;
@@ -259,9 +288,7 @@
       background: #ffffff;
     }
     .sg-input:focus + .sg-input-icon,
-    .sg-input-wrap:focus-within .sg-input-icon {
-      color: #0ea5e9;
-    }
+    .sg-input-wrap:focus-within .sg-input-icon { color: #0ea5e9; }
 
     /* Password toggle */
     .sg-pw-wrap .sg-input { padding-right: 44px; }
@@ -367,10 +394,10 @@
     }
 
     /* ══════════════════════════════════════
-       RESPONSIVE — tablet / mobile
+       RESPONSIVE
     ══════════════════════════════════════ */
     @media (max-width: 900px) {
-      .sg-left { padding: 48px 52px; }
+      .sg-left  { padding: 48px 52px; }
       .sg-right { padding: 40px 32px; }
       .sg-appname { font-size: 34px; }
     }
@@ -380,18 +407,17 @@
 
       .sg-left {
         flex: none;
-        padding: 40px 28px 36px;
+        padding: 36px 28px 30px;
       }
-      .sg-appname { font-size: 30px; }
-      .sg-trust   { font-size: 15px; margin-bottom: 0; }
-      .sg-features    { display: none; }
-      .sg-left-footer { display: none; }
-      .sg-pulse       { display: none; }
+      /* Hide complex canvas on mobile — brand copy carries the message */
+      .sg-dots-canvas { display: none; }
+      .sg-appname   { font-size: 30px; }
+      .sg-trust     { font-size: 15px; margin-bottom: 0; }
+      .sg-trust-sub { display: none; }
 
       .sg-right {
         flex: 1;
         padding: 32px 20px 44px;
-        background: #f1f5f9;
         justify-content: flex-start;
       }
       .sg-form-wrap { max-width: 100%; }
@@ -407,57 +433,86 @@
 
 <div class="sg-shell">
 
-  <!-- ══ LEFT: Brand panel ══════════════════════════════════════ -->
+  <!-- ══ LEFT: Brand + connected dots ═══════════════════════════ -->
   <div class="sg-left">
     <div class="sg-grid"></div>
     <div class="sg-glow"></div>
-    <div class="sg-pulse"></div>
 
-    <!-- Subtle geometric site-plan / inspection motif -->
-    <svg class="sg-motif" width="460" height="420" viewBox="0 0 460 420"
-         fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <!-- Site plan outline -->
-      <rect x="10" y="10" width="180" height="140" rx="5" stroke="white" stroke-width="2"/>
-      <rect x="32" y="32" width="64" height="46" rx="3" stroke="white" stroke-width="1.5"/>
-      <rect x="118" y="32" width="48" height="46" rx="3" stroke="white" stroke-width="1.5"/>
-      <line x1="10" y1="110" x2="190" y2="110" stroke="white" stroke-width="1"/>
-      <line x1="104" y1="10" x2="104" y2="150" stroke="white" stroke-width="1"/>
-      <!-- Road dash lines -->
-      <line x1="190" y1="80" x2="310" y2="80" stroke="white" stroke-width="1.5" stroke-dasharray="9 5"/>
-      <line x1="104" y1="150" x2="104" y2="270" stroke="white" stroke-width="1.5" stroke-dasharray="9 5"/>
-      <!-- Second block -->
-      <rect x="220" y="20" width="160" height="110" rx="5" stroke="white" stroke-width="2"/>
-      <rect x="242" y="40" width="50" height="36" rx="3" stroke="white" stroke-width="1.5"/>
-      <rect x="310" y="40" width="46" height="36" rx="3" stroke="white" stroke-width="1.5"/>
-      <!-- Checklist/ITP document -->
-      <rect x="46" y="195" width="116" height="148" rx="7" stroke="white" stroke-width="2"/>
-      <rect x="46" y="195" width="116" height="22" rx="7" stroke="white" stroke-width="2"/>
-      <line x1="72" y1="242" x2="144" y2="242" stroke="white" stroke-width="1.5"/>
-      <line x1="72" y1="264" x2="144" y2="264" stroke="white" stroke-width="1.5"/>
-      <line x1="72" y1="286" x2="128" y2="286" stroke="white" stroke-width="1.5"/>
-      <line x1="72" y1="308" x2="120" y2="308" stroke="white" stroke-width="1.5"/>
-      <circle cx="62" cy="242" r="5" stroke="white" stroke-width="1.5"/>
-      <circle cx="62" cy="264" r="5" stroke="white" stroke-width="1.5"/>
-      <circle cx="62" cy="286" r="5" stroke="white" stroke-width="1.5"/>
-      <circle cx="62" cy="308" r="5" stroke="white" stroke-width="1.5"/>
-      <!-- Tick marks on first two circles -->
-      <polyline points="58,241 61,246 68,238" stroke="white" stroke-width="1.5" fill="none"/>
-      <polyline points="58,263 61,268 68,260" stroke="white" stroke-width="1.5" fill="none"/>
-      <!-- Approval stamp -->
-      <circle cx="340" cy="248" r="72" stroke="white" stroke-width="2"/>
-      <circle cx="340" cy="248" r="61" stroke="white" stroke-width="1" stroke-dasharray="5 4"/>
-      <polyline points="312,248 330,268 372,224" stroke="white" stroke-width="3.5" fill="none"
-                stroke-linecap="round" stroke-linejoin="round"/>
-      <!-- Dimension lines -->
-      <line x1="10" y1="172" x2="190" y2="172" stroke="white" stroke-width="0.8" stroke-dasharray="3 3"/>
-      <line x1="10" y1="168" x2="10" y2="176" stroke="white" stroke-width="1"/>
-      <line x1="190" y1="168" x2="190" y2="176" stroke="white" stroke-width="1"/>
+    <!--
+      Connected evidence nodes.
+      ViewBox: 560 × 680  (matches typical panel proportions at 56% × 100vh).
+      Nodes are placed outside the brand-text block (center-left, approx
+      x:50–345, y:220–460 in this space) so they never visually clash.
+      All opacity/dash values are set by JS; initial state is fully transparent.
+    -->
+    <svg class="sg-dots-canvas"
+         viewBox="0 0 560 680"
+         preserveAspectRatio="xMidYMid meet"
+         xmlns="http://www.w3.org/2000/svg"
+         aria-hidden="true">
+
+      <!-- ── Connection paths (JS animates stroke-dashoffset) ── -->
+      <!-- 0: Inspection → Test -->
+      <path class="sg-conn" id="sg-line-0" d="M 72 72 L 432 106" style="opacity:0"/>
+      <!-- 1: Test → Photo -->
+      <path class="sg-conn" id="sg-line-1" d="M 432 106 L 500 280" style="opacity:0"/>
+      <!-- 2: Photo → Signature -->
+      <path class="sg-conn" id="sg-line-2" d="M 500 280 L 418 444" style="opacity:0"/>
+      <!-- 3: Signature → Client Review -->
+      <path class="sg-conn" id="sg-line-3" d="M 418 444 L 86 512" style="opacity:0"/>
+      <!-- 4: Client Review → Handover -->
+      <path class="sg-conn" id="sg-line-4" d="M 86 512 L 326 588" style="opacity:0"/>
+
+      <!-- ── Evidence nodes ── -->
+
+      <!-- Node 0 · Inspection (top-left, clear of brand) -->
+      <g id="sg-node-0">
+        <circle class="sg-node-ring" cx="72"  cy="72"  r="11" style="opacity:0"/>
+        <circle class="sg-node-dot"  cx="72"  cy="72"  r="4"  style="opacity:0"/>
+        <text class="sg-node-label"  x="84"   y="68"   text-anchor="start" style="opacity:0">Inspection</text>
+      </g>
+
+      <!-- Node 1 · Test (top-right, above brand) -->
+      <g id="sg-node-1">
+        <circle class="sg-node-ring" cx="432" cy="106" r="11" style="opacity:0"/>
+        <circle class="sg-node-dot"  cx="432" cy="106" r="4"  style="opacity:0"/>
+        <text class="sg-node-label"  x="420"  y="122"  text-anchor="end" style="opacity:0">Test</text>
+      </g>
+
+      <!-- Node 2 · Photo (right side, x > brand width) -->
+      <g id="sg-node-2">
+        <circle class="sg-node-ring" cx="500" cy="280" r="11" style="opacity:0"/>
+        <circle class="sg-node-dot"  cx="500" cy="280" r="4"  style="opacity:0"/>
+        <text class="sg-node-label"  x="488"  y="276"  text-anchor="end" style="opacity:0">Photo</text>
+      </g>
+
+      <!-- Node 3 · Signature (right side, below mid) -->
+      <g id="sg-node-3">
+        <circle class="sg-node-ring" cx="418" cy="444" r="11" style="opacity:0"/>
+        <circle class="sg-node-dot"  cx="418" cy="444" r="4"  style="opacity:0"/>
+        <text class="sg-node-label"  x="406"  y="440"  text-anchor="end" style="opacity:0">Signature</text>
+      </g>
+
+      <!-- Node 4 · Client Review (bottom-left, below brand) -->
+      <g id="sg-node-4">
+        <circle class="sg-node-ring" cx="86"  cy="512" r="11" style="opacity:0"/>
+        <circle class="sg-node-dot"  cx="86"  cy="512" r="4"  style="opacity:0"/>
+        <text class="sg-node-label"  x="98"   y="508"  text-anchor="start" style="opacity:0">Client Review</text>
+      </g>
+
+      <!-- Node 5 · Handover (bottom-center, final point) -->
+      <g id="sg-node-5">
+        <circle class="sg-node-ring" cx="326" cy="588" r="11" style="opacity:0"/>
+        <circle class="sg-node-dot"  cx="326" cy="588" r="4"  style="opacity:0"/>
+        <text class="sg-node-label"  x="326"  y="576"  text-anchor="middle" style="opacity:0">Handover</text>
+      </g>
+
     </svg>
 
     <!-- Brand -->
     <div class="sg-brand">
       <div class="sg-logomark" aria-hidden="true">
-        <!-- 4-quadrant grid icon -->
+        <!-- 4-quadrant grid mark -->
         <svg width="30" height="30" viewBox="0 0 30 30" fill="none" xmlns="http://www.w3.org/2000/svg">
           <rect x="2"  y="2"  width="11" height="11" rx="2.5" fill="white"/>
           <rect x="17" y="2"  width="11" height="11" rx="2.5" fill="white" opacity="0.7"/>
@@ -469,11 +524,12 @@
       <h1 class="sg-appname">Site<span class="sg-appname-accent">Grid</span></h1>
       <div class="sg-product-line">Construction QA, ITPs &amp; Project Handover</div>
       <p class="sg-trust">Connect every inspection,<br>record, and handover.</p>
-      <p class="sg-trust-sub">Project-controlled QA records, ITPs,<br>and sign-off evidence.</p>
+      <p class="sg-trust-sub">The evidence makes sense when<br>every point is connected.</p>
     </div>
-  </div>
 
-  <!-- ══ RIGHT: Login form ══════════════════════════════════════ -->
+  </div><!-- /.sg-left -->
+
+  <!-- ══ RIGHT: Login form ═══════════════════════════════════════ -->
   <div class="sg-right">
     <div class="sg-form-wrap">
 
@@ -559,41 +615,166 @@
 </div><!-- /.sg-shell -->
 
 <script>
-  /* ── Password visibility toggle ── */
+  /* ── Password visibility toggle ──────────────────────────────── */
   function togglePassword() {
     const input = document.getElementById('sg-password');
     const icon  = document.getElementById('pw-eye-icon');
     if (input.type === 'password') {
-      input.type    = 'text';
+      input.type     = 'text';
       icon.className = 'fa-solid fa-eye-slash';
     } else {
-      input.type    = 'password';
+      input.type     = 'password';
       icon.className = 'fa-solid fa-eye';
     }
   }
 
-  /* ── Loading state on submit ── */
+  /* ── Loading state on submit ──────────────────────────────────── */
   function handleSubmit() {
     const btn     = document.getElementById('sg-submit');
     const spinner = document.getElementById('sg-spinner');
     const icon    = document.getElementById('sg-submit-icon');
     const label   = document.getElementById('sg-submit-label');
 
-    btn.disabled           = true;
-    spinner.style.display  = 'block';
-    icon.style.display     = 'none';
-    label.textContent      = 'Signing in…';
+    btn.disabled          = true;
+    spinner.style.display = 'block';
+    icon.style.display    = 'none';
+    label.textContent     = 'Signing in…';
 
-    // Re-enable after 8 s in case the server is slow / the page didn't redirect
+    // Re-enable after 8 s in case of slow server / failed redirect
     setTimeout(() => {
-      btn.disabled           = false;
-      spinner.style.display  = 'none';
-      icon.style.display     = '';
-      label.textContent      = 'Sign in';
+      btn.disabled          = false;
+      spinner.style.display = 'none';
+      icon.style.display    = '';
+      label.textContent     = 'Sign in';
     }, 8000);
 
     return true; // allow normal form submit
   }
+
+  /* ── Connected evidence dots animation ───────────────────────── */
+  (function initDotsAnimation() {
+
+    // Bail out on mobile (canvas is CSS-hidden; no point computing)
+    if (window.innerWidth <= 700) return;
+
+    var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    var NODE_COUNT = 6;
+    var LINE_COUNT = 5;
+
+    // Target opacities
+    var OP_LINE  = '0.30';
+    var OP_DOT   = '0.90';
+    var OP_RING  = '0.28';
+    var OP_LABEL = '0.52';
+
+    // Gather elements
+    var lines = [];
+    for (var i = 0; i < LINE_COUNT; i++) {
+      lines.push(document.getElementById('sg-line-' + i));
+    }
+    var nodes = [];
+    for (var j = 0; j < NODE_COUNT; j++) {
+      nodes.push(document.getElementById('sg-node-' + j));
+    }
+
+    // Helper: show element children at target opacity
+    function showNode(nodeEl, dotOp, ringOp, labelOp, transition) {
+      if (!nodeEl) return;
+      var ring  = nodeEl.querySelector('.sg-node-ring');
+      var dot   = nodeEl.querySelector('.sg-node-dot');
+      var label = nodeEl.querySelector('.sg-node-label');
+      if (transition) {
+        if (ring)  ring.style.transition  = transition;
+        if (dot)   dot.style.transition   = transition;
+        if (label) label.style.transition = transition;
+      }
+      if (ring)  ring.style.opacity  = ringOp;
+      if (dot)   dot.style.opacity   = dotOp;
+      if (label) label.style.opacity = labelOp;
+    }
+
+    // ── Reduced-motion: static final state immediately ──
+    if (reduced) {
+      lines.forEach(function(line) {
+        if (!line) return;
+        var len = line.getTotalLength();
+        line.style.strokeDasharray  = len;
+        line.style.strokeDashoffset = '0';
+        line.style.opacity = OP_LINE;
+      });
+      nodes.forEach(function(node) {
+        showNode(node, OP_DOT, OP_RING, OP_LABEL, null);
+      });
+      return;
+    }
+
+    // ── Animated sequence ──
+    // Initialise all lines with dash equal to their own length
+    lines.forEach(function(line) {
+      if (!line) return;
+      var len = line.getTotalLength();
+      line.style.strokeDasharray  = len;
+      line.style.strokeDashoffset = len;
+      line.style.opacity = OP_LINE; // visible from start, just masked by dash
+    });
+
+    /*
+      Timeline (ms):
+        t = 0                    node 0 (Inspection) fades in
+        t = 80                   line 0 starts drawing  (380 ms duration)
+        t = 0 + 300 = 300        node 1 (Test) fades in
+        t = 300 + 80 = 380       line 1 starts drawing
+        t = 300 + 300 = 600      node 2 (Photo) fades in
+        … and so on through node 5 / line 4.
+        Total draw: 80 + 4×300 + 380 = ~1660 ms.
+        Node labels trail their dot by 180 ms.
+    */
+    var NODE_APPEAR_MS = 300; // gap between successive nodes
+    var LINE_LEAD_MS   = 80;  // line starts this long after its source node
+    var LINE_DRAW_MS   = 380; // duration for one line to draw
+    var LABEL_TRAIL_MS = 180; // label appears after its dot
+
+    // Animate nodes
+    nodes.forEach(function(node, idx) {
+      var nodeDelay  = idx * NODE_APPEAR_MS;
+      var labelDelay = nodeDelay + LABEL_TRAIL_MS;
+
+      setTimeout(function() {
+        if (!node) return;
+        var ring = node.querySelector('.sg-node-ring');
+        var dot  = node.querySelector('.sg-node-dot');
+        if (ring) { ring.style.transition = 'opacity 0.38s ease'; ring.style.opacity = OP_RING; }
+        if (dot)  { dot.style.transition  = 'opacity 0.38s ease'; dot.style.opacity  = OP_DOT;  }
+      }, nodeDelay);
+
+      setTimeout(function() {
+        if (!node) return;
+        var label = node.querySelector('.sg-node-label');
+        if (label) { label.style.transition = 'opacity 0.45s ease'; label.style.opacity = OP_LABEL; }
+      }, labelDelay);
+    });
+
+    // Animate lines (each starts after its source node)
+    lines.forEach(function(line, idx) {
+      if (!line) return;
+      var lineDelay = idx * NODE_APPEAR_MS + LINE_LEAD_MS;
+      setTimeout(function() {
+        line.style.transition = 'stroke-dashoffset ' + (LINE_DRAW_MS / 1000).toFixed(2) + 's cubic-bezier(0.4,0,0.2,1)';
+        line.style.strokeDashoffset = '0';
+      }, lineDelay);
+    });
+
+    // After full sequence: add soft pulse to first and last node rings
+    var totalMs = LINE_LEAD_MS + (LINE_COUNT - 1) * NODE_APPEAR_MS + LINE_DRAW_MS + 500;
+    setTimeout(function() {
+      var firstRing = nodes[0] && nodes[0].querySelector('.sg-node-ring');
+      var lastRing  = nodes[5] && nodes[5].querySelector('.sg-node-ring');
+      if (firstRing) { firstRing.style.transition = ''; firstRing.classList.add('sg-pulsing'); }
+      if (lastRing)  { lastRing.style.transition  = ''; lastRing.classList.add('sg-pulsing'); }
+    }, totalMs);
+
+  })();
 </script>
 
 </body>
