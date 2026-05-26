@@ -36,8 +36,6 @@
 .color-swatch:hover { transform:scale(1.15); }
 .color-swatch.picked { border-color:#1e293b;transform:scale(1.1); }
 
-.member-row { display:flex;align-items:center;gap:10px;padding:10px 14px;
-  background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0; }
 </style>
 {% endblock %}
 
@@ -69,9 +67,10 @@
     <button class="tab-btn active" onclick="showTab('info',   this)">
       <i class="fa-solid fa-info-circle" style="margin-right:6px;"></i>Project Info
     </button>
-    <button class="tab-btn" onclick="showTab('team',    this)">
-      <i class="fa-solid fa-users" style="margin-right:6px;"></i>Team
-    </button>
+    <a class="tab-btn" href="{{ url_for('project_people', pid=proj.id) }}"
+       style="display:inline-flex;align-items:center;text-decoration:none;">
+      <i class="fa-solid fa-users" style="margin-right:6px;"></i>People &amp; Access
+    </a>
     <button class="tab-btn" onclick="showTab('features',this)">
       <i class="fa-solid fa-sliders" style="margin-right:6px;"></i>Features
     </button>
@@ -80,6 +79,7 @@
   <!-- ══ TAB: Info ══ -->
   <div class="tab-panel active" id="tab-info">
     <form method="POST">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
       <input type="hidden" name="action" value="info"/>
       <div class="card" style="border-radius:20px;padding:28px;">
         <div style="display:grid;gap:16px;">
@@ -193,59 +193,14 @@
     </form>
   </div>
 
-  <!-- ══ TAB: Team ══ -->
-  <div class="tab-panel" id="tab-team">
-    <form method="POST">
-      <input type="hidden" name="action" value="team"/>
-      <div class="card" style="border-radius:20px;padding:28px;">
-        <p style="color:#94a3b8;font-size:13px;margin-bottom:18px;">
-          Select which users have access to this project and assign their roles.
-        </p>
-        <div style="display:flex;flex-direction:column;gap:8px;">
-          {% for user in all_users %}
-          {% set existing = proj.members | selectattr('user_id','eq',user.id) | list | first %}
-          <div class="member-row">
-            <input type="checkbox" id="chk-{{ user.id }}" onchange="toggleMember({{ user.id }})"
-                   style="width:16px;height:16px;accent-color:#4f46e5;cursor:pointer;"
-                   {% if existing %}checked{% endif %}/>
-            <div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#4f46e5,#6366f1);
-                        display:flex;align-items:center;justify-content:center;color:white;font-size:12px;font-weight:700;flex-shrink:0;">
-              {{ user.name[0].upper() }}
-            </div>
-            <div style="flex:1;">
-              <div style="font-size:13px;font-weight:700;color:#0f172a;">{{ user.name }}</div>
-              <div style="font-size:11px;color:#94a3b8;">{{ user.email }} · {{ user.role|title }}</div>
-            </div>
-            <div id="role-wrap-{{ user.id }}" {% if not existing %}style="display:none;"{% endif %}>
-              <input type="hidden" name="member_ids[]" value="{{ user.id }}"
-                     {% if not existing %}disabled{% endif %} id="uid-{{ user.id }}"/>
-              <select name="member_roles[]" class="form-input form-select"
-                      style="padding:6px 30px 6px 10px;font-size:12px;width:110px;"
-                      {% if not existing %}disabled{% endif %} id="role-{{ user.id }}">
-                {% for r in ['lead','member','viewer'] %}
-                <option value="{{ r }}" {% if existing and existing.proj_role==r %}selected{% endif %}>{{ r|title }}</option>
-                {% endfor %}
-              </select>
-            </div>
-          </div>
-          {% endfor %}
-        </div>
-      </div>
-      <div style="display:flex;justify-content:flex-end;margin-top:14px;">
-        <button type="submit"
-          style="display:inline-flex;align-items:center;gap:8px;padding:11px 24px;
-                 background:linear-gradient(135deg,#4f46e5,#6366f1);color:white;
-                 border:none;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer;
-                 box-shadow:0 4px 14px rgba(79,70,229,.3);">
-          <i class="fa-solid fa-floppy-disk"></i> Update Team
-        </button>
-      </div>
-    </form>
-  </div>
+  <!-- ══ TAB: Team (removed — use People & Access page) ══ -->
+  <!-- Team management is handled by /projects/<pid>/people (invite/audit system).
+       The tab button above is now a direct link; this panel is intentionally empty. -->
 
   <!-- ══ TAB: Features ══ -->
   <div class="tab-panel" id="tab-features">
     <form method="POST">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
       <input type="hidden" name="action" value="features"/>
       <div class="card" style="border-radius:20px;padding:28px;">
         <p style="color:#94a3b8;font-size:13px;margin-bottom:18px;">
@@ -302,15 +257,6 @@ function pickColor(col, el) {
   document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('picked'));
   el.classList.add('picked');
   document.getElementById('color-val').value = col;
-}
-function toggleMember(uid) {
-  const chk = document.getElementById(`chk-${uid}`);
-  const wrap = document.getElementById(`role-wrap-${uid}`);
-  const uidIn = document.getElementById(`uid-${uid}`);
-  const roleIn = document.getElementById(`role-${uid}`);
-  wrap.style.display = chk.checked ? 'block' : 'none';
-  if (uidIn)  uidIn.disabled  = !chk.checked;
-  if (roleIn) roleIn.disabled = !chk.checked;
 }
 function toggleFeat(key) {
   const track = document.getElementById(`tt-${key}`);

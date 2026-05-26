@@ -1189,12 +1189,16 @@ def new_project():
 @app.route('/projects/<int:pid>/settings', methods=['GET', 'POST'])
 @login_required
 def project_settings(pid):
-    if current_user.role not in ('engineer', 'manager', 'admin'):
+    # Require global admin OR a manage-level project role (owner/admin/lead).
+    if current_user.role != 'admin' and not _user_can_manage_project(pid):
         abort(403)
-    proj      = Project.query.get_or_404(pid)
-    all_users = User.query.order_by(User.name).all()
+    proj = Project.query.get_or_404(pid)
 
     if request.method == 'POST':
+        if not _validate_csrf_token():
+            flash('Your session expired. Please try again.', 'danger')
+            return redirect(url_for('project_settings', pid=pid))
+
         action = request.form.get('action', 'info')
 
         if action == 'info':
@@ -1225,21 +1229,14 @@ def project_settings(pid):
             db.session.commit()
             flash('Project features updated.', 'success')
 
-        elif action == 'team':
-            ProjectMember.query.filter_by(project_id=proj.id).delete()
-            member_ids   = request.form.getlist('member_ids[]')
-            member_roles = request.form.getlist('member_roles[]')
-            added = set()
-            for uid, role in zip(member_ids, member_roles):
-                if uid and uid not in added:
-                    db.session.add(ProjectMember(project_id=proj.id, user_id=int(uid), proj_role=role))
-                    added.add(uid)
-            db.session.commit()
-            flash('Team updated.', 'success')
+        # NOTE: 'team' action has been removed. Team management is handled
+        # exclusively by the dedicated /projects/<pid>/people route which uses
+        # the invite/audit system. POSTing action=team is silently ignored so
+        # stale bookmarks do not cause unintended deletes.
 
         return redirect(url_for('project_settings', pid=pid))
 
-    return render_template('project_settings.html', proj=proj, all_users=all_users)
+    return render_template('project_settings.html', proj=proj)
 
 
 # ─── Documents ───────────────────────────────────────────────────────────────
