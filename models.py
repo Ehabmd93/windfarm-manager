@@ -1420,26 +1420,43 @@ def locked_permissions_for_access_level(access_level: str) -> frozenset:
 def seed_member_permissions(member: ProjectMemberAC) -> list:
     """Create one ProjectMemberPermission row per PERMISSION_KEY for *member*.
 
-    Idempotent — skips keys that already have a row.
+    Truly idempotent — safe to call multiple times before flush/commit.
+
+    Two guarantees:
+    1. ``no_autoflush`` prevents SQLAlchemy from issuing a premature flush
+       when the relationship collection is loaded for reading.
+    2. New rows are appended to ``member.permissions`` (not added to the
+       session directly), so the in-memory collection stays in sync and a
+       second call in the same transaction sees the pending rows without
+       needing a flush first.
+
     Does NOT call db.session.commit(); caller is responsible.
 
-    Returns the list of newly-created rows (may be empty if all already exist).
+    Returns the list of newly-created rows (empty when all rows already exist).
     """
-    existing_keys = {p.permission_key for p in member.permissions}
-    defaults      = default_permissions_for_access_level(member.access_level)
-    locked_set    = locked_permissions_for_access_level(member.access_level)
+    defaults   = default_permissions_for_access_level(member.access_level)
+    locked_set = locked_permissions_for_access_level(member.access_level)
 
     new_rows = []
-    for key in PERMISSION_KEYS:
-        if key in existing_keys:
-            continue
-        row = ProjectMemberPermission(
-            member_id      = member.id,
-            permission_key = key,
-            value          = key in defaults,
-            locked         = key in locked_set,
-        )
-        db.session.add(row)
-        new_rows.append(row)
+    with db.session.no_autoflush:
+        # Reads the in-memory collection, picking up both persisted rows
+        # AND rows appended (but not yet flushed) by a previous call.
+        existing_keys = {p.permission_key for p in member.permissions}
+
+        for key in PERMISSION_KEYS:
+            if key in existing_keys:
+                continue
+            row = ProjectMemberPermission(
+                permission_key = key,
+                value          = key in defaults,
+                locked         = key in locked_set,
+            )
+            # Append to the relationship collection so SQLAlchemy sets
+            # member_id automatically AND the collection reflects the new
+            # row immediately — no explicit db.session.add() required.
+            member.permissions.append(row)
+            new_rows.append(row)
+
+    return new_rows
 
     return new_rows
