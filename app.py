@@ -4638,8 +4638,8 @@ def api_project_itp_add_invite(pid, tid, eid):
     db.session.add(invite)
     db.session.flush()   # get invite.id before commit
 
-    # Per-invitee signing URL — each person has their own unique link
-    sign_url = url_for('itp_client_sign', token=invite_token, _external=True)
+    # Per-invitee signing URL — routes through the authenticated entry gate
+    sign_url = url_for('itp_client_sign_entry', token=invite_token, _external=True)
 
     log_audit(
         'itp_invite_created',
@@ -5014,6 +5014,86 @@ def api_client_review_item(token, item_no, ci):
     })
 
 
+@app.route('/itp/client/<token>/entry', methods=['GET'])
+def itp_client_sign_entry(token):
+    """
+    Authenticated entry gate for the client ITP review flow.
+
+    1. Resolve and validate token (revoked / expired → friendly error page).
+    2. If authenticated and email matches → redirect straight to the signing room.
+    3. If authenticated but email mis-match → show mismatch error page.
+    4. If not authenticated → store token in session, redirect to login with ?next.
+    5. If invite has email but no SiteGrid account exists for it → show
+       "account required" page prompting them to register.
+    """
+    invite = ITPClientInvite.query.filter_by(token=token).first()
+    link_error = None
+
+    if invite:
+        if invite.is_revoked:
+            link_error = 'This signing link has been revoked by the project team.'
+        elif invite.expires_at and invite.expires_at < datetime.now(timezone.utc):
+            link_error = 'This signing link has expired. Please contact the project team for a new link.'
+        record = invite.record
+    else:
+        # Legacy token fallback
+        record = ITPRecord.query.filter_by(client_token=token).first()
+        if not record:
+            abort(404)
+        invite = None
+
+    if link_error:
+        wtg = record.wtg if record else None
+        proj_name = wtg.project.name if wtg and wtg.project else 'Project'
+        return render_template('itp_client_entry.html',
+                               state='error',
+                               link_error=link_error,
+                               proj_name=proj_name,
+                               record=record,
+                               token=token), 403
+
+    # Invite is valid — now handle auth state
+    invite_email = (invite.email or '').strip().lower() if invite else ''
+
+    if current_user.is_authenticated:
+        user_email = (current_user.email or '').strip().lower()
+        # If the invite is email-bound, enforce a match
+        if invite_email and user_email != invite_email:
+            wtg = record.wtg if record else None
+            proj_name = wtg.project.name if wtg and wtg.project else 'Project'
+            return render_template('itp_client_entry.html',
+                                   state='mismatch',
+                                   invite_email=invite.email,
+                                   current_email=current_user.email,
+                                   proj_name=proj_name,
+                                   record=record,
+                                   token=token), 403
+        # Correct user (or open invite) — go straight to the signing room
+        return redirect(url_for('itp_client_sign', token=token))
+
+    # Not authenticated — check whether a SiteGrid account exists for the invite email
+    if invite_email:
+        existing_user = User.query.filter(
+            db.func.lower(User.email) == invite_email
+        ).first()
+        if not existing_user:
+            # No account yet — show "create an account" prompt
+            wtg = record.wtg if record else None
+            proj_name = wtg.project.name if wtg and wtg.project else 'Project'
+            register_url = url_for('register', _external=False)
+            return render_template('itp_client_entry.html',
+                                   state='needs_account',
+                                   invite_email=invite.email,
+                                   register_url=register_url,
+                                   proj_name=proj_name,
+                                   record=record,
+                                   token=token)
+
+    # Unauthenticated — stash the destination and send to login
+    next_url = url_for('itp_client_sign', token=token)
+    return redirect(url_for('login', next=next_url))
+
+
 @app.route('/itp/client/<token>', methods=['GET', 'POST'])
 def itp_client_sign(token):
     """Public page for client to review + sign the ITP."""
@@ -5042,6 +5122,21 @@ def itp_client_sign(token):
                                statuses={}, proj_name=proj_name,
                                token=token, link_error=link_error,
                                today=date.today().isoformat()), 403
+
+    # Identity guard — if the invite is email-bound and the current user is
+    # logged in, their email must match.  Direct access without going through
+    # /entry still gets the same protection.
+    if invite and invite.email and current_user.is_authenticated:
+        if (current_user.email or '').strip().lower() != invite.email.strip().lower():
+            wtg_g = record.wtg if record else None
+            proj_name_g = wtg_g.project.name if wtg_g and wtg_g.project else 'Project'
+            return render_template('itp_client_entry.html',
+                                   state='mismatch',
+                                   invite_email=invite.email,
+                                   current_email=current_user.email,
+                                   proj_name=proj_name_g,
+                                   record=record,
+                                   token=token), 403
 
     wtg      = record.wtg
     # Resolve ITP definition (supports both KRWF and project-specific)

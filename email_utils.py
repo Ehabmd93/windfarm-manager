@@ -336,17 +336,53 @@ def email_client_invitation(record, wtg_name, sign_url,
                              client_name, client_email,
                              proj_name='', itp_name=''):
     """
-    Send client a magic-link email to review and sign the ITP.
-    No login required — the link goes straight to the signing page.
+    Send client an authenticated-entry email to review and sign the ITP.
+    sign_url should point to /itp/client/<token>/entry which handles
+    auth checks before forwarding to the signing room.
     """
     proj_label = proj_name or 'Project'
     itp_label  = itp_name  or record.itp_type.upper().replace('_', ' ')
     engineer   = record.engineer_name or 'Engineer'
     company    = record.engineer_company or ''
 
-    subject = f"Action Required: Please Sign ITP — {wtg_name} · {itp_label}"
-    html = f"""
-<!DOCTYPE html>
+    safe_url   = _html_lib.escape(sign_url, quote=True)
+    safe_label = _safe('Review and sign ITP')
+
+    subject = f"Action Required: ITP Signature Requested — {wtg_name} · {itp_label}"
+
+    # Bulletproof VML button (identical pattern to _action_button())
+    cta_button = f"""
+      <table role="presentation" cellpadding="0" cellspacing="0" width="100%"
+             style="margin:28px 0;">
+        <tr><td align="center">
+          <!--[if mso]>
+          <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml"
+                       xmlns:w="urn:schemas-microsoft-com:office:word"
+                       href="{safe_url}"
+                       style="height:52px;v-text-anchor:middle;width:260px;"
+                       arcsize="18%"
+                       stroke="f"
+                       fillcolor="#2563eb">
+            <w:anchorlock/>
+            <center style="color:#ffffff;font-family:Arial,sans-serif;
+                           font-size:16px;font-weight:bold;">
+              {safe_label}
+            </center>
+          </v:roundrect>
+          <![endif]-->
+          <!--[if !mso]><!-->
+          <a href="{safe_url}" target="_blank"
+             style="display:inline-block;background:#2563eb;
+                    color:#ffffff;padding:16px 40px;border-radius:10px;
+                    text-decoration:none;font-weight:700;font-size:16px;
+                    box-shadow:0 4px 14px rgba(37,99,235,.4);mso-hide:all;">
+            {safe_label}
+          </a>
+          <!--<![endif]-->
+        </td></tr>
+      </table>"""
+
+    html = f"""<!DOCTYPE html>
 <html>
 <head><meta charset="UTF-8"/></head>
 <body style="margin:0;padding:0;background:#f0f4f8;font-family:Arial,Helvetica,sans-serif;">
@@ -360,15 +396,16 @@ def email_client_invitation(record, wtg_name, sign_url,
       <span style="font-size:26px;">&#x1F4CB;</span>
     </div>
     <h1 style="color:#ffffff;margin:0;font-size:22px;font-weight:800;">{proj_label}</h1>
-    <p style="color:#93c5fd;margin:6px 0 0;font-size:14px;">Quality Assurance — Signature Required</p>
+    <p style="color:#93c5fd;margin:6px 0 0;font-size:14px;">Quality Assurance &mdash; Signature Required</p>
   </div>
 
   <!-- Body -->
   <div style="padding:32px;">
     <p style="font-size:16px;color:#1e293b;font-weight:600;margin:0 0 8px;">Dear {client_name},</p>
     <p style="color:#64748b;font-size:14px;line-height:1.6;margin:0 0 24px;">
-      <strong>{engineer}</strong> ({company}) has completed their inspection and invited you to
-      review and sign the following Inspection &amp; Test Plan (ITP).
+      <strong>{engineer}</strong>{(' (' + company + ')') if company else ''} has completed their
+      inspection and is requesting your sign-off on the following
+      Inspection &amp; Test Plan (ITP).
     </p>
 
     <!-- ITP summary card -->
@@ -384,55 +421,60 @@ def email_client_invitation(record, wtg_name, sign_url,
           <td style="font-weight:700;color:#1e3a5f;">{wtg_name}</td>
         </tr>
         <tr>
-          <td style="color:#64748b;padding:5px 0;">ITP Name</td>
+          <td style="color:#64748b;padding:5px 0;">ITP</td>
           <td style="font-weight:700;color:#1e3a5f;">{itp_label}</td>
         </tr>
         <tr>
-          <td style="color:#64748b;padding:5px 0;">Lot / Location</td>
+          <td style="color:#64748b;padding:5px 0;">Lot / Reference</td>
           <td style="font-weight:700;color:#1e3a5f;">{record.lot_number or record.location or 'N/A'}</td>
         </tr>
         <tr>
           <td style="color:#64748b;padding:5px 0;">Inspected by</td>
-          <td style="font-weight:700;color:#1e3a5f;">{engineer}{' · ' + company if company else ''}</td>
+          <td style="font-weight:700;color:#1e3a5f;">{engineer}{(' &middot; ' + company) if company else ''}</td>
         </tr>
       </table>
     </div>
 
-    <p style="color:#64748b;font-size:14px;margin:0 0 28px;line-height:1.6;">
-      The inspection checklist is complete. Click the button below to
-      <strong>review each signed criterion and provide your approval signature.</strong>
-      No login required — the link takes you directly to the ITP.
+    <p style="color:#64748b;font-size:14px;margin:0 0 8px;line-height:1.6;">
+      Please review the completed inspection checklist and provide your approval.
+    </p>
+    <p style="color:#64748b;font-size:14px;margin:0 0 4px;line-height:1.6;">
+      You will need a SiteGrid account to access the ITP. If you don't have one yet,
+      you'll be guided through a quick registration on the next page.
     </p>
 
-    <!-- CTA button -->
-    <div style="text-align:center;margin:28px 0;">
-      <a href="{sign_url}"
-         style="display:inline-block;background:linear-gradient(135deg,#1d4ed8,#2563eb);
-                color:#ffffff;padding:16px 40px;border-radius:10px;
-                text-decoration:none;font-weight:700;font-size:16px;
-                box-shadow:0 4px 14px rgba(37,99,235,.4);">
-        &#x270D;&#xFE0F; &nbsp;Review &amp; Sign ITP
-      </a>
-    </div>
+    {cta_button}
 
-    <p style="color:#94a3b8;font-size:12px;margin:28px 0 0;border-top:1px solid #f1f5f9;
+    <!-- Fallback link -->
+    <p style="color:#94a3b8;font-size:12px;margin:20px 0 0;border-top:1px solid #f1f5f9;
               padding-top:16px;line-height:1.8;">
-      If the button doesn't work, copy this link into your browser:<br>
-      <a href="{sign_url}" style="color:#2563eb;word-break:break-all;">{sign_url}</a>
+      Can't click the button? Copy and paste this link into your browser:<br>
+      <a href="{safe_url}" style="color:#2563eb;word-break:break-all;">{sign_url}</a>
     </p>
   </div>
 
   <!-- Footer -->
   <div style="background:#f8fafc;border-top:1px solid #f1f5f9;padding:16px 32px;text-align:center;">
     <p style="color:#94a3b8;font-size:12px;margin:0;">
-      {proj_label} · QA Manager Platform &middot; Automated Notification
+      SiteGrid &mdash; Construction QA, ITPs &amp; Project Handover
     </p>
   </div>
 </div>
 </body>
-</html>
-"""
-    return send_email(client_email, subject, html)
+</html>"""
+
+    plain = (
+        f"Dear {client_name},\n\n"
+        f"{engineer}{(' (' + company + ')') if company else ''} has requested your signature "
+        f"on an ITP for {proj_label}.\n\n"
+        f"Project: {proj_label}\n"
+        f"Location: {wtg_name}\n"
+        f"ITP: {itp_label}\n\n"
+        f"Review and sign here:\n{sign_url}\n\n"
+        f"You will need a SiteGrid account to access this ITP.\n\n"
+        f"SiteGrid — Construction QA, ITPs & Project Handover"
+    )
+    return send_email(client_email, subject, html, plain_text_content=plain)
 
 
 def email_client_signed(record, wtg_name, client_name, notify_users,

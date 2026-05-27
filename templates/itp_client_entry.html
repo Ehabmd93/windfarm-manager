@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SiteGrid — ITP Review Access</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
+        integrity="sha512-Avb2QiuDEEvB4bZJYdft2mNjVShBftLdPG8FJ0V7irTLQ8Uo0qcPxh4Plh7eecOvEyzV1yoAelFkv2HsNEw=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #f0f4f8;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .card {
+      background: #fff;
+      border-radius: 20px;
+      box-shadow: 0 8px 32px rgba(0,0,0,.12);
+      max-width: 520px;
+      width: 100%;
+      overflow: hidden;
+    }
+    .card-header {
+      padding: 36px 36px 28px;
+      text-align: center;
+    }
+    .card-header.blue  { background: linear-gradient(135deg,#1e3a5f,#2563eb); }
+    .card-header.red   { background: linear-gradient(135deg,#7f1d1d,#dc2626); }
+    .card-header.amber { background: linear-gradient(135deg,#78350f,#d97706); }
+    .icon-wrap {
+      width: 64px; height: 64px;
+      border-radius: 16px;
+      background: rgba(255,255,255,.18);
+      display: inline-flex; align-items: center; justify-content: center;
+      margin-bottom: 16px;
+      font-size: 28px;
+    }
+    .card-header h1 { color: #fff; font-size: 22px; font-weight: 800; margin-bottom: 6px; }
+    .card-header p  { color: rgba(255,255,255,.75); font-size: 14px; }
+    .card-body { padding: 32px 36px; }
+    .info-box {
+      background: #f0f7ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 12px;
+      padding: 18px 20px;
+      margin-bottom: 24px;
+      font-size: 13px;
+      color: #1e3a5f;
+    }
+    .info-box.red   { background: #fef2f2; border-color: #fecaca; color: #7f1d1d; }
+    .info-box.amber { background: #fffbeb; border-color: #fde68a; color: #78350f; }
+    .info-row { display: flex; gap: 12px; padding: 5px 0; }
+    .info-row .lbl  { color: #64748b; min-width: 110px; flex-shrink: 0; font-size: 13px; }
+    .info-row .val  { font-weight: 700; }
+    .lead { font-size: 15px; color: #334155; line-height: 1.6; margin-bottom: 16px; }
+    .sub  { font-size: 13px; color: #64748b; line-height: 1.65; margin-bottom: 20px; }
+    .btn {
+      display: inline-block;
+      padding: 14px 36px;
+      border-radius: 10px;
+      font-weight: 700;
+      font-size: 15px;
+      text-decoration: none;
+      border: none;
+      cursor: pointer;
+    }
+    .btn-primary { background: #2563eb; color: #fff; }
+    .btn-primary:hover { background: #1d4ed8; }
+    .btn-outline {
+      background: transparent;
+      color: #2563eb;
+      border: 2px solid #2563eb;
+    }
+    .btn-outline:hover { background: #eff6ff; }
+    .btn-wrap { display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
+    .email-chip {
+      display: inline-block;
+      background: #eff6ff;
+      color: #1d4ed8;
+      border: 1px solid #bfdbfe;
+      border-radius: 20px;
+      padding: 4px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      margin: 4px 0;
+    }
+    .footer {
+      text-align: center;
+      padding: 18px 36px;
+      background: #f8fafc;
+      border-top: 1px solid #f1f5f9;
+      font-size: 12px;
+      color: #94a3b8;
+    }
+    @media (max-width: 520px) {
+      .card-header, .card-body { padding: 24px 20px; }
+      .btn-wrap { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+
+{% if state == 'error' %}
+{# ── Invalid / expired / revoked token ──────────────────────────────────── #}
+<div class="card">
+  <div class="card-header red">
+    <div class="icon-wrap"><i class="fa-solid fa-link-slash" style="color:#fff;"></i></div>
+    <h1>Link Unavailable</h1>
+    <p>{{ proj_name or 'SiteGrid' }}</p>
+  </div>
+  <div class="card-body">
+    <p class="lead">We were unable to open this ITP signing link.</p>
+    <div class="info-box red">
+      <p><i class="fa-solid fa-circle-xmark" style="margin-right:6px;"></i>{{ link_error }}</p>
+    </div>
+    <p class="sub">
+      Please contact the project team and ask them to send you a new invitation link.
+    </p>
+  </div>
+  <div class="footer">SiteGrid &mdash; Construction QA, ITPs &amp; Project Handover</div>
+</div>
+
+{% elif state == 'mismatch' %}
+{# ── Logged-in user's email doesn't match the invite ────────────────────── #}
+<div class="card">
+  <div class="card-header red">
+    <div class="icon-wrap"><i class="fa-solid fa-user-xmark" style="color:#fff;"></i></div>
+    <h1>Wrong Account</h1>
+    <p>{{ proj_name or 'SiteGrid' }}</p>
+  </div>
+  <div class="card-body">
+    <p class="lead">This ITP signing link was sent to a different email address.</p>
+    <div class="info-box red">
+      <div class="info-row">
+        <span class="lbl">Invited email</span>
+        <span class="val">{{ invite_email }}</span>
+      </div>
+      <div class="info-row">
+        <span class="lbl">Signed in as</span>
+        <span class="val">{{ current_email }}</span>
+      </div>
+    </div>
+    <p class="sub">
+      To review this ITP, please sign in with the account that matches
+      <strong>{{ invite_email }}</strong>.
+      If you don't have an account for that address, contact the project team.
+    </p>
+    <div class="btn-wrap">
+      <a href="{{ url_for('logout') }}?next={{ url_for('itp_client_sign_entry', token=token) | urlencode }}"
+         class="btn btn-primary">
+        <i class="fa-solid fa-right-from-bracket" style="margin-right:8px;"></i>Sign out &amp; switch account
+      </a>
+    </div>
+  </div>
+  <div class="footer">SiteGrid &mdash; Construction QA, ITPs &amp; Project Handover</div>
+</div>
+
+{% elif state == 'needs_account' %}
+{# ── Invite email has no SiteGrid account yet ────────────────────────────── #}
+<div class="card">
+  <div class="card-header amber">
+    <div class="icon-wrap"><i class="fa-solid fa-user-plus" style="color:#fff;"></i></div>
+    <h1>Create a SiteGrid Account</h1>
+    <p>{{ proj_name or 'SiteGrid' }}</p>
+  </div>
+  <div class="card-body">
+    <p class="lead">To review and sign this ITP you need a SiteGrid account.</p>
+    <div class="info-box amber">
+      <div class="info-row">
+        <span class="lbl">Invited email</span>
+        <span class="val">{{ invite_email }}</span>
+      </div>
+    </div>
+    <p class="sub">
+      Register with <strong>{{ invite_email }}</strong> and you'll be taken straight to the
+      ITP signing room after your account is verified.
+    </p>
+    <div class="btn-wrap">
+      <a href="{{ register_url }}?email={{ invite_email | urlencode }}&amp;next={{ url_for('itp_client_sign_entry', token=token) | urlencode }}"
+         class="btn btn-primary">
+        <i class="fa-solid fa-user-plus" style="margin-right:8px;"></i>Create account &amp; continue
+      </a>
+      <a href="{{ url_for('login') }}?next={{ url_for('itp_client_sign_entry', token=token) | urlencode }}"
+         class="btn btn-outline">
+        <i class="fa-solid fa-right-to-bracket" style="margin-right:8px;"></i>Already have an account? Sign in
+      </a>
+    </div>
+  </div>
+  <div class="footer">SiteGrid &mdash; Construction QA, ITPs &amp; Project Handover</div>
+</div>
+
+{% else %}
+{# ── Generic fallback (should not normally be reached) ───────────────────── #}
+<div class="card">
+  <div class="card-header blue">
+    <div class="icon-wrap"><i class="fa-solid fa-clipboard-check" style="color:#fff;"></i></div>
+    <h1>ITP Review</h1>
+    <p>{{ proj_name or 'SiteGrid' }}</p>
+  </div>
+  <div class="card-body">
+    <p class="lead">Redirecting you to the ITP signing room&hellip;</p>
+  </div>
+  <div class="footer">SiteGrid &mdash; Construction QA, ITPs &amp; Project Handover</div>
+</div>
+{% endif %}
+
+</body>
+</html>
