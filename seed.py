@@ -155,6 +155,15 @@ def _schema_migrations(app):
             except Exception:
                 pass  # already nullable or SQLite
 
+        # ── user_invites columns (AC-3) ──
+        if 'user_invites' in insp.get_table_names():
+            inv_cols = {c['name'] for c in insp.get_columns('user_invites')}
+            if 'project_member_ac_id' not in inv_cols:
+                _exec_ddl(db, text(
+                    'ALTER TABLE user_invites ADD COLUMN project_member_ac_id INTEGER'
+                    ' REFERENCES project_members_ac(id)'
+                ))
+
         # ── Ensure all features exist for all existing projects ──────────────
         from models import Project, ProjectFeature, ALL_FEATURES
         try:

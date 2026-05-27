@@ -31,6 +31,7 @@ from models import (db, User, WTG, Area, QATest, TestRecord,
                     UserInvite, PasswordResetToken, INVITE_STATUSES,
                     ProjectMemberAC, ProjectMemberPermission,
                     AC_ACCESS_LEVELS, PERMISSION_KEYS, _ALL_AC_PERM_KEYS,
+                    DEFAULT_PERMISSIONS, LOCKED_PERMISSIONS,
                     seed_member_permissions)
 from itp_definitions import ITP_DEFINITIONS, CLIENTS
 from seed import seed
@@ -483,6 +484,25 @@ def assert_can_act_on_owner(actor_member, target_member):
         raise _ACError(
             'Only a project owner can modify another owner\'s access.'
         )
+
+
+def _sync_ac_invite(invite, *, token_hash=None, status=None, expires_at=None):
+    """Sync invite state back to the linked ProjectMemberAC row (if any).
+
+    Called after mutating a UserInvite so that ProjectMemberAC stays in sync.
+    All keyword args are optional — only non-None values are applied.
+    """
+    if invite.project_member_ac_id is None:
+        return
+    member = db.session.get(ProjectMemberAC, invite.project_member_ac_id)
+    if member is None:
+        return
+    if token_hash is not None:
+        member.invite_token_hash = token_hash
+    if status is not None:
+        member.invite_status = status
+    if expires_at is not None:
+        member.invite_expires_at = expires_at
 
 
 # ─── Auth ────────────────────────────────────────────────────────────────────
@@ -986,6 +1006,14 @@ def invite_accept(token):
         invite.status      = 'accepted'
         invite.accepted_at = now
 
+        # ── AC-3: link ProjectMemberAC (if invite was created via new path) ──
+        if invite.project_member_ac_id is not None:
+            ac_m = db.session.get(ProjectMemberAC, invite.project_member_ac_id)
+            if ac_m is not None and ac_m.user_id is None:
+                ac_m.user_id            = existing_user.id
+                ac_m.invite_status      = 'accepted'
+                ac_m.invite_accepted_at = now
+
         # Audit — no user_created_from_invite for existing users
         log_audit('user_invite_accepted',
                   project_id=invite.project_id,
@@ -1111,6 +1139,14 @@ def invite_accept(token):
     # Mark invite accepted
     invite.status      = 'accepted'
     invite.accepted_at = now
+
+    # ── AC-3: link ProjectMemberAC (if invite was created via new path) ──
+    if invite.project_member_ac_id is not None:
+        ac_m = db.session.get(ProjectMemberAC, invite.project_member_ac_id)
+        if ac_m is not None and ac_m.user_id is None:
+            ac_m.user_id            = new_user.id
+            ac_m.invite_status      = 'accepted'
+            ac_m.invite_accepted_at = now
 
     # Audit
     log_audit('user_created_from_invite',
@@ -2130,39 +2166,42 @@ def project_setup(pid):
 @app.route('/projects/<int:pid>/people')
 @login_required
 def project_people(pid):
-    """Companies + team members management page."""
-    # Admin can view any project; everyone else must be an explicit ProjectMember.
-    if current_user.role != 'admin' and not ProjectMember.query.filter_by(
-        project_id=pid, user_id=current_user.id
-    ).first():
+    """People & Access management page (AC-3 — reads from ProjectMemberAC)."""
+    # Must be an active ProjectMemberAC member to view
+    if not get_project_member_ac(pid):
         abort(403)
-    proj     = Project.query.get_or_404(pid)
+    proj = Project.query.get_or_404(pid)
     from flask import session as fsession
     fsession['active_project_id'] = pid
+
     companies = (ProjectCompany.query
                  .filter_by(project_id=pid)
                  .order_by(ProjectCompany.company_type, ProjectCompany.name)
                  .all())
-    # Team members per company (also unassigned)
-    members = (ProjectTeamMember.query
-               .filter_by(project_id=pid, is_active=True)
-               .order_by(ProjectTeamMember.name)
+
+    # All members (active + disabled) so the page shows the full picture
+    members = (ProjectMemberAC.query
+               .filter_by(project_id=pid)
+               .order_by(ProjectMemberAC.name)
                .all())
-    # Invite index: team_member_id → UserInvite (one active invite per member)
+
+    # Invite index: member_id → most-recent UserInvite (AC-linked only)
     invites_by_member = {}
-    for inv in UserInvite.query.filter_by(project_id=pid).all():
-        if inv.project_team_member_id is not None:
-            # Keep the most-recently-created invite if duplicates somehow exist
-            existing = invites_by_member.get(inv.project_team_member_id)
-            if existing is None or inv.id > existing.id:
-                invites_by_member[inv.project_team_member_id] = inv
-    can_manage = _user_can_manage_project(pid)
+    for inv in UserInvite.query.filter(
+        UserInvite.project_id == pid,
+        UserInvite.project_member_ac_id.isnot(None),
+    ).all():
+        existing = invites_by_member.get(inv.project_member_ac_id)
+        if existing is None or inv.id > existing.id:
+            invites_by_member[inv.project_member_ac_id] = inv
+
+    can_manage = user_can_manage_access(pid)
     return render_template('project_people.html',
                            proj=proj,
                            companies=companies,
                            members=members,
                            company_types=COMPANY_TYPES,
-                           project_roles=PROJECT_ROLES,
+                           ac_access_levels=AC_ACCESS_LEVELS,
                            invites_by_member=invites_by_member,
                            can_manage=can_manage)
 
@@ -2222,21 +2261,31 @@ def api_delete_company(pid, cid):
 @app.route('/projects/<int:pid>/team', methods=['POST'])
 @login_required
 def api_add_team_member(pid):
-    """AJAX — add a team member to the project, creating a UserInvite if email is provided."""
+    """AJAX — add a member using ProjectMemberAC (AC-3)."""
     if not _validate_csrf_token():
         return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
-    if not _user_can_manage_project(pid):
+    if not user_can_manage_access(pid):
         return jsonify({'error': 'You do not have permission to manage this project.'}), 403
+
     proj = Project.query.get_or_404(pid)
     data = request.get_json(silent=True) or {}
+
     name = (data.get('name') or '').strip()
     if not name:
         return jsonify({'error': 'Name is required'}), 400
 
-    # Normalise email to lowercase; empty string if not provided
-    email_norm = (data.get('email') or '').strip().lower()
+    email_norm   = (data.get('email') or '').strip().lower()
+    access_level = (data.get('access_level') or 'engineer').strip()
+    valid_levels = {k for k, *_ in AC_ACCESS_LEVELS}
+    if access_level not in valid_levels:
+        return jsonify({'error': f'Invalid access level: {access_level}'}), 400
 
-    # Resolve company name now (before flush/commit) to avoid lazy-load timing issues
+    # Only owners can add another owner
+    if access_level == 'owner':
+        actor = get_project_member_ac(pid)
+        if not actor or not actor.is_owner:
+            return jsonify({'error': 'Only a project owner can add another owner.'}), 403
+
     company_id_raw = data.get('company_id') or None
     company_id     = int(company_id_raw) if company_id_raw else None
     company_name   = ''
@@ -2244,64 +2293,90 @@ def api_add_team_member(pid):
         _co = ProjectCompany.query.filter_by(id=company_id, project_id=pid).first()
         company_name = _co.name if _co else ''
 
-    # Check whether a registered User with this email already exists — link if so
+    # Link to existing user if email matches a registered account
     linked_user = User.query.filter_by(email=email_norm).first() if email_norm else None
 
-    m = ProjectTeamMember(
-        project_id   = pid,
-        company_id   = company_id,
-        name         = name,
-        email        = email_norm,
-        position     = (data.get('position') or '').strip(),
-        phone        = (data.get('phone')    or '').strip(),
-        project_role = data.get('project_role', 'site_engineer'),
-        can_sign     = bool(data.get('can_sign', True)),
-        added_by     = current_user.id,
-        user_id      = linked_user.id if linked_user else None,
+    # Duplicate guard: same user already an active member?
+    if linked_user:
+        existing = ProjectMemberAC.query.filter_by(
+            project_id=pid, user_id=linked_user.id, is_active=True
+        ).first()
+        if existing:
+            return jsonify({'error': 'This user is already an active member of this project.'}), 400
+
+    now = datetime.now(timezone.utc)
+    m = ProjectMemberAC(
+        project_id    = pid,
+        user_id       = linked_user.id if linked_user else None,
+        is_owner      = (access_level == 'owner'),
+        access_level  = access_level,
+        is_active     = True,
+        name          = name,
+        email         = email_norm,
+        position      = (data.get('position') or '').strip(),
+        phone         = (data.get('phone')    or '').strip(),
+        company_id    = company_id,
+        invite_status = 'not_invited',
+        added_by_id   = current_user.id,
+        added_at      = now,
     )
     db.session.add(m)
-    db.session.flush()   # assign m.id before referencing it in the invite
+    db.session.flush()   # get m.id before seeding permissions + invite
+
+    seed_member_permissions(m)
 
     raw_token  = None
     invite_url = None
     invite_obj = None
 
     if email_norm:
-        # Create a UserInvite — only the SHA-256 hash is stored; raw token is e-mailed only
         raw_token  = _make_raw_token()
-        now        = datetime.now(timezone.utc)
+        token_hash = _hash_token(raw_token)
         invite_obj = UserInvite(
             project_id             = pid,
-            project_team_member_id = m.id,
+            project_member_ac_id   = m.id,
+            project_team_member_id = None,   # AC-3: no legacy PTM
             email                  = email_norm,
             name                   = name,
             company                = company_name,
-            role                   = m.project_role,
-            can_sign               = m.can_sign,
-            token_hash             = _hash_token(raw_token),
+            role                   = access_level,
+            can_sign               = False,   # permissions drive signing now
+            token_hash             = token_hash,
             invited_by_id          = current_user.id,
             invited_at             = now,
             expires_at             = now + timedelta(days=14),
             status                 = 'pending',
         )
         db.session.add(invite_obj)
-        db.session.flush()   # assign invite_obj.id
+
+        m.invite_status     = 'pending'
+        m.invite_token_hash = token_hash
+        m.invite_sent_at    = now
+        m.invite_expires_at = now + timedelta(days=14)
+
+        db.session.flush()
 
         _base      = (os.environ.get('APP_URL') or request.host_url.rstrip('/')).rstrip('/')
         invite_url = f"{_base}/invite/{raw_token}"
 
-        log_audit('user_invite_sent', project_id=pid, actor=current_user,
+        log_audit('invite_sent', project_id=pid, actor=current_user,
                   entity_type='user_invite', entity_id=invite_obj.id,
                   entity_label=email_norm,
-                  detail={'name': name, 'role': m.project_role})
+                  detail={'name': name, 'access_level': access_level})
 
+    audit_detail = {'access_level': access_level, 'email': email_norm,
+                    'is_owner': m.is_owner}
     log_audit('member_added', project_id=pid, actor=current_user,
               entity_type='member', entity_id=m.id, entity_label=name,
-              detail={'role': m.project_role, 'email': email_norm})
+              detail=audit_detail)
+    if m.is_owner:
+        log_audit('owner_added', project_id=pid, actor=current_user,
+                  entity_type='member', entity_id=m.id, entity_label=name,
+                  detail=audit_detail)
 
     db.session.commit()
 
-    # Send invitation email after commit so DB is safe even if email fails
+    # Send invite email after commit — failure is non-fatal
     if email_norm and invite_url and invite_obj:
         try:
             email_project_invitation(
@@ -2309,150 +2384,135 @@ def api_add_team_member(pid):
                 invitee_name = name,
                 inviter_name = current_user.name,
                 project_name = proj.name,
-                role_label   = _project_role_label(m.project_role),
+                role_label   = m.access_level_label,
                 invite_url   = invite_url,
                 expires_at   = invite_obj.expires_at,
                 company_name = company_name,
             )
         except Exception:
-            pass   # email failure is non-fatal
+            pass
 
     return jsonify({
-        'ok':            True,
-        'id':            m.id,
-        'name':          m.name,
-        'email':         m.email,
-        'position':      m.position,
-        'project_role':  m.project_role,
-        'role_label':    m.role_label,
-        'role_color':    m.role_color,
-        'role_icon':     m.role_icon,
-        'can_sign':      m.can_sign,
-        'company_name':  company_name,
-        'invite_status': 'pending' if invite_obj else None,
-        'invite_url':    invite_url,
-        'linked_user':   bool(linked_user),
+        'ok':           True,
+        'id':           m.id,
+        'name':         m.name,
+        'email':        m.email,
+        'position':     m.position,
+        'access_level': m.access_level,
+        'access_label': m.access_level_label,
+        'access_color': m.access_level_color,
+        'access_icon':  m.access_level_icon,
+        'is_owner':     m.is_owner,
+        'company_name': company_name,
+        'invite_status': m.invite_status,
+        'invite_url':   invite_url,
+        'linked_user':  bool(linked_user),
     })
 
 
 @app.route('/projects/<int:pid>/team/<int:mid>', methods=['DELETE'])
 @login_required
 def api_delete_team_member(pid, mid):
-    """AJAX — remove a team member and clean up their project access.
+    """AJAX — soft-disable a ProjectMemberAC row (AC-3).
 
     Steps:
-      1. CSRF + permission guards.
-      2. Soft-delete the ProjectTeamMember row.
-      3. Revoke any pending/expired UserInvite rows for this team member.
-      4. Delete the ProjectMember row (project access) for the linked user,
-         or fall back to looking them up by email if user_id is not set.
-      5. Audit every action taken.
+      1. CSRF + AC permission guards.
+      2. Safety: last-owner + owner-act-on-owner checks.
+      3. Soft-disable (is_active=False).
+      4. Revoke any pending UserInvite rows linked to this member.
+      5. Audit.
     """
     if not _validate_csrf_token():
         return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
-    if not _user_can_manage_project(pid):
+    if not user_can_manage_access(pid):
         return jsonify({'error': 'You do not have permission to manage this project.'}), 403
 
-    m = ProjectTeamMember.query.filter_by(id=mid, project_id=pid).first_or_404()
+    m   = ProjectMemberAC.query.filter_by(id=mid, project_id=pid).first_or_404()
     now = datetime.now(timezone.utc)
 
-    # ── 1. Soft-delete the team member row ───────────────────────────────────
-    m.is_active = False
+    # ── Safety checks ─────────────────────────────────────────────────────────
+    actor = get_project_member_ac(pid)
+    if actor is None:
+        return jsonify({'error': 'You are not a member of this project.'}), 403
+    try:
+        assert_can_act_on_owner(actor, m)
+        assert_not_last_owner(pid, m.id)
+    except _ACError as e:
+        return jsonify({'error': str(e)}), 409
 
-    # ── 2. Revoke pending/expired invites for this team member ───────────────
+    # ── Soft-disable ──────────────────────────────────────────────────────────
+    m.is_active = False
+    if m.invite_status == 'pending':
+        m.invite_status = 'revoked'
+
+    # ── Revoke pending/expired invites for this member ────────────────────────
     invites_revoked = 0
-    revocable_invites = UserInvite.query.filter(
-        UserInvite.project_id == pid,
-        UserInvite.project_team_member_id == mid,
+    for inv in UserInvite.query.filter(
+        UserInvite.project_member_ac_id == mid,
         UserInvite.status.in_(['pending', 'expired']),
-    ).all()
-    for inv in revocable_invites:
+    ).all():
         inv.status     = 'revoked'
         inv.revoked_at = now
-        log_audit('user_invite_revoked',
-                  project_id=pid,
-                  actor=current_user,
-                  entity_type='user_invite',
-                  entity_id=inv.id,
+        log_audit('invite_revoked',
+                  project_id=pid, actor=current_user,
+                  entity_type='user_invite', entity_id=inv.id,
                   entity_label=inv.email,
-                  detail={'name': inv.name, 'reason': 'team_member_removed'})
+                  detail={'name': inv.name, 'reason': 'member_disabled'})
         invites_revoked += 1
 
-    # ── 3. Remove ProjectMember access ───────────────────────────────────────
-    access_removed = False
-
-    # Primary: user_id is linked directly on the team member row
-    target_user_id = m.user_id
-
-    # Fallback: team member has an email — look up a registered User by email
-    if target_user_id is None and m.email:
-        email_norm = m.email.strip().lower()
-        fallback_user = User.query.filter_by(email=email_norm).first()
-        if fallback_user:
-            target_user_id = fallback_user.id
-
-    if target_user_id is not None:
-        pm = ProjectMember.query.filter_by(
-            project_id=pid, user_id=target_user_id
-        ).first()
-        if pm is not None:
-            db.session.delete(pm)
-            log_audit('project_access_removed',
-                      project_id=pid,
-                      actor=current_user,
-                      entity_type='project_member',
-                      entity_id=pm.id,
-                      entity_label=m.name,
-                      detail={'user_id': target_user_id,
-                              'team_member_id': mid})
-            access_removed = True
-
-    # ── 4. Always-logged: member removed ─────────────────────────────────────
-    log_audit('member_removed',
-              project_id=pid,
-              actor=current_user,
-              entity_type='member',
-              entity_id=mid,
-              entity_label=m.name,
+    log_audit('member_disabled',
+              project_id=pid, actor=current_user,
+              entity_type='member', entity_id=mid, entity_label=m.name,
               detail={'invites_revoked': invites_revoked,
-                      'project_access_removed': access_removed})
+                      'access_level': m.access_level})
 
     db.session.commit()
-    return jsonify({
-        'ok':                    True,
-        'member_removed':        True,
-        'invites_revoked':       invites_revoked,
-        'project_access_removed': access_removed,
-    })
+    return jsonify({'ok': True, 'member_disabled': True,
+                    'invites_revoked': invites_revoked})
 
 
 @app.route('/projects/<int:pid>/team/<int:mid>', methods=['PATCH'])
 @login_required
 def api_edit_team_member(pid, mid):
-    """AJAX — edit an existing team member's details."""
+    """AJAX — edit a ProjectMemberAC row (AC-3)."""
     if not _validate_csrf_token():
         return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
-    if not _user_can_manage_project(pid):
+    if not user_can_manage_access(pid):
         return jsonify({'error': 'You do not have permission to manage this project.'}), 403
 
-    m    = ProjectTeamMember.query.filter_by(id=mid, project_id=pid).first_or_404()
+    m    = ProjectMemberAC.query.filter_by(id=mid, project_id=pid).first_or_404()
     data = request.get_json(silent=True) or {}
+
+    # ── Actor safety ──────────────────────────────────────────────────────────
+    actor = get_project_member_ac(pid)
+    if actor is None:
+        return jsonify({'error': 'You are not a member of this project.'}), 403
+    try:
+        assert_can_act_on_owner(actor, m)
+    except _ACError as e:
+        return jsonify({'error': str(e)}), 403
 
     # ── Validate ──────────────────────────────────────────────────────────────
     name = (data.get('name') or '').strip()
     if not name:
         return jsonify({'error': 'Name is required.'}), 400
 
-    project_role  = data.get('project_role', m.project_role)
-    valid_roles   = {k for k, *_ in PROJECT_ROLES}
-    if project_role not in valid_roles:
-        return jsonify({'error': f'Invalid project role: {project_role}'}), 400
+    new_access_level = (data.get('access_level') or m.access_level).strip()
+    valid_levels     = {k for k, *_ in AC_ACCESS_LEVELS}
+    if new_access_level not in valid_levels:
+        return jsonify({'error': f'Invalid access level: {new_access_level}'}), 400
 
-    can_sign_raw = data.get('can_sign')
-    if not isinstance(can_sign_raw, bool):
-        return jsonify({'error': 'can_sign must be a boolean.'}), 400
+    # Only owners can promote to owner or demote from owner
+    if new_access_level == 'owner' and not actor.is_owner:
+        return jsonify({'error': 'Only a project owner can assign owner access.'}), 403
 
-    # Resolve company — None / missing / 0 all mean "unassigned"
+    # Last-owner guard: block demoting/disabling sole owner
+    if m.access_level == 'owner' and new_access_level != 'owner':
+        try:
+            assert_not_last_owner(pid, m.id)
+        except _ACError as e:
+            return jsonify({'error': str(e)}), 409
+
     company_id_raw = data.get('company_id') or None
     company_id     = None
     company_name   = ''
@@ -2467,57 +2527,39 @@ def api_edit_team_member(pid, mid):
         company_name = co.name
 
     # ── Capture old values for audit ──────────────────────────────────────────
-    old_project_role = m.project_role
-    old_can_sign     = m.can_sign
+    old_access_level = m.access_level
+    old_is_owner     = m.is_owner
 
-    # ── Apply changes ─────────────────────────────────────────────────────────
+    # ── Apply identity changes ────────────────────────────────────────────────
     m.name         = name
     m.company_id   = company_id
     m.position     = (data.get('position') or '').strip()
     m.phone        = (data.get('phone')    or '').strip()
-    m.project_role = project_role
-    m.can_sign     = can_sign_raw
+    m.access_level = new_access_level
+    m.is_owner     = (new_access_level == 'owner')
 
-    # ── Sync ProjectMember.proj_role if role changed and user is linked ───────
-    old_pm_proj_role = None
-    new_pm_proj_role = None
-    if m.user_id is not None and project_role != old_project_role:
-        pm = ProjectMember.query.filter_by(project_id=pid, user_id=m.user_id).first()
-        if pm is not None:
-            old_pm_proj_role = pm.proj_role
-            new_pm_proj_role = _invite_role_to_proj_role(project_role)
-            pm.proj_role     = new_pm_proj_role
+    # ── Reset permissions when access level changes ───────────────────────────
+    if new_access_level != old_access_level:
+        defaults   = DEFAULT_PERMISSIONS.get(new_access_level, frozenset())
+        locked_set = LOCKED_PERMISSIONS.get(new_access_level, frozenset())
+        for perm in m.permissions:
+            perm.value  = perm.permission_key in defaults
+            perm.locked = perm.permission_key in locked_set
+        seed_member_permissions(m)   # ensure all 23 rows exist
 
     # ── Audit ─────────────────────────────────────────────────────────────────
     log_audit('member_updated',
-              project_id=pid,
-              actor=current_user,
-              entity_type='member',
-              entity_id=mid,
-              entity_label=m.name,
-              detail={'project_role': project_role, 'can_sign': can_sign_raw,
-                      'company_id': company_id})
+              project_id=pid, actor=current_user,
+              entity_type='member', entity_id=mid, entity_label=m.name,
+              detail={'access_level': new_access_level, 'company_id': company_id})
 
-    if project_role != old_project_role:
-        log_audit('user_role_changed',
-                  project_id=pid,
-                  actor=current_user,
-                  entity_type='member',
-                  entity_id=mid,
-                  entity_label=m.name,
-                  detail={'old_project_role':  old_project_role,
-                          'new_project_role':  project_role,
-                          'old_pm_proj_role':  old_pm_proj_role,
-                          'new_pm_proj_role':  new_pm_proj_role})
-
-    if can_sign_raw != old_can_sign:
-        log_audit('user_can_sign_changed',
-                  project_id=pid,
-                  actor=current_user,
-                  entity_type='member',
-                  entity_id=mid,
-                  entity_label=m.name,
-                  detail={'old': old_can_sign, 'new': can_sign_raw})
+    if new_access_level != old_access_level:
+        log_audit('access_level_changed',
+                  project_id=pid, actor=current_user,
+                  entity_type='member', entity_id=mid, entity_label=m.name,
+                  detail={'old': old_access_level, 'new': new_access_level,
+                          'old_is_owner': old_is_owner,
+                          'new_is_owner': m.is_owner})
 
     db.session.commit()
 
@@ -2529,11 +2571,11 @@ def api_edit_team_member(pid, mid):
         'company_name': company_name,
         'position':     m.position,
         'phone':        m.phone,
-        'project_role': m.project_role,
-        'role_label':   m.role_label,
-        'role_color':   m.role_color,
-        'role_icon':    m.role_icon,
-        'can_sign':     m.can_sign,
+        'access_level': m.access_level,
+        'access_label': m.access_level_label,
+        'access_color': m.access_level_color,
+        'access_icon':  m.access_level_icon,
+        'is_owner':     m.is_owner,
     })
 
 
@@ -2543,7 +2585,7 @@ def api_resend_invite(pid, invite_id):
     """AJAX — rotate token and re-send an invite email."""
     if not _validate_csrf_token():
         return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
-    if not _user_can_manage_project(pid):
+    if not user_can_manage_access(pid):
         return jsonify({'error': 'You do not have permission to manage this project.'}), 403
     invite = UserInvite.query.filter_by(id=invite_id, project_id=pid).first_or_404()
     if invite.status == 'accepted':
@@ -2552,17 +2594,22 @@ def api_resend_invite(pid, invite_id):
         return jsonify({'error': 'Cannot resend a revoked invite. Create a new member entry instead.'}), 400
 
     # Rotate token — raw tokens are never stored so we must generate a fresh one
-    raw_token = _make_raw_token()
-    now = datetime.now(timezone.utc)
-    invite.token_hash = _hash_token(raw_token)
+    raw_token  = _make_raw_token()
+    token_hash = _hash_token(raw_token)
+    now        = datetime.now(timezone.utc)
+    invite.token_hash = token_hash
     invite.invited_at = now
     invite.expires_at = now + timedelta(days=14)
     invite.status     = 'pending'
 
+    # Keep ProjectMemberAC in sync
+    _sync_ac_invite(invite, token_hash=token_hash,
+                    status='pending', expires_at=invite.expires_at)
+
     _base      = (os.environ.get('APP_URL') or request.host_url.rstrip('/')).rstrip('/')
     invite_url = f"{_base}/invite/{raw_token}"
 
-    log_audit('user_invite_resent', project_id=pid, actor=current_user,
+    log_audit('invite_resent', project_id=pid, actor=current_user,
               entity_type='user_invite', entity_id=invite.id,
               entity_label=invite.email,
               detail={'name': invite.name, 'role': invite.role})
@@ -2593,7 +2640,7 @@ def api_revoke_invite(pid, invite_id):
     """AJAX — permanently revoke an invite."""
     if not _validate_csrf_token():
         return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
-    if not _user_can_manage_project(pid):
+    if not user_can_manage_access(pid):
         return jsonify({'error': 'You do not have permission to manage this project.'}), 403
     invite = UserInvite.query.filter_by(id=invite_id, project_id=pid).first_or_404()
     if invite.status == 'revoked':
@@ -2605,7 +2652,10 @@ def api_revoke_invite(pid, invite_id):
     invite.status     = 'revoked'
     invite.revoked_at = now
 
-    log_audit('user_invite_revoked', project_id=pid, actor=current_user,
+    # Keep ProjectMemberAC in sync
+    _sync_ac_invite(invite, status='revoked')
+
+    log_audit('invite_revoked', project_id=pid, actor=current_user,
               entity_type='user_invite', entity_id=invite.id,
               entity_label=invite.email,
               detail={'name': invite.name})
@@ -2623,7 +2673,7 @@ def api_copy_invite_link(pid, invite_id):
     """
     if not _validate_csrf_token():
         return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
-    if not _user_can_manage_project(pid):
+    if not user_can_manage_access(pid):
         return jsonify({'error': 'You do not have permission to manage this project.'}), 403
     invite = UserInvite.query.filter_by(id=invite_id, project_id=pid).first_or_404()
     if invite.status == 'accepted':
@@ -2631,17 +2681,22 @@ def api_copy_invite_link(pid, invite_id):
     if invite.status == 'revoked':
         return jsonify({'error': 'Cannot generate a new link for a revoked invite.'}), 400
 
-    raw_token = _make_raw_token()
-    now = datetime.now(timezone.utc)
-    invite.token_hash = _hash_token(raw_token)
+    raw_token  = _make_raw_token()
+    token_hash = _hash_token(raw_token)
+    now        = datetime.now(timezone.utc)
+    invite.token_hash = token_hash
     invite.invited_at = now
     invite.expires_at = now + timedelta(days=14)
     invite.status     = 'pending'
 
+    # Keep ProjectMemberAC in sync
+    _sync_ac_invite(invite, token_hash=token_hash,
+                    status='pending', expires_at=invite.expires_at)
+
     _base      = (os.environ.get('APP_URL') or request.host_url.rstrip('/')).rstrip('/')
     invite_url = f"{_base}/invite/{raw_token}"
 
-    log_audit('user_invite_link_generated', project_id=pid, actor=current_user,
+    log_audit('invite_link_generated', project_id=pid, actor=current_user,
               entity_type='user_invite', entity_id=invite.id,
               entity_label=invite.email)
     db.session.commit()

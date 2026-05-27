@@ -1217,8 +1217,10 @@ class UserInvite(db.Model):
 
     # Scope — which project this invite is for (nullable for platform-wide invites)
     project_id             = db.Column(db.Integer, db.ForeignKey('projects.id'),            nullable=True)
-    # Optionally links to a ProjectTeamMember roster entry
+    # Optionally links to a ProjectTeamMember roster entry (legacy)
     project_team_member_id = db.Column(db.Integer, db.ForeignKey('project_team_members.id'), nullable=True)
+    # AC-3: links to the new ProjectMemberAC row
+    project_member_ac_id   = db.Column(db.Integer, db.ForeignKey('project_members_ac.id'),   nullable=True)
 
     # Invitee identity (captured at invite time)
     email                  = db.Column(db.String(150), nullable=False)
@@ -1250,6 +1252,10 @@ class UserInvite(db.Model):
     invited_by  = db.relationship('User', foreign_keys=[invited_by_id],
                                   backref='sent_invites', lazy=True)
     team_member = db.relationship('ProjectTeamMember', backref=db.backref('user_invite', uselist=False),
+                                  lazy=True)
+    ac_member   = db.relationship('ProjectMemberAC',
+                                  foreign_keys=[project_member_ac_id],
+                                  backref=db.backref('invite_record', uselist=False),
                                   lazy=True)
 
     @property
@@ -1350,6 +1356,10 @@ class ProjectMemberAC(db.Model):
     # Relationships
     project     = db.relationship('Project', foreign_keys=[project_id],
                                   backref=db.backref('access_members', lazy=True))
+    user        = db.relationship('User', foreign_keys=[user_id],
+                                  backref='ac_memberships', lazy=True)
+    added_by    = db.relationship('User', foreign_keys=[added_by_id],
+                                  backref='ac_memberships_added', lazy=True)
     permissions = db.relationship('ProjectMemberPermission', backref='member',
                                   lazy=True, cascade='all, delete-orphan')
 

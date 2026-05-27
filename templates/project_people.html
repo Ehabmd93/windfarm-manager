@@ -20,6 +20,7 @@
   .member-row {
     padding:12px 20px;border-bottom:1px solid #f8fafc;transition:background .12s;
   }
+  .member-row.disabled-member { opacity:.55; background:#fafafa; }
   .member-row:last-child { border-bottom:none; }
   .member-row:hover { background:#f8fafc; }
   .member-top { display:flex;align-items:flex-start;gap:12px; }
@@ -48,6 +49,16 @@
   .user-verified   { background:#dcfce7;color:#15803d; }
   .user-noverify   { background:#fef9c3;color:#92400e; }
   .no-access-badge { background:#f1f5f9;color:#64748b; }
+  .owner-badge {
+    display:inline-flex;align-items:center;gap:4px;padding:2px 9px;
+    border-radius:99px;font-size:10px;font-weight:700;
+    background:#fef3c7;color:#92400e;
+  }
+  .disabled-badge {
+    display:inline-flex;align-items:center;gap:4px;padding:2px 9px;
+    border-radius:99px;font-size:10px;font-weight:700;
+    background:#f1f5f9;color:#94a3b8;
+  }
   .member-actions {
     display:flex;align-items:center;gap:6px;margin-top:8px;flex-wrap:wrap;
   }
@@ -104,33 +115,38 @@
 
 {% block content %}
 {#
-  _member_row macro — defined first so every call below is valid in Jinja2.
+  _member_row macro — uses ProjectMemberAC fields (AC-3).
 
   IDs and names are placed in data-* attributes (HTML-context, safe) and read
-  in JS via element.dataset.  This avoids the classic pitfall of inserting
-  user-controlled strings into JS string literals inside onclick="..." where
-  HTML entities like &#39; get decoded back to ' and break the string.
+  in JS via element.dataset. This avoids injecting user-controlled strings into
+  JS string literals where HTML entities like &#39; get decoded back to '.
 #}
 {% macro _member_row(m, inv, eff_status, can_manage) %}
-<div class="member-row" id="member-{{ m.id }}">
+<div class="member-row{% if not m.is_active %} disabled-member{% endif %}" id="member-{{ m.id }}">
   <div class="member-top">
-    <div class="role-dot" style="background:{{ m.role_color }}18;">
-      <i class="fa-solid {{ m.role_icon }}" style="color:{{ m.role_color }};font-size:11px;"></i>
+    <div class="role-dot" style="background:{{ m.access_level_color }}18;">
+      <i class="fa-solid {{ m.access_level_icon }}" style="color:{{ m.access_level_color }};font-size:11px;"></i>
     </div>
 
     <div class="member-body">
-      {# ── Name / position / role pills ── #}
+      {# ── Name / position / access-level pills ── #}
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         <span style="font-weight:700;color:#1e293b;font-size:13px;">{{ m.name }}</span>
         {% if m.position %}
           <span style="font-size:11px;color:#94a3b8;">{{ m.position }}</span>
         {% endif %}
-        <span class="tag-pill" style="background:{{ m.role_color }}15;color:{{ m.role_color }};">
-          <i class="fa-solid {{ m.role_icon }}" style="font-size:8px;"></i> {{ m.role_label }}
+        <span class="tag-pill" style="background:{{ m.access_level_color }}15;color:{{ m.access_level_color }};">
+          <i class="fa-solid {{ m.access_level_icon }}" style="font-size:8px;"></i>
+          {{ m.access_level_label }}
         </span>
-        {% if m.can_sign %}
-        <span class="tag-pill" style="background:#dcfce7;color:#16a34a;">
-          <i class="fa-solid fa-pen-nib" style="font-size:8px;"></i> Can Sign
+        {% if m.is_owner %}
+        <span class="owner-badge">
+          <i class="fa-solid fa-crown" style="font-size:8px;"></i> Owner
+        </span>
+        {% endif %}
+        {% if not m.is_active %}
+        <span class="disabled-badge">
+          <i class="fa-solid fa-ban" style="font-size:8px;"></i> Disabled
         </span>
         {% endif %}
       </div>
@@ -139,18 +155,24 @@
       {% if m.email or m.phone %}
       <div style="font-size:11px;color:#64748b;margin-top:3px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         {% if m.email %}
-          <span><i class="fa-solid fa-envelope" style="font-size:9px;color:#94a3b8;margin-right:3px;"></i><a href="mailto:{{ m.email }}" style="color:#2563eb;text-decoration:none;">{{ m.email }}</a></span>
+          <span>
+            <i class="fa-solid fa-envelope" style="font-size:9px;color:#94a3b8;margin-right:3px;"></i>
+            <a href="mailto:{{ m.email }}" style="color:#2563eb;text-decoration:none;">{{ m.email }}</a>
+          </span>
         {% endif %}
         {% if m.phone %}
-          <span><i class="fa-solid fa-phone" style="font-size:9px;color:#94a3b8;margin-right:3px;"></i>{{ m.phone }}</span>
+          <span>
+            <i class="fa-solid fa-phone" style="font-size:9px;color:#94a3b8;margin-right:3px;"></i>
+            {{ m.phone }}
+          </span>
         {% endif %}
       </div>
       {% endif %}
 
-      {# ── Access / invite status badges ── #}
+      {# ── Account / invite status badges ── #}
       <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px;">
 
-        {# Account status for linked users #}
+        {# Linked user account status #}
         {% if m.user_id and m.user %}
           {% if m.user.email_verified %}
           <span class="user-badge user-verified">
@@ -204,10 +226,10 @@
       </div>{# /badges #}
 
       {#
-        Action buttons: only rendered when can_manage is True.
+        Action buttons — only rendered when can_manage is True and member is active.
         IDs go in data-* attributes; JS reads them via element.dataset.
       #}
-      {% if can_manage %}
+      {% if can_manage and m.is_active %}
       <div class="member-actions">
         {% if inv and eff_status in ('pending', 'expired') %}
         <button class="btn-xs btn-xs-primary"
@@ -232,17 +254,18 @@
                 data-memail="{{ m.email or '' }}"
                 data-mposition="{{ m.position or '' }}"
                 data-mphone="{{ m.phone or '' }}"
-                data-mrole="{{ m.project_role }}"
+                data-maccess="{{ m.access_level }}"
                 data-mcompany="{{ m.company_id or '' }}"
-                data-mcansign="{{ 'true' if m.can_sign else 'false' }}"
                 onclick="openEditMember(this)">
           <i class="fa-solid fa-pen" style="font-size:9px;"></i> Edit
         </button>
+        {% if not m.is_owner %}
         <button class="btn-xs btn-xs-danger"
                 data-mid="{{ m.id }}" data-mname="{{ m.name }}"
                 onclick="deleteMember(this)">
-          <i class="fa-solid fa-user-minus" style="font-size:9px;"></i> Remove access
+          <i class="fa-solid fa-user-minus" style="font-size:9px;"></i> Disable access
         </button>
+        {% endif %}
       </div>
       {% endif %}{# end can_manage #}
 
@@ -259,9 +282,9 @@
       <h2 style="font-size:22px;font-weight:800;color:#1e293b;margin:0;">People & Access</h2>
       <p style="color:#64748b;font-size:13px;margin-top:4px;">
         {% if can_manage %}
-          Manage companies, project users, invite status and signing permissions for <strong>{{ proj.name }}</strong>
+          Manage companies, project members, access levels and invites for <strong>{{ proj.name }}</strong>
         {% else %}
-          View project companies, people, roles and signing permissions for <strong>{{ proj.name }}</strong>
+          View project companies, people and access levels for <strong>{{ proj.name }}</strong>
         {% endif %}
       </p>
     </div>
@@ -287,28 +310,29 @@
   </div>
 
   <!-- ── Summary bar ───────────────────────────────────────── -->
-  {# Active users = team members with a linked user_id #}
-  {% set active_user_count  = members|selectattr('user_id')|list|length %}
-  {# Pending invites = usable (pending + not expired) #}
+  {% set active_members     = members|selectattr('is_active')|list %}
+  {% set linked_user_count  = active_members|selectattr('user_id')|list|length %}
+  {% set owner_count        = members|selectattr('is_owner')|list|length %}
   {% set pending_inv_count  = invites_by_member.values()|selectattr('is_usable')|list|length %}
-  {# Expired invites = status expired + pending-but-past-expiry #}
   {% set hard_expired_count = invites_by_member.values()|selectattr('status','equalto','expired')|list|length %}
   {% set soft_expired_count = invites_by_member.values()|selectattr('status','equalto','pending')|rejectattr('is_usable')|list|length %}
   {% set expired_inv_count  = hard_expired_count + soft_expired_count %}
-  {% set can_sign_count     = members|selectattr('can_sign')|list|length %}
+
   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:24px;">
     <div style="background:#f0f7ff;border:1px solid #bfdbfe;border-radius:12px;padding:9px 16px;min-width:80px;">
       <div style="font-size:18px;font-weight:800;color:#1d4ed8;line-height:1.2;">{{ companies|length }}</div>
       <div style="font-size:10px;color:#3b82f6;font-weight:700;text-transform:uppercase;letter-spacing:.04em;">Companies</div>
     </div>
     <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:9px 16px;min-width:80px;">
-      <div style="font-size:18px;font-weight:800;color:#16a34a;line-height:1.2;">{{ active_user_count }}</div>
+      <div style="font-size:18px;font-weight:800;color:#16a34a;line-height:1.2;">{{ linked_user_count }}</div>
       <div style="font-size:10px;color:#22c55e;font-weight:700;text-transform:uppercase;letter-spacing:.04em;">Active Users</div>
     </div>
-    <div style="background:#ede9fe;border:1px solid #ddd6fe;border-radius:12px;padding:9px 16px;min-width:80px;">
-      <div style="font-size:18px;font-weight:800;color:#6d28d9;line-height:1.2;">{{ can_sign_count }}</div>
-      <div style="font-size:10px;color:#7c3aed;font-weight:700;text-transform:uppercase;letter-spacing:.04em;">Can Sign</div>
+    {% if owner_count %}
+    <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:9px 16px;min-width:80px;">
+      <div style="font-size:18px;font-weight:800;color:#92400e;line-height:1.2;">{{ owner_count }}</div>
+      <div style="font-size:10px;color:#d97706;font-weight:700;text-transform:uppercase;letter-spacing:.04em;">Owners</div>
     </div>
+    {% endif %}
     {% if pending_inv_count %}
     <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:9px 16px;min-width:80px;">
       <div style="font-size:18px;font-weight:800;color:#d97706;line-height:1.2;">{{ pending_inv_count }}</div>
@@ -410,7 +434,7 @@
     <i class="fa-solid fa-users" style="font-size:28px;margin-bottom:10px;display:block;opacity:.4;"></i>
     <p style="font-size:14px;font-weight:700;color:#64748b;margin:0 0 4px;">No people added yet.</p>
     {% if can_manage %}
-    <p style="font-size:12px;color:#94a3b8;margin:0 0 14px;">Add project team members to manage access, invite status and signing permissions.</p>
+    <p style="font-size:12px;color:#94a3b8;margin:0 0 14px;">Add project team members to manage access, invite status and access level.</p>
     <button onclick="openAddMember()" class="btn-primary" style="font-size:12px;padding:8px 16px;">
       <i class="fa-solid fa-user-plus"></i> Add person
     </button>
@@ -505,7 +529,7 @@
 <!-- ── Add Member Modal ─────────────────────────────────── -->
 <div class="modal-overlay" id="add-member-modal">
   <div class="modal-box">
-    <h3 style="font-size:18px;font-weight:800;color:#1e293b;margin:0 0 20px;">Add Team Member</h3>
+    <h3 style="font-size:18px;font-weight:800;color:#1e293b;margin:0 0 20px;">Add Member</h3>
     <div style="display:grid;gap:14px;">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
         <div>
@@ -530,10 +554,12 @@
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
         <div>
-          <label class="form-label">Project Role <span style="color:#ef4444;">*</span></label>
-          <select id="m-role" class="form-input">
-            {% for key, label, icon, color in project_roles %}
+          <label class="form-label">Access Level <span style="color:#ef4444;">*</span></label>
+          <select id="m-access" class="form-input">
+            {% for key, label, icon, color, desc in ac_access_levels %}
+            {% if key != 'owner' %}
             <option value="{{ key }}">{{ label }}</option>
+            {% endif %}
             {% endfor %}
           </select>
         </div>
@@ -547,12 +573,6 @@
           </select>
         </div>
       </div>
-      <div>
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-          <input type="checkbox" id="m-can-sign" checked style="width:16px;height:16px;accent-color:#4f46e5;">
-          <span style="font-size:13px;font-weight:600;color:#475569;">Can sign inspection items</span>
-        </label>
-      </div>
     </div>
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;">
       <button onclick="closeAddMember()"
@@ -564,10 +584,11 @@
     </div>
   </div>
 </div>
+
 <!-- ── Edit Member Modal ────────────────────────────────── -->
 <div class="modal-overlay" id="edit-member-modal">
   <div class="modal-box">
-    <h3 style="font-size:18px;font-weight:800;color:#1e293b;margin:0 0 20px;">Edit team member</h3>
+    <h3 style="font-size:18px;font-weight:800;color:#1e293b;margin:0 0 20px;">Edit Member</h3>
     <div style="display:grid;gap:14px;">
       <div id="em-email-row" style="display:none;">
         <label class="form-label">Email (read-only)</label>
@@ -600,18 +621,12 @@
         </div>
       </div>
       <div>
-        <label class="form-label">Project Role <span style="color:#ef4444;">*</span></label>
-        <select id="em-role" class="form-input">
-          {% for key, label, icon, color in project_roles %}
+        <label class="form-label">Access Level <span style="color:#ef4444;">*</span></label>
+        <select id="em-access" class="form-input">
+          {% for key, label, icon, color, desc in ac_access_levels %}
           <option value="{{ key }}">{{ label }}</option>
           {% endfor %}
         </select>
-      </div>
-      <div>
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-          <input type="checkbox" id="em-can-sign" style="width:16px;height:16px;accent-color:#4f46e5;">
-          <span style="font-size:13px;font-weight:600;color:#475569;">Can sign inspection items</span>
-        </label>
       </div>
     </div>
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;">
@@ -627,7 +642,7 @@
 </div>
 {% endif %}{# end can_manage modals #}
 
-<!-- Copy-link toast (visible to all, shown only after a successful copy) -->
+<!-- Copy-link toast (shown after successful clipboard write) -->
 <div id="link-toast">Link copied to clipboard</div>
 
 <script>
@@ -635,12 +650,8 @@ const PID        = {{ proj.id }};
 const CAN_MANAGE = {{ 'true' if can_manage else 'false' }};
 const CSRF_TOKEN = "{{ csrf_token() }}";
 
-/* ── Guard: prevents engineers from accidentally calling management APIs ── */
 function _requireManage() {
-  if (!CAN_MANAGE) {
-    console.warn('Action blocked — insufficient permissions.');
-    return false;
-  }
+  if (!CAN_MANAGE) { console.warn('Action blocked — insufficient permissions.'); return false; }
   return true;
 }
 
@@ -676,7 +687,7 @@ async function submitAddCompany() {
   location.reload();
 }
 
-/* ── Member modal ── */
+/* ── Add Member modal ── */
 function openAddMember(companyId) {
   if (!_requireManage()) return;
   if (companyId) {
@@ -702,9 +713,8 @@ async function submitAddMember() {
       position:     document.getElementById('m-position').value.trim(),
       email:        document.getElementById('m-email').value.trim(),
       phone:        document.getElementById('m-phone').value.trim(),
-      project_role: document.getElementById('m-role').value,
+      access_level: document.getElementById('m-access').value,
       company_id:   cid ? parseInt(cid) : null,
-      can_sign:     document.getElementById('m-can-sign').checked,
     }),
   });
   const d = await r.json();
@@ -713,19 +723,17 @@ async function submitAddMember() {
   location.reload();
 }
 
-/* ── Edit member modal ── */
+/* ── Edit Member modal ── */
 let _editMemberId = null;
 function openEditMember(btn) {
   if (!_requireManage()) return;
   _editMemberId = btn.dataset.mid;
-  // Pre-fill fields from data-* attributes (HTML-decoded, never injected into JS literals)
   document.getElementById('em-name').value     = btn.dataset.mname     || '';
   document.getElementById('em-position').value = btn.dataset.mposition || '';
   document.getElementById('em-phone').value    = btn.dataset.mphone    || '';
-  document.getElementById('em-can-sign').checked = btn.dataset.mcansign === 'true';
-  // Role select
-  const roleEl = document.getElementById('em-role');
-  for (const o of roleEl.options) { o.selected = o.value === btn.dataset.mrole; }
+  // Access level select
+  const accessEl = document.getElementById('em-access');
+  for (const o of accessEl.options) { o.selected = o.value === btn.dataset.maccess; }
   // Company select
   const coEl = document.getElementById('em-company');
   const cid  = btn.dataset.mcompany || '';
@@ -758,9 +766,8 @@ async function submitEditMember() {
       name,
       position:     document.getElementById('em-position').value.trim(),
       phone:        document.getElementById('em-phone').value.trim(),
-      project_role: document.getElementById('em-role').value,
+      access_level: document.getElementById('em-access').value,
       company_id:   cid ? parseInt(cid) : null,
-      can_sign:     document.getElementById('em-can-sign').checked,
     }),
   });
   const d = await r.json();
@@ -769,61 +776,71 @@ async function submitEditMember() {
   location.reload();
 }
 
-/* ── Delete company — reads IDs from data-* attributes ── */
+/* ── Delete company ── */
 async function deleteCompany(btn) {
   if (!_requireManage()) return;
   const id   = btn.dataset.cid;
   const name = btn.dataset.cname;
   if (!confirm(`Remove company "${name}" and all their team members?`)) return;
-  const r = await fetch(`/projects/${PID}/companies/${id}`, { method: 'DELETE', headers: {'X-CSRF-Token': CSRF_TOKEN} });
+  const r = await fetch(`/projects/${PID}/companies/${id}`, {
+    method: 'DELETE', headers: {'X-CSRF-Token': CSRF_TOKEN}
+  });
   const d = await r.json();
   if (d.ok) document.getElementById(`company-${id}`).remove();
   else alert(d.error);
 }
 
-/* ── Delete member — reads IDs from data-* attributes ── */
+/* ── Disable member ── */
 async function deleteMember(btn) {
   if (!_requireManage()) return;
   const id   = btn.dataset.mid;
   const name = btn.dataset.mname;
-  if (!confirm(`Remove access for ${name}? This will remove project access and revoke any pending invite.`)) return;
-  const r = await fetch(`/projects/${PID}/team/${id}`, { method: 'DELETE', headers: {'X-CSRF-Token': CSRF_TOKEN} });
+  if (!confirm(`Disable access for ${name}? They will no longer see this project.`)) return;
+  const r = await fetch(`/projects/${PID}/team/${id}`, {
+    method: 'DELETE', headers: {'X-CSRF-Token': CSRF_TOKEN}
+  });
   const d = await r.json();
-  if (d.ok) document.getElementById(`member-${id}`).remove();
+  if (d.ok) location.reload();
   else alert(d.error);
 }
 
-/* ── Resend invite — reads IDs from data-* attributes ── */
+/* ── Resend invite ── */
 async function resendInvite(btn) {
   if (!_requireManage()) return;
   const inviteId = btn.dataset.iid;
   const name     = btn.dataset.mname;
-  if (!confirm(`Resend invite to ${name}? A new email will be sent and the previous invite link will stop working.`)) return;
-  const r = await fetch(`/projects/${PID}/team/invites/${inviteId}/resend`, { method: 'POST', headers: {'X-CSRF-Token': CSRF_TOKEN} });
+  if (!confirm(`Resend invite to ${name}? A new email will be sent and the previous link will stop working.`)) return;
+  const r = await fetch(`/projects/${PID}/team/invites/${inviteId}/resend`, {
+    method: 'POST', headers: {'X-CSRF-Token': CSRF_TOKEN}
+  });
   const d = await r.json();
   if (!d.ok) { alert(d.error); return; }
   alert('Invite resent successfully.');
   location.reload();
 }
 
-/* ── Revoke invite — reads IDs from data-* attributes ── */
+/* ── Revoke invite ── */
 async function revokeInvite(btn) {
   if (!_requireManage()) return;
   const inviteId = btn.dataset.iid;
   const name     = btn.dataset.mname;
   if (!confirm(`Revoke the invite for ${name}? They will no longer be able to accept it.`)) return;
-  const r = await fetch(`/projects/${PID}/team/invites/${inviteId}/revoke`, { method: 'POST', headers: {'X-CSRF-Token': CSRF_TOKEN} });
+  const r = await fetch(`/projects/${PID}/team/invites/${inviteId}/revoke`, {
+    method: 'POST', headers: {'X-CSRF-Token': CSRF_TOKEN}
+  });
   const d = await r.json();
   if (!d.ok) { alert(d.error); return; }
   location.reload();
 }
 
-/* ── Generate new invite link — reads ID from data-* attribute ── */
+/* ── Generate new invite link ── */
 async function copyInviteLink(btn) {
   if (!_requireManage()) return;
   const inviteId = btn.dataset.iid;
-  if (!confirm('Generate a new invite link? The previous invite link will stop working.')) return;
-  const r = await fetch(`/projects/${PID}/team/invites/${inviteId}/copy-link`, { method: 'POST', headers: {'X-CSRF-Token': CSRF_TOKEN} });
+  if (!confirm('Generate a new invite link? The previous link will stop working.')) return;
+  const r = await fetch(`/projects/${PID}/team/invites/${inviteId}/copy-link`, {
+    method: 'POST', headers: {'X-CSRF-Token': CSRF_TOKEN}
+  });
   const d = await r.json();
   if (!d.ok) { alert(d.error); return; }
   try {
