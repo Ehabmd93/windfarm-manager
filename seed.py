@@ -1,7 +1,7 @@
 """
 seed.py — Database initialisation.
 
-This file is split into two concerns:
+This file is split into three concerns:
 
 1. Schema migrations (always safe to run):
    - Add missing columns to existing tables
@@ -9,21 +9,28 @@ This file is split into two concerns:
    - Seed generic custom tracking field defaults
    - Create progress widgets if none exist
 
-2. Demo / legacy data (only if ENABLE_DEMO_KRWF_SEED=true):
-   - Create King Rocks Wind Farm project
-   - Create demo WTGs with hardstand / crane pad / blade areas
-   - Create demo user accounts (engineer@cbop.com, etc.)
-   - Link orphan WTGs to King Rocks project
+2. First-owner bootstrap (env-var driven, production-safe):
+   - Reads SITEGRID_OWNER_EMAIL / _NAME / _PASSWORD / SITEGRID_FIRST_PROJECT_NAME
+   - Creates or updates the real owner user, first project, and ProjectMemberAC row
+   - Seeds all 23 permission rows (all value=True, locked=True for owner)
+   - Idempotent — safe to run on every startup
+   - Only active when the env vars are explicitly set
 
-Production startup does NOT create King Rocks or demo users unless the
-env var is set.  Existing production data is never touched.
+3. Demo data (explicit opt-in only):
+   - Demo users (engineer/supervisor/manager/client @demo.com) are created ONLY
+     when ENABLE_DEMO_USERS=true.  Never on production.
+   - King Rocks Wind Farm demo data only when ENABLE_DEMO_KRWF_SEED=true.
+
+PRODUCTION: set neither env var. No demo accounts will ever be created.
 """
 import os
 from werkzeug.security import generate_password_hash
 from models import (db, User, WTG, Area, QATest, ITPRecord, ITPItemStatus,
                     FoundationStage, FoundationStageTemplate, FOUNDATION_STAGES,
                     WTGGroup, ELEMENT_TYPES,
-                    CustomTrackingField, ProgressWidget)
+                    CustomTrackingField, ProgressWidget,
+                    Project, ProjectMember, ProjectFeature, ALL_FEATURES,
+                    ProjectMemberAC, seed_member_permissions)
 
 
 # ─── Demo data constants (KRWF only) ─────────────────────────────────────────
@@ -176,30 +183,32 @@ def _exec_ddl(db, stmt):
 
 # ─── Generic defaults (always seeded, never project-specific) ─────────────────
 
-def _ensure_default_users(app):
-    """
-    If NO users exist at all, create a minimal set of default accounts
-    so the app is always accessible on a fresh database.
-    Runs unconditionally — safe on existing databases (noop if users exist).
+def _seed_demo_users(app):
+    """Create demo user accounts for local development.
+
+    Called ONLY when ENABLE_DEMO_USERS=true.
+    Never called on production.
+    Idempotent — no-ops if users already exist.
     """
     from sqlalchemy.exc import IntegrityError
     with app.app_context():
         if User.query.first():
-            return  # users already exist, nothing to do
-        print("No users found — creating default demo accounts...")
-        default_users = [
-            User(name='Engineer',   email='engineer@demo.com',   password=generate_password_hash('engineer123'),   role='engineer',   company='Demo Co',    is_active=True, email_verified=True),
-            User(name='Supervisor', email='supervisor@demo.com', password=generate_password_hash('supervisor123'), role='supervisor', company='Demo Co',    is_active=True, email_verified=True),
-            User(name='Manager',    email='manager@demo.com',    password=generate_password_hash('manager123'),    role='manager',    company='Demo Co',    is_active=True, email_verified=True),
-            User(name='Client',     email='client@demo.com',     password=generate_password_hash('client123'),     role='client',     company='Client Co',  is_active=True, email_verified=True),
+            print("Demo users: users already exist — skipping.")
+            return
+        print("ENABLE_DEMO_USERS=true — creating demo accounts…")
+        demo_users = [
+            User(name='Engineer',   email='engineer@demo.com',   password=generate_password_hash('engineer123'),   role='engineer',   company='Demo Co',   is_active=True, email_verified=True),
+            User(name='Supervisor', email='supervisor@demo.com', password=generate_password_hash('supervisor123'), role='supervisor', company='Demo Co',   is_active=True, email_verified=True),
+            User(name='Manager',    email='manager@demo.com',    password=generate_password_hash('manager123'),    role='manager',    company='Demo Co',   is_active=True, email_verified=True),
+            User(name='Client',     email='client@demo.com',     password=generate_password_hash('client123'),     role='client',     company='Client Co', is_active=True, email_verified=True),
         ]
         try:
-            db.session.add_all(default_users)
+            db.session.add_all(demo_users)
             db.session.commit()
-            print("Default demo accounts created: engineer/supervisor/manager/client @demo.com (password: role+123)")
+            print("Demo accounts created: engineer/supervisor/manager/client @demo.com  (password: role+123)")
         except IntegrityError:
             db.session.rollback()
-            print("Default users already exist (concurrent startup).")
+            print("Demo users already exist (concurrent startup).")
 
 
 def _seed_defaults(app):
@@ -281,7 +290,6 @@ def _seed_krwf_demo(app):
     Only runs when ENABLE_DEMO_KRWF_SEED=true.
     Safe to run multiple times — all operations are idempotent."""
     from sqlalchemy.exc import IntegrityError
-    from models import Project, ProjectMember, ProjectFeature, ALL_FEATURES
 
     with app.app_context():
         # ── Create / locate King Rocks project ──
@@ -356,15 +364,145 @@ def _seed_krwf_demo(app):
             print(f"Seeded {len(DEMO_WTG_NAMES)} demo WTGs (King Rocks).")
 
 
+# ─── First-owner bootstrap ────────────────────────────────────────────────────
+
+def _bootstrap_first_owner(app):
+    """Create the real first owner from environment variables.
+
+    Reads four env vars:
+      SITEGRID_OWNER_EMAIL
+      SITEGRID_OWNER_NAME
+      SITEGRID_OWNER_PASSWORD
+      SITEGRID_FIRST_PROJECT_NAME
+
+    All four must be non-empty for any action to be taken.
+
+    Behaviour (idempotent — safe on every startup):
+      - Creates or updates the owner User (is_active=True, email_verified=True).
+        Only updates name/password if the existing account is a known demo
+        account; otherwise just ensures it is active and verified.
+      - Creates the first Project if it does not yet exist.
+      - Creates or updates the ProjectMemberAC row:
+          access_level='owner', is_owner=True, is_active=True.
+      - Seeds all 23 permission rows (value=True, locked=True for owner).
+      - Commits once at the end.
+
+    Does NOT create demo users.
+    Does NOT expose public registration.
+    Does NOT reset a real user's password silently.
+    """
+    email     = os.environ.get('SITEGRID_OWNER_EMAIL', '').strip().lower()
+    name      = os.environ.get('SITEGRID_OWNER_NAME', '').strip()
+    password  = os.environ.get('SITEGRID_OWNER_PASSWORD', '').strip()
+    proj_name = os.environ.get('SITEGRID_FIRST_PROJECT_NAME', '').strip()
+
+    if not all([email, name, password, proj_name]):
+        return  # env vars not configured — skip silently
+
+    _DEMO_NAMES = frozenset({
+        'Engineer', 'Supervisor', 'Manager', 'Client',
+        'Demo Engineer', 'Demo Supervisor', 'Demo Manager', 'Demo Client',
+    })
+
+    with app.app_context():
+        try:
+            # ── 1. Owner user ─────────────────────────────────────────────
+            owner = User.query.filter_by(email=email).first()
+            if owner is None:
+                owner = User(
+                    name           = name,
+                    email          = email,
+                    password       = generate_password_hash(password),
+                    role           = 'manager',   # least-privilege global role
+                    is_active      = True,
+                    email_verified = True,
+                )
+                db.session.add(owner)
+                print(f"Bootstrap: creating owner user '{email}'")
+            else:
+                owner.is_active      = True
+                owner.email_verified = True
+                if owner.name in _DEMO_NAMES:
+                    # Upgrade a demo slot to the real owner
+                    owner.name     = name
+                    owner.password = generate_password_hash(password)
+                    print(f"Bootstrap: upgraded demo account → real owner '{email}'")
+                else:
+                    print(f"Bootstrap: owner '{email}' already exists — ensuring active/verified")
+
+            db.session.flush()   # obtain owner.id
+
+            # ── 2. First project ──────────────────────────────────────────
+            project = Project.query.filter_by(name=proj_name).first()
+            if project is None:
+                project = Project(
+                    name         = proj_name,
+                    project_type = 'Wind Farm',
+                    status       = 'active',
+                    is_active    = True,
+                    created_by   = owner.id,
+                )
+                db.session.add(project)
+                db.session.flush()   # obtain project.id
+                for key, *_ in ALL_FEATURES:
+                    db.session.add(ProjectFeature(
+                        project_id=project.id, feature_key=key, enabled=True))
+                print(f"Bootstrap: created first project '{proj_name}' (id={project.id})")
+            else:
+                db.session.flush()
+                print(f"Bootstrap: project '{proj_name}' already exists (id={project.id})")
+
+            # ── 3. ProjectMemberAC owner row ──────────────────────────────
+            member = ProjectMemberAC.query.filter_by(
+                project_id=project.id,
+                user_id=owner.id,
+            ).first()
+
+            if member is None:
+                member = ProjectMemberAC(
+                    project_id   = project.id,
+                    user_id      = owner.id,
+                    is_owner     = True,
+                    access_level = 'owner',
+                    is_active    = True,
+                    name         = owner.name,
+                    email        = owner.email,
+                    added_by_id  = owner.id,
+                )
+                db.session.add(member)
+                db.session.flush()   # obtain member.id before seeding permissions
+                print(f"Bootstrap: created ProjectMemberAC owner row")
+            else:
+                member.is_owner     = True
+                member.access_level = 'owner'
+                member.is_active    = True
+                db.session.flush()
+                print(f"Bootstrap: ensured ProjectMemberAC owner row (id={member.id})")
+
+            # ── 4. Seed 23 permission rows (all value=True, locked=True) ──
+            new_perms = seed_member_permissions(member)
+            if new_perms:
+                print(f"Bootstrap: seeded {len(new_perms)} permission rows (all locked on for owner)")
+            else:
+                print("Bootstrap: permission rows already complete")
+
+            db.session.commit()
+            print(f"Bootstrap complete — '{email}' can log in as project owner.")
+
+        except Exception as exc:
+            db.session.rollback()
+            print(f"Bootstrap ERROR: {exc}")
+            raise
+
+
 # ─── Main entry point ──────────────────────────────────────────────────────────
 
 def seed(app):
-    from sqlalchemy.exc import IntegrityError
     with app.app_context():
         _migrate_itp_schema(app)
         db.create_all()
 
-    # Schema-level migrations (always safe)
+    # ── 1. Schema-level migrations (always safe, never creates data) ───────
     _schema_migrations(app)
 
     with app.app_context():
@@ -383,25 +521,32 @@ def seed(app):
             _eng.name = 'Demo Engineer'
             db.session.commit()
 
-    # Ensure at least one user always exists (noop if users already present)
-    _ensure_default_users(app)
+    # ── 2. Demo users — ONLY when explicitly enabled ───────────────────────
+    # PRODUCTION: do NOT set ENABLE_DEMO_USERS.  No demo accounts will be
+    # created.  engineer@demo.com / manager@demo.com will never appear.
+    if os.environ.get('ENABLE_DEMO_USERS', '').lower() == 'true':
+        _seed_demo_users(app)
+    # else: no demo users — production stays clean
 
-    # Seed generic defaults (always)
+    # ── 3. First real owner bootstrap (env-var driven, idempotent) ─────────
+    # Set SITEGRID_OWNER_EMAIL / _NAME / _PASSWORD / SITEGRID_FIRST_PROJECT_NAME
+    # in Railway to bootstrap the first owner without public registration.
+    _bootstrap_first_owner(app)
+
+    # ── 4. Generic defaults (foundation templates, fields, widgets) ────────
     _seed_defaults(app)
 
-    # ── KRWF demo seed — only when env var is set ──────────────────────────
+    # ── 5. KRWF demo seed — only when env var is set ───────────────────────
     if os.environ.get('ENABLE_DEMO_KRWF_SEED', '').lower() == 'true':
         print("ENABLE_DEMO_KRWF_SEED=true — creating King Rocks demo data…")
         _seed_krwf_demo(app)
     else:
         with app.app_context():
-            # Still link orphan WTGs on existing production DBs (safe operation)
-            kr = None
+            # Still link orphan WTGs on existing production DBs (safe, no data created)
             try:
-                from models import Project
                 kr = Project.query.filter_by(name='King Rocks Wind Farm').first()
             except Exception:
-                pass
+                kr = None
             if kr:
                 unlinked = WTG.query.filter(
                     (WTG.project_id == None) | (WTG.project_id == 0)  # noqa: E711
