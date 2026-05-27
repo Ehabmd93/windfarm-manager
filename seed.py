@@ -432,11 +432,24 @@ def _bootstrap_first_owner(app):
     force_reset = os.environ.get('SITEGRID_FORCE_OWNER_PASSWORD_RESET', '').strip().lower() == 'true'
 
     if not all([email, name, password, proj_name]):
-        print(
-            "Bootstrap skipped: SITEGRID_OWNER_EMAIL, SITEGRID_OWNER_NAME, "
-            "SITEGRID_OWNER_PASSWORD, and SITEGRID_FIRST_PROJECT_NAME are required "
-            "to create the first Owner."
-        )
+        missing = [
+            k for k, v in [
+                ('SITEGRID_OWNER_EMAIL',        email),
+                ('SITEGRID_OWNER_NAME',         name),
+                ('SITEGRID_OWNER_PASSWORD',     password),
+                ('SITEGRID_FIRST_PROJECT_NAME', proj_name),
+            ] if not v
+        ]
+        present = [
+            k for k, v in [
+                ('SITEGRID_OWNER_EMAIL',        email),
+                ('SITEGRID_OWNER_NAME',         name),
+                ('SITEGRID_OWNER_PASSWORD',     '***' if password else ''),
+                ('SITEGRID_FIRST_PROJECT_NAME', proj_name),
+            ] if v
+        ]
+        print(f"Bootstrap skipped — missing vars: {missing}")
+        print(f"Bootstrap skipped — present vars: {present}")
         return
 
     _DEMO_NAMES = frozenset({
