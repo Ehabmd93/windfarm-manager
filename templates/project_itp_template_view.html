@@ -101,6 +101,7 @@
     </a>
     <form method="POST" action="{{ url_for('project_itp_delete', pid=proj.id, tid=template.id) }}"
           onsubmit="return confirm('Delete this ITP template? All sign-off data will be retained but the template will be hidden.')">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit"
               style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;
                      background:#fef2f2;color:#dc2626;border-radius:10px;font-weight:700;font-size:12px;border:none;cursor:pointer;">

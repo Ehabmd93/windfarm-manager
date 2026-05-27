@@ -175,6 +175,7 @@
 
 {% block scripts %}
 <script>
+const CSRF_TOKEN = {{ csrf_token()|tojson }};
 function toggleGroup(name) {
   const grp = document.getElementById('grp-' + name);
   if (grp) grp.classList.toggle('hidden');
@@ -235,7 +236,7 @@ async function downloadZip() {
   try {
     const res = await fetch('/itp/export-zip', {
       method:  'POST',
-      headers: {'Content-Type':'application/json'},
+      headers: {'Content-Type':'application/json', 'X-CSRF-Token': CSRF_TOKEN},
       body:    JSON.stringify({ids})
     });
     if (!res.ok) { alert('Export failed. Please try again.'); return; }

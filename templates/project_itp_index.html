@@ -229,6 +229,7 @@
         </a>
         <form method="POST" action="{{ url_for('project_itp_delete', pid=proj.id, tid=t.id) }}"
               onsubmit="return confirm('Delete this ITP template?')" style="margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" style="padding:7px 10px;background:#fef2f2;color:#dc2626;
                   border:1px solid #fecaca;border-radius:9px;font-size:11px;font-weight:700;cursor:pointer;">
             <i class="fa-solid fa-trash"></i>

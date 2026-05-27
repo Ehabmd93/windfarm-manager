@@ -118,6 +118,7 @@
 
 {% block scripts %}
 <script>
+const CSRF_TOKEN = {{ csrf_token()|tojson }};
 const selectedTids = new Set();
 
 function toggleCard(card, tid) {
@@ -168,7 +169,7 @@ async function downloadBackup() {
 
   const resp = await fetch('{{ url_for("project_itp_backup", pid=proj.id) }}', {
     method: 'POST',
-    headers: {'Content-Type':'application/json'},
+    headers: {'Content-Type':'application/json', 'X-CSRF-Token': CSRF_TOKEN},
     body: JSON.stringify({template_ids: [...selectedTids]})
   });
 

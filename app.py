@@ -4314,9 +4314,13 @@ def itp_index():
         records = (ITPRecord.query
                    .filter(ITPRecord.wtg_id.in_(wtg_ids)).all()
                    if wtg_ids else [])
-    else:
+    elif current_user.role in ('admin', 'manager'):
+        # Global admins/managers can still see the cross-project legacy view
         wtgs    = WTG.query.order_by(WTG.name).all()
         records = ITPRecord.query.all()
+    else:
+        # No active project and not a global admin — refuse to expose all records
+        abort(403)
     by_key = {(r.wtg_id, r.itp_type): r for r in records}
     return render_template('itp_index.html',
                            wtgs=wtgs,
@@ -4802,6 +4806,8 @@ def itp_detail(wtg_id, itp_type):
     statuses = {(s.item_no, s.criterion_index): s for s in record.item_statuses}
 
     if request.method == 'POST':
+        if not _validate_csrf_token():
+            abort(403)
         action = request.form.get('action')
 
         # ── Save lot/location metadata ────────────────────────────────────
@@ -5323,7 +5329,7 @@ def itp_export():
     from flask import g
     proj = getattr(g, 'project', None)
     if proj:
-        if not _user_in_project(proj.id):
+        if not user_can_view_project_ac(proj.id):
             abort(403)
         wtgs    = WTG.query.filter_by(project_id=proj.id).order_by(WTG.name).all()
         wtg_ids = [w.id for w in wtgs]
@@ -5331,9 +5337,13 @@ def itp_export():
                    .filter(ITPRecord.wtg_id.in_(wtg_ids))
                    .order_by(ITPRecord.wtg_id, ITPRecord.itp_type).all()
                    if wtg_ids else [])
-    else:
+    elif current_user.role in ('admin', 'manager'):
+        # Global admins/managers retain cross-project legacy access
         wtgs    = WTG.query.order_by(WTG.name).all()
         records = ITPRecord.query.order_by(ITPRecord.wtg_id, ITPRecord.itp_type).all()
+    else:
+        # No active project and not a global admin — refuse to expose all records
+        abort(403)
     return render_template('itp_export.html', wtgs=wtgs, records=records,
                            itp_types=list(ITP_DEFINITIONS.keys()))
 
@@ -5342,6 +5352,8 @@ def itp_export():
 @login_required
 def itp_export_zip():
     """Generate a ZIP of self-contained HTML print pages for selected ITP records."""
+    if not _validate_csrf_token():
+        return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
     from flask import g, send_file
     import zipfile, io as _io
     data       = request.get_json() or {}
@@ -5424,6 +5436,8 @@ def project_itp_backup(pid):
                  .order_by(ProjectITPTemplate.id).all())
 
     if request.method == 'POST':
+        if not _validate_csrf_token():
+            return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
         import zipfile, io as _io
         data = request.get_json(silent=True) or {}
         raw_tids = [int(x) for x in data.get('template_ids', [])]
