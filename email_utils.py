@@ -10,6 +10,7 @@ Required env vars:
 
 Optional env vars:
   SUPPORT_EMAIL      — reply-to address for invitation emails (falls back to MAIL_FROM)
+  EMAIL_MODE         — "send" (default) or "log" (dry-run: logs instead of sending, UI acts as sent)
 
 Deliverability setup (for reliable inbox delivery):
   1. In SendGrid: complete Domain Authentication for your sending domain.
@@ -21,6 +22,9 @@ Deliverability setup (for reliable inbox delivery):
 
 Public API
 ----------
+Diagnostics:
+  log_email_config()  — print env-var config at startup (no secrets)
+
 Existing (ITP client flow — unchanged):
   send_email(to, subject, html, plain_text_content=None, reply_to=None)
   email_client_invitation(record, wtg_name, sign_url, client_name,
@@ -48,24 +52,63 @@ from datetime import datetime, timezone
 # LOW-LEVEL TRANSPORT
 # ══════════════════════════════════════════════════════════════════════════════
 
+def log_email_config():
+    """Print email configuration to stdout at startup.  Never reveals the API key."""
+    api_key    = os.environ.get('SENDGRID_API_KEY', '').strip()
+    mail_from  = os.environ.get('MAIL_FROM',        '').strip()
+    email_mode = os.environ.get('EMAIL_MODE', 'send').lower()
+    print(f"[EMAIL CONFIG] SENDGRID_API_KEY present={bool(api_key)}")
+    print(f"[EMAIL CONFIG] MAIL_FROM={mail_from or '(not set)'}")
+    print(f"[EMAIL CONFIG] EMAIL_MODE={email_mode}")
+
+
 def send_email(to_email, subject, html_content,
                plain_text_content=None, reply_to=None):
     """Send a single transactional email via SendGrid.
 
-    Returns True on success, False on failure.
+    Returns True on success or in LOG mode, False on skip/failure.
     Existing callers using positional (to_email, subject, html_content) args
     continue to work without modification.
     """
-    api_key = os.environ.get('SENDGRID_API_KEY', '')
+    api_key    = os.environ.get('SENDGRID_API_KEY', '').strip()
+    mail_from  = os.environ.get('MAIL_FROM',        '').strip()
+    email_mode = os.environ.get('EMAIL_MODE', 'send').lower()
+
+    print(
+        f"[EMAIL] Attempting send  to={to_email}  subject={subject!r}"
+        f"  from={mail_from or '(not set)'}  has_key={bool(api_key)}"
+        f"  mode={email_mode}"
+    )
+
+    # ── LOG mode — dry-run, no actual send ───────────────────────────────────
+    if email_mode == 'log':
+        print(
+            f"[EMAIL LOG MODE] Would send  to={to_email}  subject={subject!r}"
+            f"  from={mail_from or '(not set)'}"
+        )
+        return True   # UI behaves as if sent
+
+    # ── Hard guards — skip without crashing ─────────────────────────────────
     if not api_key:
-        print(f"[EMAIL] No SENDGRID_API_KEY — skipping email to {to_email}: {subject}")
+        print(
+            f"[EMAIL] SKIPPED  missing SENDGRID_API_KEY"
+            f"  to={to_email}  subject={subject!r}"
+        )
         return False
+
+    if not mail_from:
+        print(
+            f"[EMAIL] SKIPPED  missing MAIL_FROM"
+            f"  to={to_email}  subject={subject!r}"
+        )
+        return False
+
+    # ── Attempt send ─────────────────────────────────────────────────────────
     try:
         from sendgrid import SendGridAPIClient
         from sendgrid.helpers.mail import Mail
-        from_email = os.environ.get('MAIL_FROM', 'noreply@sitegrid.app')
         msg = Mail(
-            from_email   = from_email,
+            from_email   = mail_from,
             to_emails    = to_email,
             subject      = subject,
             html_content = html_content,
@@ -84,10 +127,26 @@ def send_email(to_email, subject, html_content,
                 pass   # reply_to is optional — don't fail the send
         sg   = SendGridAPIClient(api_key)
         resp = sg.send(msg)
-        print(f"[EMAIL] Sent to {to_email} — status {resp.status_code}")
+        print(
+            f"[EMAIL] SENT  status={resp.status_code}"
+            f"  to={to_email}  subject={subject!r}"
+        )
         return True
     except Exception as e:
-        print(f"[EMAIL] Failed to send to {to_email}: {e}")
+        # Extract as much diagnostic detail as possible from SendGrid exceptions
+        status = getattr(e, 'status_code', None)
+        raw    = getattr(e, 'body', None)
+        if isinstance(raw, (bytes, bytearray)):
+            body = raw.decode('utf-8', errors='replace')
+        else:
+            body = str(raw) if raw else ''
+        print(
+            f"[EMAIL] FAILED  to={to_email}  subject={subject!r}  error={e}"
+        )
+        if status:
+            print(f"[EMAIL] FAILED  response_status={status}")
+        if body:
+            print(f"[EMAIL] FAILED  response_body={body}")
         return False
 
 

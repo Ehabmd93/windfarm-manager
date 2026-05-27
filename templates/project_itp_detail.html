@@ -952,15 +952,16 @@ async function addInvite() {
       document.getElementById('inv-email').value   = '';
       const sug = document.getElementById('member-suggest');
       if (sug) sug.style.display = 'none';
-      // Confirmation toast
-      if (data.email && data.email_sent) {
-        showToast('success', 'Client invitation sent', `${data.name} can now review this ITP.`);
-      } else if (data.email && !data.email_sent) {
-        showToast('warning', 'Invite link created',
-          'Email could not be sent. Copy the link manually.');
+      // Confirmation toast — 3-way based on email_attempted + email_sent
+      if (data.email_attempted && data.email_sent) {
+        showToast('success', 'Invitation email sent',
+          `Invitation email sent to ${data.email}.`);
+      } else if (data.email_attempted && !data.email_sent) {
+        showToast('warning', 'Invite link created — email not sent',
+          'Email could not be delivered. Copy the link manually and check SendGrid/Railway logs.');
       } else {
-        showToast('success', 'Signatory added',
-          `${data.name} has been added. Copy and share the link below.`);
+        showToast('success', 'Invite link created',
+          'No email address was entered. Copy and share the link below.');
       }
     } else {
       alert(data.error || 'Failed to add signatory.');

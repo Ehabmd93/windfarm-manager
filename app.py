@@ -41,7 +41,7 @@ from project_config import (PROJECT_TYPE_PROFILES, get_profile,
 from kml_parser import get_geojson
 from email_utils import (email_client_invitation, email_client_signed,
                          email_project_invitation, email_password_reset,
-                         email_password_changed)
+                         email_password_changed, log_email_config)
 import r2_storage
 
 # ─── App setup ──────────────────────────────────────────────────────────────
@@ -4654,8 +4654,9 @@ def api_project_itp_add_invite(pid, tid, eid):
 
     # Send invitation email if email provided
     wtg = record.wtg
-    email_sent = False
-    if email:
+    email_attempted = bool(email)
+    email_sent      = False
+    if email_attempted:
         itp_type = record.itp_type
         if itp_type.startswith('PROJ_'):
             tmpl = ProjectITPTemplate.query.get(record.project_itp_template_id)
@@ -4670,14 +4671,15 @@ def api_project_itp_add_invite(pid, tid, eid):
         ))
 
     return jsonify({
-        'ok':          True,
-        'id':          invite.id,
-        'name':        name,
-        'company':     company,
-        'email':       email,
-        'sign_url':    sign_url,
-        'is_new_link': is_new_token,
-        'email_sent':  email_sent,
+        'ok':               True,
+        'id':               invite.id,
+        'name':             name,
+        'company':          company,
+        'email':            email,
+        'sign_url':         sign_url,
+        'is_new_link':      is_new_token,
+        'email_attempted':  email_attempted,
+        'email_sent':       email_sent,
     })
 
 
@@ -6357,6 +6359,7 @@ def log_audit(event_type, *, project_id=None, actor=None, entity_type='',
 
 # ─── Startup: create tables, dirs, seed ──────────────────────────────────────
 def startup():
+    log_email_config()   # print MAIL_FROM / key presence / EMAIL_MODE to Railway logs
     create_dirs()
     with app.app_context():
         db.create_all()
