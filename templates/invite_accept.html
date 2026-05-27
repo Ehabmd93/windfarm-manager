@@ -5,15 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>
     {% if state == 'valid' %}
-      You're invited — {{ proj.name if proj else 'QA Manager' }}
+      You're invited — {{ proj.name if proj else 'SiteGrid' }}
     {% elif state == 'accepted' %}
-      Already Accepted — QA Manager
+      Already Accepted — SiteGrid
     {% elif state == 'expired' %}
-      Invite Expired — QA Manager
+      Invite Expired — SiteGrid
     {% elif state == 'revoked' %}
-      Invite Revoked — QA Manager
+      Invite Revoked — SiteGrid
     {% else %}
-      Invite Not Found — QA Manager
+      Invite Not Found — SiteGrid
     {% endif %}
   </title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
@@ -240,8 +240,8 @@
 
   <!-- ── Header ──────────────────────────────────────────────────── -->
   <div class="card-header">
-    <div class="app-name">QA Manager</div>
-    <div class="app-sub">Construction Quality Management Platform</div>
+    <div class="app-name">SiteGrid</div>
+    <div class="app-sub">Construction QA, ITPs &amp; Project Handover</div>
   </div>
 
   <!-- ── Body ────────────────────────────────────────────────────── -->
@@ -340,7 +340,7 @@
     <div class="alert alert-green">
       <i class="fa-solid fa-circle-check" style="margin-top:1px;flex-shrink:0;"></i>
       <span>
-        <a href="/login">Sign in to QA Manager</a> to access your project.
+        <a href="/login">Sign in to SiteGrid</a> to access your project.
       </span>
     </div>
 
@@ -482,9 +482,9 @@
     <div class="state-message">
       {% if proj %}
         You have been invited to join <strong>{{ proj.name }}</strong> on
-        QA Manager.
+        SiteGrid.
       {% else %}
-        You have been invited to join a project on QA Manager.
+        You have been invited to join a project on SiteGrid.
       {% endif %}
     </div>
 
@@ -630,7 +630,7 @@
 
   <!-- ── Footer ──────────────────────────────────────────────────── -->
   <div class="card-footer">
-    QA Manager &mdash; Construction Quality Management Platform<br>
+    SiteGrid &mdash; Construction QA, ITPs &amp; Project Handover<br>
     <a href="/login">Back to sign-in</a>
   </div>
 

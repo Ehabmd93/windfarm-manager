@@ -5,8 +5,19 @@ If not set, emails are logged to console (no crash).
 
 Required env vars:
   SENDGRID_API_KEY   — your SendGrid API key
-  MAIL_FROM          — sender address (e.g. noreply@yourproject.com)
-  APP_URL            — public app URL (e.g. https://yourapp.up.railway.app)
+  MAIL_FROM          — verified sender address (e.g. noreply@yourdomain.com)
+  APP_URL            — public app URL with https:// (e.g. https://yourapp.up.railway.app)
+
+Optional env vars:
+  SUPPORT_EMAIL      — reply-to address for invitation emails (falls back to MAIL_FROM)
+
+Deliverability setup (for reliable inbox delivery):
+  1. In SendGrid: complete Domain Authentication for your sending domain.
+     This adds DKIM and SPF records to your DNS — required for Outlook / Gmail inbox.
+  2. Add a DMARC TXT record to your domain DNS:
+       _dmarc.yourdomain.com  TXT  "v=DMARC1; p=none; rua=mailto:dmarc@yourdomain.com"
+  3. Set MAIL_FROM to an address on your authenticated domain (not a Gmail / Yahoo address).
+  4. Set APP_URL to your full https:// Railway URL so invite links are absolute.
 
 Public API
 ----------
@@ -52,7 +63,7 @@ def send_email(to_email, subject, html_content,
     try:
         from sendgrid import SendGridAPIClient
         from sendgrid.helpers.mail import Mail
-        from_email = os.environ.get('MAIL_FROM', 'noreply@qamanager.app')
+        from_email = os.environ.get('MAIL_FROM', 'noreply@sitegrid.app')
         msg = Mail(
             from_email   = from_email,
             to_emails    = to_email,
@@ -105,25 +116,52 @@ def _fmt_dt(dt, default='Not specified'):
 
 
 def _action_button(label, url):
-    """Return HTML for a centred primary CTA button."""
+    """Return HTML for a centred primary CTA button.
+
+    Uses a VML-based button for Outlook and a standard <a> tag for modern
+    clients (the 'bulletproof button' pattern).  The URL is HTML-escaped
+    to guard against malformed markup if it contains special characters.
+    """
+    safe_url   = _html_lib.escape(url, quote=True)
+    safe_label = _safe(label)
     return f"""
-      <div style="text-align:center;margin:32px 0;">
-        <a href="{url}"
-           style="display:inline-block;background:#2563eb;color:#ffffff;
-                  padding:14px 38px;border-radius:6px;text-decoration:none;
-                  font-weight:600;font-size:15px;letter-spacing:0.01em;">
-          {_safe(label)}
-        </a>
-      </div>"""
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+             style="margin:32px 0;">
+        <tr>
+          <td align="center">
+            <!--[if mso]>
+            <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml"
+                         xmlns:w="urn:schemas-microsoft-com:office:word"
+                         href="{safe_url}"
+                         style="height:48px;v-text-anchor:middle;width:220px;"
+                         arcsize="12%" strokecolor="#1d4ed8" fillcolor="#2563eb">
+              <w:anchorlock/>
+              <center style="color:#ffffff;font-family:Arial,Helvetica,sans-serif;
+                             font-size:15px;font-weight:700;">{safe_label}</center>
+            </v:roundrect>
+            <![endif]-->
+            <!--[if !mso]><!-->
+            <a href="{safe_url}" target="_blank"
+               style="display:inline-block;background:#2563eb;color:#ffffff;
+                      padding:14px 38px;border-radius:6px;text-decoration:none;
+                      font-weight:700;font-size:15px;letter-spacing:0.01em;
+                      mso-hide:all;">
+              {safe_label}
+            </a>
+            <!--<![endif]-->
+          </td>
+        </tr>
+      </table>"""
 
 
 def _fallback_link(url):
     """Return HTML for the 'button not working?' fallback URL block."""
+    safe_url = _html_lib.escape(url, quote=True)
     return f"""
       <p style="color:#94a3b8;font-size:12px;margin:20px 0 0;
                 border-top:1px solid #f1f5f9;padding-top:16px;line-height:1.8;">
-        If the button does not work, copy this link into your browser:<br/>
-        <a href="{url}" style="color:#2563eb;word-break:break-all;">{url}</a>
+        If the button does not work, copy and paste this link into your browser:<br/>
+        <a href="{safe_url}" style="color:#2563eb;word-break:break-all;">{_html_lib.escape(url)}</a>
       </p>"""
 
 
@@ -164,7 +202,7 @@ def _email_shell(title, body_html, preheader=''):
     """
     year     = datetime.now().year
     app_name = 'SiteGrid'
-    tagline  = 'Construction Quality Management Platform'
+    tagline  = 'Construction QA, ITPs &amp; Project Handover'
     pre_tag  = (
         f'<div style="display:none;max-height:0;overflow:hidden;'
         f'color:#f4f6f9;">{_safe(preheader)}&nbsp;</div>'
@@ -454,20 +492,21 @@ def email_project_invitation(
     The invite_url must already contain the raw token as a query/path parameter;
     this function never generates or sees a token.
     """
-    subject = f"You are invited to join {project_name} on SiteGrid"
+    subject   = "You've been invited to SiteGrid"
+    preheader = f"Accept your invitation to join {project_name}."
 
     rows = [
-        ('Project',  project_name),
-        ('Your role', role_label),
+        ('Project',    project_name),
+        ('Role',       role_label),
     ]
     if company_name:
         rows.append(('Company', company_name))
     rows.append(('Invited by', inviter_name))
-    rows.append(('Invite expires', _fmt_dt(expires_at)))
+    rows.append(('Expires',    _fmt_dt(expires_at)))
 
     body = f"""
       <h2 style="color:#1e2d3d;font-size:20px;font-weight:700;margin:0 0 8px;">
-        You have been invited
+        You've been invited to join {_safe(project_name)} on SiteGrid
       </h2>
       <p style="color:#334155;font-size:14px;line-height:1.7;margin:0 0 4px;">
         <strong>{_safe(inviter_name)}</strong> has invited you to join
@@ -481,7 +520,7 @@ def email_project_invitation(
 
       {_detail_card(rows)}
 
-      {_action_button('Accept Invitation', invite_url)}
+      {_action_button('Accept invitation', invite_url)}
 
       <p style="color:#64748b;font-size:13px;line-height:1.7;
                 margin:20px 0 0;padding:16px;background:#fffbeb;
@@ -493,9 +532,29 @@ def email_project_invitation(
 
       {_fallback_link(invite_url)}"""
 
+    company_line = f"Company:    {company_name}\n" if company_name else ""
+    plain = (
+        f"You've been invited to join {project_name} on SiteGrid.\n\n"
+        f"Project:    {project_name}\n"
+        f"Role:       {role_label}\n"
+        f"{company_line}"
+        f"Invited by: {inviter_name}\n"
+        f"Expires:    {_fmt_dt(expires_at)}\n\n"
+        f"Accept your invitation:\n"
+        f"{invite_url}\n\n"
+        f"---\n"
+        f"SiteGrid – Construction QA, ITPs & Project Handover\n"
+        f"This invitation was sent to {to_email}. Do not forward this link.\n"
+    )
+
+    reply_to_addr = (os.environ.get('SUPPORT_EMAIL') or
+                     os.environ.get('MAIL_FROM') or None)
+
     return send_email(
         to_email, subject,
-        _email_shell(subject, body, preheader=f"Invitation to join {project_name}"),
+        _email_shell(subject, body, preheader=preheader),
+        plain_text_content=plain,
+        reply_to=reply_to_addr,
     )
 
 
@@ -530,7 +589,7 @@ def email_invite_accepted(
 
       {_detail_card(rows)}
 
-      {_action_button('Open QA Manager', login_url)}"""
+      {_action_button('Open SiteGrid', login_url)}"""
 
     return send_email(
         to_email, subject,
@@ -549,7 +608,7 @@ def email_password_reset(
     The reset_url must already contain the raw token; this function never
     generates or stores tokens.
     """
-    subject = "Reset your QA Manager password"
+    subject = "Reset your SiteGrid password"
 
     body = f"""
       <h2 style="color:#1e2d3d;font-size:20px;font-weight:700;margin:0 0 8px;">
@@ -559,7 +618,7 @@ def email_password_reset(
         Hi <strong>{_safe(user_name)}</strong>,
       </p>
       <p style="color:#334155;font-size:14px;line-height:1.7;margin:0 0 20px;">
-        We received a request to reset the password for your QA Manager account.
+        We received a request to reset the password for your SiteGrid account.
         Click the button below to choose a new password. This link expires on
         <strong>{_fmt_dt(expires_at)}</strong>.
       </p>
@@ -578,7 +637,7 @@ def email_password_reset(
 
     return send_email(
         to_email, subject,
-        _email_shell(subject, body, preheader="Reset your QA Manager password"),
+        _email_shell(subject, body, preheader="Reset your SiteGrid password"),
     )
 
 
@@ -587,7 +646,7 @@ def email_password_changed(
     user_name,
 ):
     """Notify a user that their account password was just changed."""
-    subject = "Your QA Manager password was changed"
+    subject = "Your SiteGrid password was changed"
 
     changed_at = _fmt_dt(datetime.now(timezone.utc))
     login_url  = _app_url() or '#'
@@ -600,7 +659,7 @@ def email_password_changed(
         Hi <strong>{_safe(user_name)}</strong>,
       </p>
       <p style="color:#334155;font-size:14px;line-height:1.7;margin:0 0 20px;">
-        The password for your QA Manager account was changed successfully
+        The password for your SiteGrid account was changed successfully
         on <strong>{changed_at}</strong>.
       </p>
       <p style="color:#334155;font-size:14px;line-height:1.7;margin:0 0 20px;">
@@ -615,11 +674,11 @@ def email_password_changed(
         and do not log in until the issue has been investigated.
       </p>
 
-      {_action_button('Log in to QA Manager', login_url)}"""
+      {_action_button('Log in to SiteGrid', login_url)}"""
 
     return send_email(
         to_email, subject,
-        _email_shell(subject, body, preheader="Your QA Manager password was changed"),
+        _email_shell(subject, body, preheader="Your SiteGrid password was changed"),
     )
 
 
@@ -660,12 +719,12 @@ def email_role_changed(
       {_detail_card(rows)}
 
       <p style="color:#64748b;font-size:13px;line-height:1.7;margin:16px 0 0;">
-        Log in to QA Manager to see your updated project access.
+        Log in to SiteGrid to see your updated project access.
         If you believe this change was made in error, contact your
         project administrator.
       </p>
 
-      {_action_button('Open QA Manager', login_url)}"""
+      {_action_button('Open SiteGrid', login_url)}"""
 
     return send_email(
         to_email, subject,
