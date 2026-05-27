@@ -2246,6 +2246,22 @@ def project_access_control(pid):
     for m in members:
         perm_map[m.id] = {p.permission_key: p for p in m.permissions}
 
+    # Latest 15 access-related audit events for this project
+    _AC_EVENT_TYPES = (
+        'permission_changed', 'permission_self_lockout_confirmed',
+        'access_level_changed', 'project_owner_assigned', 'project_owner_removed',
+        'member_added', 'member_removed', 'member_disabled',
+        'user_invite_created', 'user_invite_revoked',
+        'invite_sent', 'invite_resent', 'invite_accepted',
+        'project_access_removed',
+    )
+    access_events = (AuditEvent.query
+                     .filter(AuditEvent.project_id == pid,
+                             AuditEvent.event_type.in_(_AC_EVENT_TYPES))
+                     .order_by(AuditEvent.created_at.desc())
+                     .limit(15)
+                     .all())
+
     actor_is_owner = user_is_project_owner(pid)
     actor_ac       = get_project_member_ac(pid)
     return render_template(
@@ -2261,6 +2277,7 @@ def project_access_control(pid):
         is_owner          = actor_is_owner,
         actor_member_id   = actor_ac.id if actor_ac else None,
         ac_access_levels  = AC_ACCESS_LEVELS,
+        access_events     = access_events,
     )
 
 

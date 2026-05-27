@@ -360,7 +360,6 @@
             {% endfor %}
           </select>
           <button class="own-btn own-btn-remove" onclick="removeOwnerStatus()">
-            <i class="fa-solid fa-crown-solid"></i>
             <i class="fa-solid fa-xmark"></i> Remove Owner
           </button>
         </div>
@@ -375,26 +374,40 @@
   <div class="filter-bar">
     <i class="fa-solid fa-magnifying-glass" style="color:#94a3b8;font-size:13px;"></i>
     <input id="acc-filter" type="text"
-           placeholder="Filter by name, email or access level…"
+           placeholder="Search people, company, email, or access level…"
            oninput="filterMembers(this.value)" autocomplete="off">
     <span id="filter-count" style="font-size:11px;color:#94a3b8;white-space:nowrap;"></span>
+  </div>
+
+  {# ── Action note ── #}
+  <div style="display:inline-flex;align-items:center;gap:7px;padding:7px 14px;
+              background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;
+              font-size:12px;font-weight:600;color:#15803d;margin-bottom:20px;">
+    <i class="fa-solid fa-circle-check" style="font-size:11px;"></i>
+    Changes are saved immediately and recorded in the audit log.
   </div>
 
   {# ── Permission groups ── #}
   {% for group_key, group_label, group_icon, group_color, group_perms in permission_groups %}
   <div class="perm-section" id="group-{{ group_key }}">
 
-    <div class="perm-section-header">
+    <div class="perm-section-header"
+         style="cursor:pointer;user-select:none;"
+         onclick="toggleGroup('{{ group_key }}')"
+         title="Click to collapse / expand">
       <div class="perm-section-icon" style="background:{{ group_color }}18;">
         <i class="fa-solid {{ group_icon }}" style="color:{{ group_color }};"></i>
       </div>
-      <div>
+      <div style="flex:1;">
         <div class="perm-section-title">{{ group_label }}</div>
         <div class="perm-section-subtitle">{{ group_perms|length }} permission{{ 's' if group_perms|length != 1 }}</div>
       </div>
+      <i class="fa-solid fa-chevron-up group-chevron"
+         id="chevron-{{ group_key }}"
+         style="color:#94a3b8;font-size:11px;transition:transform .2s;"></i>
     </div>
 
-    <div class="matrix-wrap">
+    <div class="matrix-wrap" id="matrix-{{ group_key }}">
       <table class="matrix-table">
         <thead>
           <tr>
@@ -418,6 +431,7 @@
           <tr
             class="{% if not m.is_active %}row-disabled{% endif %}"
             data-filter="{{ (m.name ~ ' ' ~ m.email ~ ' ' ~ m.access_level ~ ' ' ~ m.access_level_label)|lower }}"
+            {% if not m.is_active %}title="Disabled members cannot be edited."{% endif %}
           >
             <td class="member-cell">
               <div class="mc-name">
@@ -535,6 +549,101 @@
     </div>
   </div>
   {% endfor %}
+
+  {# ── Recent Access Changes ── #}
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;
+              margin-top:8px;box-shadow:0 2px 8px rgba(0,0,0,.05);overflow:hidden;">
+    <div style="display:flex;align-items:center;gap:10px;
+                padding:14px 20px;border-bottom:1px solid #f1f5f9;background:#f8fafc;">
+      <div style="width:32px;height:32px;border-radius:8px;background:#ede9fe;
+                  display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <i class="fa-solid fa-clock-rotate-left" style="color:#7c3aed;font-size:13px;"></i>
+      </div>
+      <div>
+        <div style="font-size:13px;font-weight:800;color:#1e293b;">Recent Access Changes</div>
+        <div style="font-size:11px;color:#94a3b8;font-weight:500;">
+          Latest {{ access_events|length }} access-related events for this project
+        </div>
+      </div>
+    </div>
+
+    {% if access_events %}
+    <div style="overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;min-width:560px;">
+        <thead>
+          <tr style="background:#f8fafc;">
+            <th style="padding:9px 16px;font-size:11px;font-weight:700;color:#64748b;
+                        text-align:left;border-bottom:1px solid #f1f5f9;white-space:nowrap;">
+              When
+            </th>
+            <th style="padding:9px 16px;font-size:11px;font-weight:700;color:#64748b;
+                        text-align:left;border-bottom:1px solid #f1f5f9;white-space:nowrap;">
+              Actor
+            </th>
+            <th style="padding:9px 16px;font-size:11px;font-weight:700;color:#64748b;
+                        text-align:left;border-bottom:1px solid #f1f5f9;white-space:nowrap;">
+              Event
+            </th>
+            <th style="padding:9px 16px;font-size:11px;font-weight:700;color:#64748b;
+                        text-align:left;border-bottom:1px solid #f1f5f9;">
+              Target / Detail
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for ev in access_events %}
+          {# Map event_type to a readable label + colour #}
+          {%- set ev_meta = {
+            'permission_changed':               ('Permission Changed',     '#4f46e5', 'fa-toggle-on'),
+            'permission_self_lockout_confirmed': ('Self-Lockout Confirmed', '#ef4444', 'fa-triangle-exclamation'),
+            'access_level_changed':             ('Access Level Changed',   '#7c3aed', 'fa-arrows-rotate'),
+            'project_owner_assigned':           ('Owner Assigned',         '#d97706', 'fa-crown'),
+            'project_owner_removed':            ('Owner Removed',          '#ef4444', 'fa-crown'),
+            'member_added':                     ('Member Added',           '#16a34a', 'fa-user-plus'),
+            'member_removed':                   ('Member Removed',         '#ef4444', 'fa-user-minus'),
+            'member_disabled':                  ('Member Disabled',        '#94a3b8', 'fa-ban'),
+            'user_invite_created':              ('Invite Created',         '#0891b2', 'fa-envelope'),
+            'user_invite_revoked':              ('Invite Revoked',         '#94a3b8', 'fa-envelope-circle-check'),
+            'invite_sent':                      ('Invite Sent',            '#0891b2', 'fa-paper-plane'),
+            'invite_resent':                    ('Invite Resent',          '#0891b2', 'fa-paper-plane'),
+            'invite_accepted':                  ('Invite Accepted',        '#16a34a', 'fa-circle-check'),
+            'project_access_removed':           ('Access Removed',         '#ef4444', 'fa-user-slash'),
+          } -%}
+          {%- set em = ev_meta.get(ev.event_type, (ev.event_type.replace('_',' ').title(), '#64748b', 'fa-circle-dot')) -%}
+          <tr style="border-bottom:1px solid #f8fafc;">
+            <td style="padding:9px 16px;font-size:11px;color:#64748b;white-space:nowrap;vertical-align:top;">
+              {{ ev.created_at.strftime('%d %b %Y') }}<br>
+              <span style="color:#94a3b8;">{{ ev.created_at.strftime('%H:%M') }}</span>
+            </td>
+            <td style="padding:9px 16px;font-size:12px;color:#374151;vertical-align:top;white-space:nowrap;">
+              {{ ev.actor_name or '—' }}
+              {% if ev.actor_email %}
+              <br><span style="font-size:10px;color:#94a3b8;">{{ ev.actor_email }}</span>
+              {% endif %}
+            </td>
+            <td style="padding:9px 16px;vertical-align:top;white-space:nowrap;">
+              <span style="display:inline-flex;align-items:center;gap:5px;
+                           padding:3px 9px;border-radius:99px;font-size:10px;font-weight:700;
+                           background:{{ em[1] }}15;color:{{ em[1] }};">
+                <i class="fa-solid {{ em[2] }}" style="font-size:8px;"></i>
+                {{ em[0] }}
+              </span>
+            </td>
+            <td style="padding:9px 16px;font-size:12px;color:#374151;vertical-align:top;">
+              {{ ev.entity_label or '—' }}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div style="padding:28px;text-align:center;color:#94a3b8;font-size:13px;">
+      <i class="fa-solid fa-clock-rotate-left" style="font-size:20px;margin-bottom:8px;display:block;opacity:.3;"></i>
+      No access changes recorded yet.
+    </div>
+    {% endif %}
+  </div>
 
 </div>
 
@@ -700,6 +809,16 @@ async function doToggle(btn, confirmSelfLockout) {
     btn.disabled  = false;
     showToast('Network error — please try again.', true);
   }
+}
+
+// ── Group collapse / expand ───────────────────────────────────────────────────
+function toggleGroup(groupKey) {
+  const wrap    = document.getElementById('matrix-' + groupKey);
+  const chevron = document.getElementById('chevron-' + groupKey);
+  if (!wrap) return;
+  const collapsed = wrap.style.display === 'none';
+  wrap.style.display    = collapsed ? '' : 'none';
+  if (chevron) chevron.style.transform = collapsed ? '' : 'rotate(180deg)';
 }
 
 // ── Ownership panel ───────────────────────────────────────────────────────────
