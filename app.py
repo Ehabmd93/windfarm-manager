@@ -2246,18 +2246,109 @@ def project_access_control(pid):
     for m in members:
         perm_map[m.id] = {p.permission_key: p for p in m.permissions}
 
+    actor_is_owner = user_is_project_owner(pid)
     return render_template(
         'project_access_control.html',
-        proj            = proj,
-        members         = members,
-        active_members  = active_members,
-        owner_count     = owner_count,
-        pending_count   = pending_count,
-        disabled_count  = disabled_count,
+        proj              = proj,
+        members           = members,
+        active_members    = active_members,
+        owner_count       = owner_count,
+        pending_count     = pending_count,
+        disabled_count    = disabled_count,
         permission_groups = PERMISSION_GROUPS,
-        perm_map        = perm_map,
-        is_owner        = user_is_project_owner(pid),
+        perm_map          = perm_map,
+        is_owner          = actor_is_owner,
+        actor_member_id   = get_project_member_ac(pid).id if get_project_member_ac(pid) else None,
     )
+
+
+@app.route('/projects/<int:pid>/access-control/members/<int:mid>/permissions/<permission_key>',
+           methods=['PATCH'])
+@login_required
+def api_toggle_permission(pid, mid, permission_key):
+    """AC-4B — Toggle a single permission cell in the Control Center."""
+    # ── 1. CSRF ──────────────────────────────────────────────────────────────
+    if not _validate_csrf_token():
+        return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
+
+    # ── 2. Actor must be active AC member with manage-access rights ──────────
+    actor = get_project_member_ac(pid)
+    if actor is None:
+        return jsonify({'error': 'You are not a member of this project.'}), 403
+    if not (actor.is_owner or user_can(pid, 'can_manage_access')):
+        return jsonify({'error': 'You do not have permission to manage access.'}), 403
+
+    # ── 3. Target member ─────────────────────────────────────────────────────
+    target = db.session.get(ProjectMemberAC, mid)
+    if target is None or target.project_id != pid:
+        return jsonify({'error': 'Member not found.'}), 404
+
+    # ── 4. Permission key ─────────────────────────────────────────────────────
+    if permission_key not in _ALL_AC_PERM_KEYS:
+        return jsonify({'error': f'Unknown permission key: {permission_key}'}), 400
+
+    # ── 5+6. Owner-row protection ────────────────────────────────────────────
+    try:
+        assert_can_act_on_owner(actor, target)
+    except _ACError as e:
+        return jsonify({'error': str(e)}), 409
+
+    # ── Seed missing permissions for target ──────────────────────────────────
+    seed_member_permissions(target)
+
+    # ── 5. Locked-permission check ───────────────────────────────────────────
+    perm = next((p for p in target.permissions if p.permission_key == permission_key), None)
+    if perm is None:
+        return jsonify({'error': 'Permission record not found after seeding.'}), 500
+    if perm.locked:
+        return jsonify({'error': 'This permission is locked and cannot be changed.'}), 409
+
+    # ── Parse value ───────────────────────────────────────────────────────────
+    data      = request.get_json(silent=True) or {}
+    new_value = bool(data.get('value', False))
+    old_value = bool(perm.value)
+
+    # ── 7. Self-lockout guard ────────────────────────────────────────────────
+    if (permission_key == 'can_manage_access'
+            and not new_value
+            and actor.id == target.id
+            and not actor.is_owner):
+        if not data.get('confirm_self_lockout'):
+            return jsonify({
+                'error': 'Turning off can_manage_access will remove your own '
+                         'access to this page. Pass confirm_self_lockout=true to confirm.',
+                'self_lockout': True,
+            }), 409
+
+        # Confirmed — log the self-lockout warning
+        log_audit('permission_self_lockout_confirmed',
+                  project_id=pid, actor=current_user,
+                  entity_type='member_permission', entity_id=perm.id,
+                  entity_label=f"{target.name}: {permission_key}",
+                  detail={'member_id': target.id, 'permission_key': permission_key})
+
+    # ── 8. Persist ───────────────────────────────────────────────────────────
+    perm.value = new_value
+    log_audit('permission_changed',
+              project_id=pid, actor=current_user,
+              entity_type='member_permission', entity_id=perm.id,
+              entity_label=f"{target.name}: {permission_key}",
+              detail={
+                  'member_id':      target.id,
+                  'member_name':    target.name,
+                  'permission_key': permission_key,
+                  'old_value':      old_value,
+                  'new_value':      new_value,
+              })
+    db.session.commit()
+
+    # ── 9. Response ───────────────────────────────────────────────────────────
+    return jsonify({
+        'ok':             True,
+        'member_id':      mid,
+        'permission_key': permission_key,
+        'value':          new_value,
+    })
 
 
 @app.route('/projects/<int:pid>/companies', methods=['POST'])
