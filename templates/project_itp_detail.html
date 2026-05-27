@@ -468,21 +468,23 @@
           <div class="space-y-3">
             <div>
               <label class="form-label">Engineer Name</label>
-              <input type="text" name="engineer_name" class="form-input" value="{{ record.engineer_name or '' }}"/>
+              <input type="text" name="engineer_name" class="form-input"
+                     value="{{ record.engineer_name or current_user.name }}"/>
             </div>
             <div>
               <label class="form-label">Company</label>
-              <input type="text" name="engineer_company" class="form-input" value="{{ record.engineer_company or (current_user.company if current_user.company else '') }}"/>
+              <input type="text" name="engineer_company" class="form-input"
+                     value="{{ record.engineer_company or member_company }}"/>
             </div>
             <div>
               <label class="form-label">Lot Number</label>
-              <input type="text" name="lot_number" class="form-input" value="{{ record.lot_number or '' }}" placeholder="LOT-001"/>
+              <input type="text" name="lot_number" class="form-input"
+                     value="{{ record.lot_number or '' }}" placeholder="LOT-001"/>
             </div>
             <div>
               <label class="form-label">Location / Description</label>
               <input type="text" name="location" class="form-input"
-                     value="{{ record.location or wtg.name }}" readonly
-                     style="background:#f8fafc;color:#475569;cursor:default;"/>
+                     value="{{ record.location or wtg.name }}"/>
             </div>
           </div>
           <button type="button" id="save-meta-btn" onclick="saveMeta()"
@@ -502,6 +504,10 @@
         <div class="flex justify-between">
           <span class="text-xs text-slate-400 font-semibold uppercase">ITP No.</span>
           <span class="font-bold text-slate-700">{{ defn['itp_number'] }}</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-xs text-slate-400 font-semibold uppercase">Location</span>
+          <span class="font-medium text-slate-700 text-right max-w-48">{{ record.location or wtg.name or '—' }}</span>
         </div>
         <div class="flex justify-between">
           <span class="text-xs text-slate-400 font-semibold uppercase">Works</span>
@@ -584,7 +590,15 @@
         <div style="border-top:1px solid #f1f5f9;padding-top:14px;">
           <p class="form-label" style="margin-bottom:8px;">Add Signatory</p>
           <div class="space-y-2">
-            <input type="text"  id="inv-name"    class="form-input" placeholder="Full name *"/>
+            <div style="position:relative;">
+              <input type="text" id="inv-name" class="form-input" placeholder="Full name *"
+                     oninput="filterMembers(this.value)" autocomplete="off"/>
+              <div id="member-suggest"
+                   style="position:absolute;left:0;right:0;top:100%;z-index:50;
+                          background:white;border:1.5px solid #e2e8f0;border-radius:10px;
+                          box-shadow:0 8px 24px rgba(0,0,0,.12);margin-top:2px;
+                          max-height:200px;overflow-y:auto;display:none;"></div>
+            </div>
             <input type="text"  id="inv-company" class="form-input" placeholder="Company"/>
             <input type="email" id="inv-email"   class="form-input" placeholder="Email (optional — sends invite link)"/>
           </div>
@@ -648,10 +662,11 @@
 
 {% block scripts %}
 <script>
-const RECORD_ID  = {{ record.id }};
-const CSRF_TOKEN = {{ csrf_token()|tojson }};
-const TOTAL      = {{ record.items_total_count }};
-let   doneCount  = {{ record.items_complete_count }};
+const RECORD_ID       = {{ record.id }};
+const CSRF_TOKEN      = {{ csrf_token()|tojson }};
+const TOTAL           = {{ record.items_total_count }};
+let   doneCount       = {{ record.items_complete_count }};
+const PROJECT_MEMBERS = {{ member_suggestions | tojson }};
 
 // ── Activity expand/collapse ─────────────────────────────────────────────
 function toggleActivity(no) {
@@ -813,11 +828,14 @@ async function uploadItemDocs(itemNo, ci, files) {
   const zone = document.getElementById(`uzone-${itemNo}-${ci}`);
   zone.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-blue-400"></i>';
 
+  let ok = 0, fail = 0, lastName = '';
   for (const file of Array.from(files)) {
     const fd = new FormData(); fd.append('file', file);
     const res = await fetch(`/api/itp/${RECORD_ID}/item/${itemNo}/${ci}/upload`, {method:'POST', headers:{'X-CSRF-Token': CSRF_TOKEN}, body:fd});
     const d   = await res.json();
     if (res.ok && d.id) {
+      ok++;
+      lastName = d.name;
       const list = document.getElementById(`doc-list-${itemNo}-${ci}`);
       const icon = d.type === 'photo' ? 'fa-image text-blue-500 bg-blue-100' :
                    d.type === 'pdf'   ? 'fa-file-pdf text-red-500 bg-red-100' : 'fa-file text-slate-400 bg-slate-100';
@@ -836,11 +854,27 @@ async function uploadItemDocs(itemNo, ci, files) {
         if (btn) { badge = document.createElement('span'); badge.className = 'doc-count-badge'; badge.id = badgeId; badge.textContent = '0'; btn.appendChild(badge); }
       }
       if (badge) badge.textContent = parseInt(badge.textContent||0) + 1;
+    } else {
+      fail++;
     }
   }
+
   zone.innerHTML = '<i class="fa-solid fa-cloud-arrow-up text-slate-300 text-lg mb-1"></i><p class="text-xs text-slate-400">Drop files or <span class="text-blue-500 font-semibold">browse</span> — photos, PDFs, reports</p>';
   const inp = document.getElementById(`ifile-${itemNo}-${ci}`);
   if (inp) inp.value = '';
+
+  if (ok > 0 && fail === 0) {
+    const msg = ok === 1
+      ? `${lastName} was attached to item ${itemNo}.${parseInt(ci)+1}`
+      : `${ok} evidence files attached to item ${itemNo}.${parseInt(ci)+1}`;
+    showToast('success',
+      ok === 1 ? 'Evidence uploaded successfully' : `${ok} evidence files uploaded successfully`,
+      msg);
+  } else if (fail > 0 && ok === 0) {
+    showToast('error', 'Upload failed', 'Some files could not be uploaded. Please try again.');
+  } else if (fail > 0) {
+    showToast('warning', 'Partial upload', `${ok} uploaded, ${fail} failed. Please retry the failed files.`);
+  }
 }
 
 async function deleteItemDoc(docId, itemNo, ci) {
@@ -861,6 +895,7 @@ async function saveMeta() {
     engineer_name:    form.querySelector('[name="engineer_name"]').value.trim(),
     engineer_company: form.querySelector('[name="engineer_company"]').value.trim(),
     lot_number:       form.querySelector('[name="lot_number"]').value.trim(),
+    location:         form.querySelector('[name="location"]').value.trim(),
   };
   btn.disabled = true;
   btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i>Saving…';
@@ -915,6 +950,18 @@ async function addInvite() {
       document.getElementById('inv-name').value    = '';
       document.getElementById('inv-company').value = '';
       document.getElementById('inv-email').value   = '';
+      const sug = document.getElementById('member-suggest');
+      if (sug) sug.style.display = 'none';
+      // Confirmation toast
+      if (data.email && data.email_sent) {
+        showToast('success', 'Client invitation sent', `${data.name} can now review this ITP.`);
+      } else if (data.email && !data.email_sent) {
+        showToast('warning', 'Invite link created',
+          'Email could not be sent. Copy the link manually.');
+      } else {
+        showToast('success', 'Signatory added',
+          `${data.name} has been added. Copy and share the link below.`);
+      }
     } else {
       alert(data.error || 'Failed to add signatory.');
     }
@@ -984,9 +1031,92 @@ async function removeInvite(invId) {
 }
 
 function copyInviteLink(url) {
-  navigator.clipboard.writeText(url).then(() => alert('Signing link copied to clipboard!'));
+  navigator.clipboard.writeText(url).then(() =>
+    showToast('success', 'Link copied', 'Paste it in an email or message to share.'));
 }
+
+// ── Toast notification ───────────────────────────────────────────────────
+let _toastTimer = null;
+function showToast(type, title, msg) {
+  const t = document.getElementById('sg-toast');
+  const icons = {
+    success: '<i class="fa-solid fa-circle-check"         style="color:#16a34a;"></i>',
+    error:   '<i class="fa-solid fa-circle-xmark"          style="color:#dc2626;"></i>',
+    warning: '<i class="fa-solid fa-triangle-exclamation"  style="color:#d97706;"></i>',
+  };
+  document.getElementById('sg-toast-icon').innerHTML  = icons[type] || icons.success;
+  document.getElementById('sg-toast-title').textContent = title;
+  document.getElementById('sg-toast-msg').textContent   = msg;
+  t.style.display   = 'block';
+  t.style.opacity   = '1';
+  t.style.transform = 'translate(-50%,-50%) scale(1)';
+  if (_toastTimer) clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => {
+    t.style.opacity   = '0';
+    t.style.transform = 'translate(-50%,-50%) scale(0.92)';
+    setTimeout(() => { t.style.display = 'none'; }, 200);
+  }, 2600);
+}
+
+// ── Member autocomplete ───────────────────────────────────────────────────
+function _esc(s) {
+  return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function filterMembers(query) {
+  const box = document.getElementById('member-suggest');
+  if (!box) return;
+  if (!query) { box.style.display='none'; return; }
+  const q = query.toLowerCase();
+  const hits = PROJECT_MEMBERS.filter(m =>
+    m.name.toLowerCase().includes(q) ||
+    m.email.toLowerCase().includes(q) ||
+    m.company.toLowerCase().includes(q)
+  ).slice(0, 6);
+  if (!hits.length) { box.style.display='none'; return; }
+  box.innerHTML = hits.map((m, i) => `
+    <div onclick="selectMember(${m.id})"
+         style="padding:9px 12px;cursor:pointer;${i < hits.length-1 ? 'border-bottom:1px solid #f1f5f9;' : ''}
+                transition:background .1s;"
+         onmouseover="this.style.background='#f0f9ff'"
+         onmouseout="this.style.background=''">
+      <div style="font-size:12px;font-weight:700;color:#0f172a;">${_esc(m.name)}</div>
+      <div style="font-size:11px;color:#94a3b8;">${_esc(m.company)}${m.email?' · '+_esc(m.email):''}</div>
+      <div style="font-size:10px;color:#7c3aed;font-weight:600;margin-top:1px;">${_esc(m.role)}</div>
+    </div>`).join('');
+  box.style.display = 'block';
+}
+
+function selectMember(memberId) {
+  const m = PROJECT_MEMBERS.find(x => x.id === memberId);
+  if (!m) return;
+  document.getElementById('inv-name').value    = m.name;
+  document.getElementById('inv-email').value   = m.email;
+  document.getElementById('inv-company').value = m.company;
+  const box = document.getElementById('member-suggest');
+  if (box) box.style.display = 'none';
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('#member-suggest') && e.target.id !== 'inv-name') {
+    const box = document.getElementById('member-suggest');
+    if (box) box.style.display = 'none';
+  }
+});
 </script>
+
+<!-- ── Toast notification ──────────────────────────────────────────────── -->
+<div id="sg-toast"
+     style="display:none;position:fixed;top:50%;left:50%;
+            transform:translate(-50%,-50%) scale(0.92);
+            z-index:1200;background:white;border-radius:20px;
+            box-shadow:0 20px 60px rgba(0,0,0,.22);
+            padding:30px 32px 24px;text-align:center;max-width:340px;width:90%;
+            transition:transform .18s ease, opacity .18s ease;opacity:0;">
+  <div id="sg-toast-icon"  style="font-size:44px;margin-bottom:12px;"></div>
+  <div id="sg-toast-title" style="font-size:16px;font-weight:800;color:#0f172a;margin-bottom:4px;"></div>
+  <div id="sg-toast-msg"   style="font-size:13px;color:#64748b;line-height:1.55;"></div>
+</div>
 
 <!-- Save modal -->
 <div id="save-modal"

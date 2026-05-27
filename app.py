@@ -4443,6 +4443,7 @@ def project_itp_detail(pid, tid, eid):
             created_by=current_user.id, status='draft',
             engineer_name=current_user.name,
             engineer_company=(current_user.company or ''),
+            location=wtg.name,
         )
         db.session.add(record)
         db.session.flush()
@@ -4491,6 +4492,34 @@ def project_itp_detail(pid, tid, eid):
     ac_can_reopen       = user_can(pid, 'can_reopen_itp')
     ac_can_delete       = user_can(pid, 'can_delete_itp')
 
+    # ── ITP Details prefill: company for the logged-in user ─────────────────
+    member_company = current_user.company or ''
+    if not member_company:
+        _m_ac = get_project_member_ac(pid, current_user.id)
+        if _m_ac and _m_ac.company_id:
+            _pc = ProjectCompany.query.get(_m_ac.company_id)
+            if _pc:
+                member_company = _pc.name
+
+    # ── Signatory autocomplete: active members for this project ─────────────
+    _company_lkp = {
+        c.id: c.name
+        for c in ProjectCompany.query.filter_by(project_id=pid).all()
+    }
+    member_suggestions = [
+        {
+            'id':      m.id,
+            'name':    m.name,
+            'email':   m.email or '',
+            'company': _company_lkp.get(m.company_id, '')
+                       or (m.user.company if m.user else ''),
+            'role':    m.access_level_label,
+        }
+        for m in ProjectMemberAC.query.filter_by(
+            project_id=pid, is_active=True).all()
+        if m.name
+    ]
+
     return render_template('project_itp_detail.html',
                            proj=proj, template=template,
                            wtg=wtg, itp_type=itp_type,
@@ -4502,7 +4531,9 @@ def project_itp_detail(pid, tid, eid):
                            ac_can_attach=ac_can_attach,
                            ac_can_send_invite=ac_can_send_invite,
                            ac_can_reopen=ac_can_reopen,
-                           ac_can_delete=ac_can_delete)
+                           ac_can_delete=ac_can_delete,
+                           member_company=member_company,
+                           member_suggestions=member_suggestions)
 
 
 @app.route('/projects/<int:pid>/itp/<int:tid>/element/<int:eid>/save-meta', methods=['POST'])
@@ -4525,6 +4556,8 @@ def api_project_itp_save_meta(pid, tid, eid):
     record.lot_number       = (data.get('lot_number') or '').strip()
     record.engineer_name    = (data.get('engineer_name') or current_user.name).strip()
     record.engineer_company = (data.get('engineer_company') or current_user.company or '').strip()
+    if 'location' in data:
+        record.location = (data.get('location') or '').strip()
     log_audit(
         'itp_metadata_changed',
         project_id  = pid,
@@ -4534,7 +4567,8 @@ def api_project_itp_save_meta(pid, tid, eid):
         entity_label= f'{record.wtg.name if record.wtg else ""} (tid={tid})',
         detail      = {'lot_number': record.lot_number,
                        'engineer_name': record.engineer_name,
-                       'engineer_company': record.engineer_company},
+                       'engineer_company': record.engineer_company,
+                       'location': record.location},
     )
     db.session.commit()
     return jsonify({'ok': True})
@@ -4605,6 +4639,7 @@ def api_project_itp_add_invite(pid, tid, eid):
 
     # Send invitation email if email provided
     wtg = record.wtg
+    email_sent = False
     if email:
         itp_type = record.itp_type
         if itp_type.startswith('PROJ_'):
@@ -4613,11 +4648,11 @@ def api_project_itp_add_invite(pid, tid, eid):
         else:
             defn = ITP_DEFINITIONS.get(itp_type, {})
         proj_name = wtg.project.name if wtg and wtg.project else 'Project'
-        email_client_invitation(
+        email_sent = bool(email_client_invitation(
             record=record, wtg_name=wtg.name if wtg else '',
             sign_url=sign_url, client_name=name, client_email=email,
             proj_name=proj_name, itp_name=defn.get('name', ''),
-        )
+        ))
 
     return jsonify({
         'ok':          True,
@@ -4627,6 +4662,7 @@ def api_project_itp_add_invite(pid, tid, eid):
         'email':       email,
         'sign_url':    sign_url,
         'is_new_link': is_new_token,
+        'email_sent':  email_sent,
     })
 
 
