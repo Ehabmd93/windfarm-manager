@@ -2247,6 +2247,7 @@ def project_access_control(pid):
         perm_map[m.id] = {p.permission_key: p for p in m.permissions}
 
     actor_is_owner = user_is_project_owner(pid)
+    actor_ac       = get_project_member_ac(pid)
     return render_template(
         'project_access_control.html',
         proj              = proj,
@@ -2258,7 +2259,8 @@ def project_access_control(pid):
         permission_groups = PERMISSION_GROUPS,
         perm_map          = perm_map,
         is_owner          = actor_is_owner,
-        actor_member_id   = get_project_member_ac(pid).id if get_project_member_ac(pid) else None,
+        actor_member_id   = actor_ac.id if actor_ac else None,
+        ac_access_levels  = AC_ACCESS_LEVELS,
     )
 
 
@@ -2352,6 +2354,106 @@ def api_toggle_permission(pid, mid, permission_key):
         'member_id':      mid,
         'permission_key': permission_key,
         'value':          new_value,
+    })
+
+
+@app.route('/projects/<int:pid>/access-control/members/<int:mid>/access-level',
+           methods=['PATCH'])
+@login_required
+def api_change_access_level(pid, mid):
+    """AC-4C — Change a member's access level and reset permissions to defaults."""
+    # ── 1. CSRF ──────────────────────────────────────────────────────────────
+    if not _validate_csrf_token():
+        return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
+
+    # ── 2. Actor checks ───────────────────────────────────────────────────────
+    actor = get_project_member_ac(pid)
+    if actor is None:
+        return jsonify({'error': 'You are not a member of this project.'}), 403
+    if not (actor.is_owner or user_can(pid, 'can_manage_access')):
+        return jsonify({'error': 'You do not have permission to manage access.'}), 403
+
+    # ── 3. Target member ──────────────────────────────────────────────────────
+    target = db.session.get(ProjectMemberAC, mid)
+    if target is None or target.project_id != pid:
+        return jsonify({'error': 'Member not found.'}), 404
+    if not target.is_active:
+        return jsonify({'error': 'Cannot change access level for a disabled member.'}), 409
+
+    # ── 4. Parse + validate access_level ─────────────────────────────────────
+    data = request.get_json(silent=True) or {}
+    new_level = (data.get('access_level') or '').strip()
+    valid_levels = {k for k, *_ in AC_ACCESS_LEVELS}
+    if new_level not in valid_levels:
+        return jsonify({'error': f'Invalid access level: {new_level!r}'}), 400
+
+    # ── 5. Owner-row protection ───────────────────────────────────────────────
+    try:
+        assert_can_act_on_owner(actor, target)
+    except _ACError as e:
+        return jsonify({'error': str(e)}), 409
+
+    # ── 6. Non-owner cannot assign owner level ────────────────────────────────
+    if new_level == 'owner' and not actor.is_owner:
+        return jsonify({'error': 'Only a project owner can assign the Owner access level.'}), 403
+
+    # ── 7. Last-owner demotion guard ──────────────────────────────────────────
+    if target.is_owner and new_level != 'owner':
+        try:
+            assert_not_last_owner(pid, target.id)
+        except _ACError as e:
+            return jsonify({'error': str(e)}), 409
+
+    # ── 8. Confirm-reset gate ─────────────────────────────────────────────────
+    if not data.get('confirm_reset'):
+        return jsonify({
+            'error':          'Changing access level will reset this member\'s '
+                              'permissions to the defaults for the new level.',
+            'reset_required': True,
+        }), 409
+
+    # ── 9. Apply changes ──────────────────────────────────────────────────────
+    old_level    = target.access_level
+    old_is_owner = target.is_owner
+
+    target.access_level = new_level
+    target.is_owner     = (new_level == 'owner')
+
+    # Delete existing permission rows — cascade handles the DB delete
+    target.permissions.clear()
+    db.session.flush()   # remove old rows before seeding new ones
+
+    seed_member_permissions(target)
+
+    new_is_owner = target.is_owner
+
+    # ── 10. Audit ─────────────────────────────────────────────────────────────
+    log_audit('access_level_changed',
+              project_id=pid, actor=current_user,
+              entity_type='project_member_ac', entity_id=target.id,
+              entity_label=target.name,
+              detail={
+                  'old_access_level': old_level,
+                  'new_access_level': new_level,
+                  'old_is_owner':     old_is_owner,
+                  'new_is_owner':     new_is_owner,
+                  'permissions_reset': True,
+              })
+    if new_is_owner and not old_is_owner:
+        log_audit('project_owner_assigned',
+                  project_id=pid, actor=current_user,
+                  entity_type='project_member_ac', entity_id=target.id,
+                  entity_label=target.name,
+                  detail={'assigned_by': current_user.name})
+
+    db.session.commit()
+
+    return jsonify({
+        'ok':               True,
+        'member_id':        mid,
+        'access_level':     target.access_level,
+        'access_level_label': target.access_level_label,
+        'is_owner':         target.is_owner,
     })
 
 

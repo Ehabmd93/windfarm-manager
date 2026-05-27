@@ -156,6 +156,22 @@
     box-shadow: 0 20px 60px rgba(0,0,0,.2);
   }
 
+  /* ── Access-level select ────────────────────── */
+  .al-select-wrap {
+    display: inline-flex; align-items: center; gap: 4px;
+    border-radius: 99px; padding: 2px 8px;
+    border: 1.5px solid;
+  }
+  .al-select {
+    font-size: 10px; font-weight: 700;
+    border: none; outline: none; cursor: pointer;
+    background: transparent; padding: 0;
+    -webkit-appearance: none; appearance: none;
+    max-width: 110px;
+  }
+  .al-select:disabled { cursor: default; opacity: .7; }
+  .al-select option { font-size: 13px; font-weight: 600; }
+
   /* ── Misc ───────────────────────────────────── */
   .back-link {
     display: inline-flex; align-items: center; gap: 7px;
@@ -283,11 +299,39 @@
                 {% endif %}
               </div>
               <div class="mc-meta">
+                {% if row_editable %}
+                {# Editable access-level select — only shown on rows the actor can edit #}
+                <span class="al-select-wrap"
+                      style="background:{{ m.access_level_color }}12;
+                             border-color:{{ m.access_level_color }}55;
+                             color:{{ m.access_level_color }};">
+                  <i class="fa-solid {{ m.access_level_icon }}" style="font-size:7px;"></i>
+                  <select
+                    class="al-select"
+                    style="color:{{ m.access_level_color }};"
+                    data-mid="{{ m.id }}"
+                    data-original="{{ m.access_level }}"
+                    onchange="initAccessLevelChange(this)"
+                  >
+                    {% for lvl_key, lvl_label, lvl_icon, lvl_color, lvl_desc in ac_access_levels %}
+                    {# Hide owner option for non-owner actors #}
+                    {% if lvl_key != 'owner' or is_owner %}
+                    <option value="{{ lvl_key }}"
+                            {{ 'selected' if m.access_level == lvl_key }}>
+                      {{ lvl_label }}
+                    </option>
+                    {% endif %}
+                    {% endfor %}
+                  </select>
+                  <i class="fa-solid fa-chevron-down" style="font-size:7px;opacity:.6;"></i>
+                </span>
+                {% else %}
                 <span class="mc-level-badge"
                       style="background:{{ m.access_level_color }}15;color:{{ m.access_level_color }};">
                   <i class="fa-solid {{ m.access_level_icon }}" style="font-size:7px;"></i>
                   {{ m.access_level_label }}
                 </span>
+                {% endif %}
                 {% if m.email %}
                 <span style="margin-left:4px;">{{ m.email }}</span>
                 {% endif %}
@@ -361,6 +405,33 @@
 
 {# ── Toast ── #}
 <div id="acc-toast"></div>
+
+{# ── Access-level reset confirm dialog ── #}
+<div class="confirm-overlay" id="level-reset-confirm">
+  <div class="confirm-box">
+    <h3 style="font-size:16px;font-weight:800;color:#1e293b;margin:0 0 10px;">
+      <i class="fa-solid fa-arrows-rotate" style="color:#7c3aed;margin-right:6px;"></i>
+      Reset permissions?
+    </h3>
+    <p style="font-size:13px;color:#475569;line-height:1.7;margin:0 0 20px;">
+      Changing to <strong id="reset-level-name">this level</strong> will
+      <strong>reset all permissions</strong> to the defaults for that level.
+      Any custom permission changes will be lost.
+    </p>
+    <div style="display:flex;gap:10px;justify-content:flex-end;">
+      <button onclick="cancelAccessLevelReset()"
+              style="padding:8px 16px;border:1.5px solid #e2e8f0;border-radius:8px;
+                     background:#f8fafc;color:#64748b;font-size:13px;font-weight:700;cursor:pointer;">
+        Cancel
+      </button>
+      <button id="reset-confirm-btn" onclick="confirmAccessLevelReset()"
+              style="padding:8px 16px;border:none;border-radius:8px;
+                     background:#7c3aed;color:#fff;font-size:13px;font-weight:700;cursor:pointer;">
+        Yes, change &amp; reset permissions
+      </button>
+    </div>
+  </div>
+</div>
 
 {# ── Self-lockout confirm dialog ── #}
 <div class="confirm-overlay" id="lockout-confirm">
@@ -494,6 +565,107 @@ async function doToggle(btn, confirmSelfLockout) {
     btn.disabled  = false;
     showToast('Network error — please try again.', true);
   }
+}
+
+// ── Access-level change ───────────────────────────────────────────────────────
+let _resetConfirmData = null;
+
+async function initAccessLevelChange(sel) {
+  const mid       = parseInt(sel.dataset.mid, 10);
+  const newLevel  = sel.value;
+  const origLevel = sel.dataset.original;
+
+  if (newLevel === origLevel) return;
+
+  sel.disabled = true;
+
+  try {
+    const resp = await fetch(
+      PERM_URL_BASE + mid + '/access-level',
+      {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
+        body:    JSON.stringify({ access_level: newLevel }),
+      }
+    );
+    const json = await resp.json().catch(() => ({}));
+
+    if (!resp.ok) {
+      sel.disabled = false;
+      if (resp.status === 409 && json.reset_required) {
+        // Store context, show confirm dialog
+        _resetConfirmData = { sel, mid, newLevel, origLevel };
+        const levelLabel = sel.options[sel.selectedIndex].text.trim();
+        document.getElementById('reset-level-name').textContent = levelLabel;
+        document.getElementById('level-reset-confirm').classList.add('open');
+        return;
+      }
+      // Other errors (403, 400, etc.)
+      sel.value = origLevel;
+      showToast(json.error || 'Error changing access level.', true);
+      return;
+    }
+
+    // Direct success (should not happen without confirm_reset, but handle gracefully)
+    showToast('Access level changed. Refreshing…', false);
+    setTimeout(() => location.reload(), 800);
+
+  } catch (err) {
+    sel.disabled = false;
+    sel.value = origLevel;
+    showToast('Network error — please try again.', true);
+  }
+}
+
+async function confirmAccessLevelReset() {
+  if (!_resetConfirmData) return;
+  const { sel, mid, newLevel, origLevel } = _resetConfirmData;
+
+  document.getElementById('level-reset-confirm').classList.remove('open');
+  document.getElementById('reset-confirm-btn').disabled = true;
+  sel.disabled = true;
+
+  try {
+    const resp = await fetch(
+      PERM_URL_BASE + mid + '/access-level',
+      {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
+        body:    JSON.stringify({ access_level: newLevel, confirm_reset: true }),
+      }
+    );
+    const json = await resp.json().catch(() => ({}));
+
+    if (!resp.ok) {
+      sel.disabled = false;
+      sel.value    = origLevel;
+      document.getElementById('reset-confirm-btn').disabled = false;
+      showToast(json.error || 'Error changing access level.', true);
+      return;
+    }
+
+    showToast('Access level changed. Refreshing…', false);
+    setTimeout(() => location.reload(), 700);
+
+  } catch (err) {
+    sel.disabled = false;
+    sel.value    = origLevel;
+    document.getElementById('reset-confirm-btn').disabled = false;
+    showToast('Network error — please try again.', true);
+  } finally {
+    _resetConfirmData = null;
+  }
+}
+
+function cancelAccessLevelReset() {
+  if (_resetConfirmData) {
+    const { sel, origLevel } = _resetConfirmData;
+    sel.value    = origLevel;
+    sel.disabled = false;
+    _resetConfirmData = null;
+  }
+  document.getElementById('level-reset-confirm').classList.remove('open');
+  document.getElementById('reset-confirm-btn').disabled = false;
 }
 
 // ── Filter ────────────────────────────────────────────────────────────────────
