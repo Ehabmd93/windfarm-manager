@@ -218,20 +218,44 @@ def load_user(user_id):
 
 @app.before_request
 def load_active_project():
-    """Resolve which project is currently active and expose it as flask.g.project."""
+    """Resolve which project is currently active and expose it as flask.g.project.
+
+    Primary path  — reads project membership from ProjectMemberAC (AC model).
+    Fallback path — if the user has no active ProjectMemberAC rows yet, reads
+                    from the legacy ProjectMember table so that existing dev /
+                    demo data stays usable during the transition to AC-3.
+
+    No global-role bypass.  Project visibility is always membership-based.
+    """
     from flask import g, session
-    g.project        = None
-    g.user_projects  = []
+    g.project       = None
+    g.user_projects = []
     if not current_user.is_authenticated:
         return
     try:
-        # Global admin sees all active projects; everyone else only sees projects
-        # where they have an explicit ProjectMember row.
-        if current_user.role == 'admin':
-            projects = Project.query.filter_by(is_active=True).order_by(Project.name).all()
+        # ── Primary: ProjectMemberAC (new AC model) ──────────────────────
+        ac_members = ProjectMemberAC.query.filter_by(
+            user_id=current_user.id,
+            is_active=True,
+        ).all()
+
+        if ac_members:
+            ac_ids   = [m.project_id for m in ac_members]
+            projects = (Project.query
+                        .filter(Project.id.in_(ac_ids), Project.is_active == True)
+                        .order_by(Project.name)
+                        .all())
         else:
-            ids = [m.project_id for m in ProjectMember.query.filter_by(user_id=current_user.id).all()]
-            projects = Project.query.filter(Project.id.in_(ids), Project.is_active==True).order_by(Project.name).all()
+            # ── Fallback: legacy ProjectMember table ─────────────────────
+            # Temporary — will be removed in Phase AC-3 once all memberships
+            # have been migrated to ProjectMemberAC.
+            old_ids  = [m.project_id for m in
+                        ProjectMember.query.filter_by(user_id=current_user.id).all()]
+            projects = (Project.query
+                        .filter(Project.id.in_(old_ids), Project.is_active == True)
+                        .order_by(Project.name)
+                        .all())
+
         g.user_projects = projects
         pid = session.get('active_project_id')
         if pid and any(p.id == pid for p in projects):
