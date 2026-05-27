@@ -233,8 +233,8 @@
             <button type="button"
                     class="crit-check {% if s and s.lucas_complete %}signed{% endif %}"
                     id="check-{{ item['no'] }}-{{ ci }}"
-                    onclick="onCheckClick('{{ item['no'] }}', {{ ci }})"
-                    title="{% if s and s.lucas_complete %}Signed — click to remove{% else %}Click to sign{% endif %}">
+                    {% if ac_can_sign %}onclick="onCheckClick('{{ item['no'] }}', {{ ci }})"{% else %}disabled style="cursor:default;opacity:0.6;"{% endif %}
+                    title="{% if not ac_can_sign %}View only — you do not have permission to sign{% elif s and s.lucas_complete %}Signed — click to remove{% else %}Click to sign{% endif %}">
               {% if s and s.lucas_complete %}
               <i class="fa-solid fa-check text-white text-xs"></i>
               {% endif %}
@@ -260,7 +260,7 @@
               {% endif %}
             </div>
 
-            {% if current_user.can_enter_data() %}
+            {% if ac_can_attach %}
             <button class="btn-attach" onclick="toggleDocs('{{ item['no'] }}',{{ ci }})"
                     title="Attach document or photo" id="attach-btn-{{ item['no'] }}-{{ ci }}">
               <i class="fa-solid fa-paperclip"></i>
@@ -270,6 +270,7 @@
           </div>
 
           <!-- Signature pad -->
+          {% if ac_can_sign %}
           <div class="sig-area hidden" id="sig-area-{{ item['no'] }}-{{ ci }}">
             <div class="sig-box">
               <p class="text-xs font-semibold text-slate-500 mb-2">
@@ -295,6 +296,7 @@
               </div>
             </div>
           </div>
+          {% endif %}{# ac_can_sign #}
 
           <!-- Signature preview -->
           <div class="sig-preview {% if not (s and s.lucas_complete) %}hidden{% endif %}"
@@ -312,9 +314,11 @@
                   {% if s and s.lucas_comments %} · {{ s.lucas_comments }}{% endif %}
                 </p>
               </div>
+              {% if ac_can_sign %}
               <button class="btn-unsign" onclick="unsignCriterion('{{ item['no'] }}',{{ ci }})" title="Remove signature">
                 <i class="fa-solid fa-xmark"></i>
               </button>
+              {% endif %}
             </div>
           </div>
 
@@ -359,7 +363,7 @@
           {% endif %}
 
           <!-- Document drawer -->
-          {% if current_user.can_enter_data() %}
+          {% if ac_can_attach %}
           <div class="item-docs-drawer hidden" id="docs-drawer-{{ item['no'] }}-{{ ci }}">
             <div class="item-doc-list" id="doc-list-{{ item['no'] }}-{{ ci }}">
               {% if s %}
@@ -560,11 +564,13 @@
                            background:white;color:#0369a1;font-size:11px;cursor:pointer;">
               <i class="fa-solid fa-link"></i>
             </button>
+            {% if ac_can_send_invite %}
             <button onclick="removeInvite({{ inv.id }})" title="Revoke"
                     style="padding:5px 8px;border-radius:7px;border:1px solid #fecaca;
                            background:white;color:#ef4444;font-size:11px;cursor:pointer;">
               <i class="fa-solid fa-xmark"></i>
             </button>
+            {% endif %}{# ac_can_send_invite #}
           </div>
           {% else %}
           <p id="no-invites-msg" style="font-size:12px;color:#94a3b8;text-align:center;padding:6px 0;margin:0;">
@@ -573,6 +579,7 @@
           {% endfor %}
         </div>
 
+        {% if ac_can_send_invite %}
         <!-- Add / notify new person -->
         <div style="border-top:1px solid #f1f5f9;padding-top:14px;">
           <p class="form-label" style="margin-bottom:8px;">Add Signatory</p>
@@ -586,6 +593,7 @@
             <i class="fa-solid fa-user-plus mr-1"></i>Add &amp; Get Link
           </button>
         </div>
+        {% endif %}{# ac_can_send_invite #}
 
       </div>
     </div>
@@ -640,9 +648,10 @@
 
 {% block scripts %}
 <script>
-const RECORD_ID = {{ record.id }};
-const TOTAL     = {{ record.items_total_count }};
-let   doneCount = {{ record.items_complete_count }};
+const RECORD_ID  = {{ record.id }};
+const CSRF_TOKEN = {{ csrf_token()|tojson }};
+const TOTAL      = {{ record.items_total_count }};
+let   doneCount  = {{ record.items_complete_count }};
 
 // ── Activity expand/collapse ─────────────────────────────────────────────
 function toggleActivity(no) {
@@ -741,7 +750,7 @@ async function saveCriterion(itemNo, ci) {
   const sig = canvas.toDataURL('image/png');
 
   const resp = await fetch(`/api/itp/${RECORD_ID}/sign/${itemNo}/${ci}`, {
-    method: 'POST', headers: {'Content-Type':'application/json'},
+    method: 'POST', headers: {'Content-Type':'application/json', 'X-CSRF-Token': CSRF_TOKEN},
     body: JSON.stringify({signature: sig, comments, datetime: dtVal})
   });
   if (!resp.ok) { alert('Error saving signature.'); return; }
@@ -768,7 +777,7 @@ async function saveCriterion(itemNo, ci) {
 
 // ── Remove signature ─────────────────────────────────────────────────────
 async function unsignCriterion(itemNo, ci) {
-  await fetch(`/api/itp/${RECORD_ID}/unsign/${itemNo}/${ci}`, {method:'POST'});
+  await fetch(`/api/itp/${RECORD_ID}/unsign/${itemNo}/${ci}`, {method:'POST', headers:{'X-CSRF-Token': CSRF_TOKEN}});
   document.getElementById(`sig-preview-${itemNo}-${ci}`).classList.add('hidden');
   document.getElementById(`sig-area-${itemNo}-${ci}`).classList.add('hidden');
   const btn = document.getElementById(`check-${itemNo}-${ci}`);
@@ -806,7 +815,7 @@ async function uploadItemDocs(itemNo, ci, files) {
 
   for (const file of Array.from(files)) {
     const fd = new FormData(); fd.append('file', file);
-    const res = await fetch(`/api/itp/${RECORD_ID}/item/${itemNo}/${ci}/upload`, {method:'POST', body:fd});
+    const res = await fetch(`/api/itp/${RECORD_ID}/item/${itemNo}/${ci}/upload`, {method:'POST', headers:{'X-CSRF-Token': CSRF_TOKEN}, body:fd});
     const d   = await res.json();
     if (res.ok && d.id) {
       const list = document.getElementById(`doc-list-${itemNo}-${ci}`);
@@ -836,7 +845,7 @@ async function uploadItemDocs(itemNo, ci, files) {
 
 async function deleteItemDoc(docId, itemNo, ci) {
   if (!confirm('Delete this attachment?')) return;
-  const res = await fetch(`/api/itp/item-doc/${docId}/delete`, {method:'POST'});
+  const res = await fetch(`/api/itp/item-doc/${docId}/delete`, {method:'POST', headers:{'X-CSRF-Token': CSRF_TOKEN}});
   if (res.ok) {
     document.getElementById(`idoc-${docId}`)?.remove();
     const badge = document.getElementById(`doc-cnt-${itemNo}-${ci}`);
@@ -858,7 +867,7 @@ async function saveMeta() {
   try {
     const res = await fetch(`/projects/{{ proj.id }}/itp/{{ template.id }}/element/{{ wtg.id }}/save-meta`, {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: {'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN},
       body: JSON.stringify(data),
     });
     if (res.ok) {
@@ -892,7 +901,7 @@ async function addInvite() {
   try {
     const res = await fetch(`/projects/{{ proj.id }}/itp/{{ template.id }}/element/{{ wtg.id }}/add-invite`, {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: {'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN},
       body: JSON.stringify({name, company, email}),
     });
     const data = await res.json();
@@ -957,7 +966,7 @@ function toggleInviteLink(invId) {
 
 async function removeInvite(invId) {
   if (!confirm('Remove this signatory? Their signing link will stop working.')) return;
-  const res = await fetch(`/projects/{{ proj.id }}/itp/{{ template.id }}/element/{{ wtg.id }}/remove-invite/${invId}`, {method: 'POST'});
+  const res = await fetch(`/projects/{{ proj.id }}/itp/{{ template.id }}/element/{{ wtg.id }}/remove-invite/${invId}`, {method: 'POST', headers:{'X-CSRF-Token': CSRF_TOKEN}});
   const data = await res.json();
   if (data.ok) {
     document.getElementById(`inv-row-${invId}`)?.remove();

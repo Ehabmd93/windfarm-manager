@@ -505,6 +505,26 @@ def _sync_ac_invite(invite, *, token_hash=None, status=None, expires_at=None):
         member.invite_expires_at = expires_at
 
 
+# ── ITP-specific AC helpers ──────────────────────────────────────────────────
+
+def user_can_view_project_ac(pid):
+    """Return True if the current user has an active ProjectMemberAC row for pid.
+
+    No global-role bypass. None/missing project_id returns True for legacy
+    records that pre-date project scoping.
+    """
+    if pid is None:
+        return True   # legacy unscoped records — always accessible
+    return get_project_member_ac(pid) is not None
+
+
+def _itp_record_project_id(record):
+    """Return the project_id for an ITPRecord, or None for legacy records."""
+    if record and record.wtg and record.wtg.project_id:
+        return record.wtg.project_id
+    return None
+
+
 # ─── Auth ────────────────────────────────────────────────────────────────────
 @app.route('/login', methods=['GET','POST'])
 def login():
@@ -4312,7 +4332,7 @@ def itp_index():
 def project_itp_index(pid):
     """Landing page for project-specific ITPs — welcome screen or grid if ITPs exist."""
     proj = Project.query.get_or_404(pid)
-    if not _user_in_project(pid):
+    if not user_can_view_project_ac(pid):
         abort(403)
     from flask import session as fsession
     fsession['active_project_id'] = pid
@@ -4363,12 +4383,14 @@ def project_itp_index(pid):
 def project_itp_create(pid):
     """3-step ITP creation wizard."""
     proj = Project.query.get_or_404(pid)
-    if not _user_in_project(pid):
+    if not user_can(pid, 'can_create_itp'):
         abort(403)
     from flask import session as fsession
     fsession['active_project_id'] = pid
 
     if request.method == 'POST':
+        if not _validate_csrf_token():
+            return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
         data = request.get_json(silent=True) or {}
         t = ProjectITPTemplate(
             project_id   = pid,
@@ -4407,7 +4429,7 @@ def project_itp_create(pid):
 def project_itp_detail(pid, tid, eid):
     """Full ITP checklist for a project-specific template + element."""
     proj     = Project.query.get_or_404(pid)
-    if not _user_in_project(pid):
+    if not user_can_view_project_ac(pid):
         abort(403)
     template = ProjectITPTemplate.query.filter_by(id=tid, project_id=pid).first_or_404()
     wtg      = WTG.query.filter_by(id=eid, project_id=pid).first_or_404()
@@ -4464,20 +4486,34 @@ def project_itp_detail(pid, tid, eid):
     itp_linked_docs = Document.query.filter(
         Document.id.in_(itp_doc_ids), Document.is_active == True).all() if itp_doc_ids else []
 
+    # AC permission flags for this viewer — server enforces, template hides UI
+    ac_can_sign         = user_can(pid, 'can_sign_itp')
+    ac_can_attach       = user_can(pid, 'can_attach_itp_docs')
+    ac_can_send_invite  = user_can(pid, 'can_send_itp_invite')
+    ac_can_reopen       = user_can(pid, 'can_reopen_itp')
+    ac_can_delete       = user_can(pid, 'can_delete_itp')
+
     return render_template('project_itp_detail.html',
                            proj=proj, template=template,
                            wtg=wtg, itp_type=itp_type,
                            defn=defn, record=record, statuses=statuses,
                            today=date.today().isoformat(),
                            now_dt=now_dt, linked_docs=itp_linked_docs,
-                           pid=pid, tid=tid, eid=eid)
+                           pid=pid, tid=tid, eid=eid,
+                           ac_can_sign=ac_can_sign,
+                           ac_can_attach=ac_can_attach,
+                           ac_can_send_invite=ac_can_send_invite,
+                           ac_can_reopen=ac_can_reopen,
+                           ac_can_delete=ac_can_delete)
 
 
 @app.route('/projects/<int:pid>/itp/<int:tid>/element/<int:eid>/save-meta', methods=['POST'])
 @login_required
 def api_project_itp_save_meta(pid, tid, eid):
     """AJAX — save ITP metadata (lot, engineer name/company). Location is read-only from WTG."""
-    if not _user_in_project(pid):
+    if not _validate_csrf_token():
+        return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
+    if not user_can_view_project_ac(pid):
         return jsonify({'error': 'Access denied.'}), 403
     # Verify template and element both belong to this project before touching the record
     ProjectITPTemplate.query.filter_by(id=tid, project_id=pid).first_or_404()
@@ -4510,8 +4546,10 @@ def api_project_itp_save_meta(pid, tid, eid):
 @login_required
 def api_project_itp_add_invite(pid, tid, eid):
     """AJAX — add a client signatory to this ITP record."""
-    if not _user_in_project(pid):
-        return jsonify({'error': 'Access denied.'}), 403
+    if not _validate_csrf_token():
+        return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
+    if not user_can(pid, 'can_send_itp_invite'):
+        return jsonify({'error': 'You do not have permission to send client invites.'}), 403
     # Verify template and element both belong to this project before touching the record
     ProjectITPTemplate.query.filter_by(id=tid, project_id=pid).first_or_404()
     WTG.query.filter_by(id=eid, project_id=pid).first_or_404()
@@ -4598,9 +4636,10 @@ def api_project_itp_add_invite(pid, tid, eid):
 @login_required
 def api_project_itp_remove_invite(pid, tid, eid, inv_id):
     """AJAX — revoke a client invite (marks as revoked, preserves audit trail)."""
-    # Verify caller belongs to this project
-    if not _user_in_project(pid):
-        return jsonify({'error': 'Access denied.'}), 403
+    if not _validate_csrf_token():
+        return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
+    if not user_can(pid, 'can_send_itp_invite'):
+        return jsonify({'error': 'You do not have permission to manage client invites.'}), 403
 
     invite = ITPClientInvite.query.get_or_404(inv_id)
     # Guard: ensure the invite belongs to this project
@@ -4628,7 +4667,7 @@ def api_project_itp_remove_invite(pid, tid, eid, inv_id):
 def project_itp_template_view(pid, tid):
     """View/manage a single ITP template — shows applicable elements as cards."""
     proj     = Project.query.get_or_404(pid)
-    if not _user_in_project(pid):
+    if not user_can_view_project_ac(pid):
         abort(403)
     template = ProjectITPTemplate.query.filter_by(id=tid, project_id=pid).first_or_404()
     from flask import session as fsession
@@ -4666,10 +4705,10 @@ def project_itp_template_view(pid, tid):
 @app.route('/projects/<int:pid>/itp/<int:tid>/delete', methods=['POST'])
 @login_required
 def project_itp_delete(pid, tid):
-    """Soft-delete an ITP template. Requires manager or admin role."""
-    if not _user_in_project(pid):
+    """Soft-delete an ITP template. Requires can_delete_itp permission."""
+    if not _validate_csrf_token():
         abort(403)
-    if current_user.role not in ('manager', 'admin'):
+    if not user_can(pid, 'can_delete_itp'):
         abort(403)
     t = ProjectITPTemplate.query.filter_by(id=tid, project_id=pid).first_or_404()
     t.is_active = False
@@ -4681,11 +4720,11 @@ def project_itp_delete(pid, tid):
 @app.route('/projects/<int:pid>/itp/<int:tid>/element/<int:eid>/reopen', methods=['POST'])
 @login_required
 def itp_reopen(pid, tid, eid):
-    """AJAX — reopen a complete ITP (increments revision, requires reason, admin/manager only)."""
-    if not _user_in_project(pid):
-        return jsonify({'error': 'Access denied.'}), 403
-    if current_user.role not in ('manager', 'admin'):
-        return jsonify({'error': 'Only project managers or admins can reopen a completed ITP.'}), 403
+    """AJAX — reopen a complete ITP (increments revision, requires reason)."""
+    if not _validate_csrf_token():
+        return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
+    if not user_can(pid, 'can_reopen_itp'):
+        return jsonify({'error': 'You do not have permission to reopen ITPs.'}), 403
     # Verify template and element both belong to this project before touching the record
     ProjectITPTemplate.query.filter_by(id=tid, project_id=pid).first_or_404()
     WTG.query.filter_by(id=eid, project_id=pid).first_or_404()
@@ -4725,7 +4764,7 @@ def itp_detail(wtg_id, itp_type):
     if itp_type not in ITP_DEFINITIONS:
         abort(404)
     wtg  = WTG.query.get_or_404(wtg_id)
-    if not _user_in_project(wtg.project_id):
+    if not user_can_view_project_ac(wtg.project_id):
         abort(403)
     defn = ITP_DEFINITIONS[itp_type]
 
@@ -5072,12 +5111,12 @@ def itp_client_sign(token):
 @login_required
 def api_itp_sign_criterion(record_id, item_no, crit_idx):
     """AJAX: Save engineer signature for one criterion (with date + time)."""
+    if not _validate_csrf_token():
+        return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
     record = ITPRecord.query.get_or_404(record_id)
     project_id = _itp_project_id(record)
 
-    if not _user_in_project(project_id):
-        return jsonify({'error': 'Access denied — you are not a member of this project.'}), 403
-    if not _user_can_sign(project_id):
+    if not user_can(project_id, 'can_sign_itp'):
         return jsonify({'error': 'You do not have permission to sign ITP criteria.'}), 403
     if record.status == 'complete':
         return jsonify({'error': 'This ITP is complete and locked. Ask the project admin to reopen it.'}), 400
@@ -5133,12 +5172,12 @@ def api_itp_sign_criterion(record_id, item_no, crit_idx):
 @login_required
 def api_itp_unsign_criterion(record_id, item_no, crit_idx):
     """AJAX: Remove engineer signature from one criterion."""
+    if not _validate_csrf_token():
+        return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
     record = ITPRecord.query.get_or_404(record_id)
     project_id = _itp_project_id(record)
 
-    if not _user_in_project(project_id):
-        return jsonify({'error': 'Access denied — you are not a member of this project.'}), 403
-    if not _user_can_sign(project_id):
+    if not user_can(project_id, 'can_sign_itp'):
         return jsonify({'error': 'You do not have permission to modify ITP signatures.'}), 403
     if record.status == 'complete':
         return jsonify({'error': 'This ITP is complete and locked. Ask the project admin to reopen it.'}), 400
@@ -5173,11 +5212,13 @@ def get_itp_docs_dir():
 @login_required
 def api_itp_item_upload(record_id, item_no, crit_idx):
     """Upload a document/photo to a specific ITP criterion."""
+    if not _validate_csrf_token():
+        return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
     from models import ITPItemDocument
     record = ITPRecord.query.get_or_404(record_id)
     project_id = _itp_project_id(record)
-    if not _user_in_project(project_id):
-        return jsonify({'error': 'Access denied.'}), 403
+    if not user_can(project_id, 'can_attach_itp_docs'):
+        return jsonify({'error': 'You do not have permission to attach documents to ITPs.'}), 403
     if record.status == 'complete':
         return jsonify({'error': 'This ITP is complete and locked. Reopen it before uploading.'}), 400
     s = ITPItemStatus.query.filter_by(
@@ -5221,12 +5262,14 @@ def api_itp_item_upload(record_id, item_no, crit_idx):
 @app.route('/api/itp/item-doc/<int:doc_id>/delete', methods=['POST'])
 @login_required
 def api_itp_item_doc_delete(doc_id):
+    if not _validate_csrf_token():
+        return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
     from models import ITPItemDocument
     doc = ITPItemDocument.query.get_or_404(doc_id)
     record = ITPRecord.query.get(doc.itp_record_id)
     project_id = _itp_project_id(record) if record else None
-    if record and not _user_in_project(project_id):
-        return jsonify({'error': 'Access denied.'}), 403
+    if record and not user_can(project_id, 'can_attach_itp_docs'):
+        return jsonify({'error': 'You do not have permission to delete ITP documents.'}), 403
     if record and record.status == 'complete':
         return jsonify({'error': 'This ITP is complete and locked. Reopen it before deleting documents.'}), 400
     original_name = doc.original_name
@@ -5257,7 +5300,7 @@ def api_itp_item_doc_delete(doc_id):
 def itp_print(record_id):
     """Render a print-friendly ITP for PDF download. Supports project-specific ITPs."""
     record = ITPRecord.query.get_or_404(record_id)
-    if not _user_in_project(_itp_project_id(record)):
+    if not user_can_view_project_ac(_itp_project_id(record)):
         abort(403)
     if record.itp_type.startswith('PROJ_'):
         tmpl = ProjectITPTemplate.query.get(record.project_itp_template_id)
@@ -5315,7 +5358,7 @@ def itp_export_zip():
                 continue
             # Per-record authorization — skip records the user cannot access
             rec_pid = _itp_project_id(record)
-            if not _user_in_project(rec_pid):
+            if not user_can_view_project_ac(rec_pid):
                 continue
             if record.itp_type.startswith('PROJ_'):
                 tmpl = ProjectITPTemplate.query.get(record.project_itp_template_id)
@@ -5374,7 +5417,7 @@ def itp_export_zip():
 def project_itp_backup(pid):
     """Page + ZIP generator for project-specific ITP backup."""
     proj      = Project.query.get_or_404(pid)
-    if not _user_in_project(pid):
+    if not user_can_view_project_ac(pid):
         abort(403)
     templates = (ProjectITPTemplate.query
                  .filter_by(project_id=pid, is_active=True)

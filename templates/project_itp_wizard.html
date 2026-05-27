@@ -386,6 +386,7 @@
 {% block scripts %}
 <script>
 // ── Step navigation ───────────────────────────────────────────────────────────
+const CSRF_TOKEN = {{ csrf_token()|tojson }};
 let currentStep = 1;
 const INSPECTION_CODES = ['H','W','T','C','M','DR','SS','S'];
 
@@ -622,7 +623,7 @@ async function submitITP() {
   try {
     const r = await fetch('{{ url_for("project_itp_create", pid=proj.id) }}', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: {'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN},
       body: JSON.stringify(payload),
     });
     const data = await r.json();
