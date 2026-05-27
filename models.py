@@ -51,6 +51,109 @@ PROJECT_ACCESS_LEVELS = [
     ('client',   'Client',         'fa-handshake',           '#0891b2', 'View approved reports and sign-offs only'),
 ]
 
+# ═══════════════════════════════════════════════════════════════════
+# ACCESS CONTROL CENTRE — Phase AC-1
+# New constants + models coexist alongside old PROJECT_ACCESS_LEVELS
+# and ProjectMember. Old names not renamed — app.py imports unchanged.
+# ═══════════════════════════════════════════════════════════════════
+
+AC_ACCESS_LEVELS = [
+    ('owner',           'Owner',           'fa-crown',              '#f59e0b', 'Full authority. Protected by the last-owner rule.'),
+    ('admin',           'Admin',           'fa-shield-halved',      '#ef4444', 'Project-level administrator. All management permissions on by default.'),
+    ('project_manager', 'Project Manager', 'fa-user-tie',           '#7c3aed', 'Manages project, team access, and all data. Control Centre on by default.'),
+    ('qa_manager',      'QA Manager',      'fa-clipboard-check',    '#4f46e5', 'Manages quality records, ITPs, testing, and sign-offs.'),
+    ('engineer',        'Engineer',        'fa-screwdriver-wrench', '#22c55e', 'Field data entry, ITP signing, testing, and document uploads.'),
+    ('supervisor',      'Supervisor',      'fa-hard-hat',           '#f59e0b', 'View-only with document upload access.'),
+    ('subcontractor',   'Subcontractor',   'fa-tools',              '#7c3aed', 'Limited data entry and evidence submission.'),
+    ('client',          'Client',          'fa-handshake',          '#0891b2', 'View, export, and ITP client review via token link.'),
+    ('viewer',          'Viewer',          'fa-eye',                '#64748b', 'Read-only. No data entry.'),
+]
+
+PERMISSION_GROUPS = [
+    ('access_management', 'Access Management', 'fa-shield-halved', '#ef4444', [
+        ('can_manage_access',  'Manage Access'),
+        ('can_invite_members', 'Invite Members'),
+        ('can_remove_members', 'Remove Members'),
+        ('can_view_audit_log', 'View Audit Log'),
+    ]),
+    ('project_setup', 'Project Setup', 'fa-gear', '#7c3aed', [
+        ('can_manage_project_settings', 'Edit Project Settings'),
+        ('can_manage_hierarchy',        'Manage Hierarchy'),
+        ('can_manage_companies',        'Manage Companies'),
+        ('can_manage_map',              'Manage Map'),
+    ]),
+    ('itps', 'ITPs', 'fa-clipboard-list', '#4f46e5', [
+        ('can_create_itp',      'Create ITP'),
+        ('can_sign_itp',        'Sign ITP Criteria'),
+        ('can_attach_itp_docs', 'Attach ITP Documents'),
+        ('can_send_itp_invite', 'Send Client Invite'),
+        ('can_reopen_itp',      'Reopen ITP'),
+        ('can_delete_itp',      'Delete ITP'),
+    ]),
+    ('field_data', 'Field Data', 'fa-pen-to-square', '#22c55e', [
+        ('can_record_tests',           'Record Tests'),
+        ('can_upload_test_photos',     'Upload Test Photos'),
+        ('can_record_proof_rolls',     'Record Proof Rolls'),
+        ('can_update_foundation',      'Update Foundation'),
+        ('can_upload_foundation_docs', 'Upload Foundation Docs'),
+    ]),
+    ('documents', 'Documents', 'fa-folder-open', '#f59e0b', [
+        ('can_upload_documents', 'Upload Documents'),
+        ('can_delete_documents', 'Delete Documents'),
+        ('can_manage_folders',   'Manage Folders'),
+    ]),
+    ('analytics', 'Analytics', 'fa-chart-line', '#22d3ee', [
+        ('can_manage_widgets', 'Manage Widgets'),
+    ]),
+]
+
+PERMISSION_KEYS   = [key for _, _, _, _, perms in PERMISSION_GROUPS for key, _ in perms]
+PERMISSION_LABELS = {key: label for _, _, _, _, perms in PERMISSION_GROUPS for key, label in perms}
+_ALL_AC_PERM_KEYS = frozenset(PERMISSION_KEYS)
+
+DEFAULT_PERMISSIONS = {
+    'owner': _ALL_AC_PERM_KEYS,
+    'admin': _ALL_AC_PERM_KEYS,
+    'project_manager': frozenset({
+        'can_manage_access', 'can_invite_members', 'can_remove_members', 'can_view_audit_log',
+        'can_manage_hierarchy', 'can_manage_companies', 'can_manage_map',
+        'can_create_itp', 'can_sign_itp', 'can_attach_itp_docs',
+        'can_send_itp_invite', 'can_reopen_itp', 'can_delete_itp',
+        'can_record_tests', 'can_upload_test_photos', 'can_record_proof_rolls',
+        'can_update_foundation', 'can_upload_foundation_docs',
+        'can_upload_documents', 'can_delete_documents', 'can_manage_folders',
+        'can_manage_widgets',
+    }),
+    'qa_manager': frozenset({
+        'can_view_audit_log', 'can_manage_hierarchy',
+        'can_create_itp', 'can_sign_itp', 'can_attach_itp_docs',
+        'can_send_itp_invite', 'can_reopen_itp',
+        'can_record_tests', 'can_upload_test_photos', 'can_record_proof_rolls',
+        'can_update_foundation', 'can_upload_foundation_docs',
+        'can_upload_documents', 'can_delete_documents', 'can_manage_folders',
+        'can_manage_widgets',
+    }),
+    'engineer': frozenset({
+        'can_sign_itp', 'can_attach_itp_docs',
+        'can_record_tests', 'can_upload_test_photos', 'can_record_proof_rolls',
+        'can_update_foundation', 'can_upload_foundation_docs',
+        'can_upload_documents', 'can_manage_widgets',
+    }),
+    'supervisor':    frozenset({'can_upload_documents'}),
+    'subcontractor': frozenset({
+        'can_attach_itp_docs',
+        'can_record_tests', 'can_upload_test_photos', 'can_record_proof_rolls',
+        'can_upload_documents',
+    }),
+    'client': frozenset(),
+    'viewer': frozenset(),
+}
+
+LOCKED_PERMISSIONS = {
+    level_key: (_ALL_AC_PERM_KEYS if level_key == 'owner' else frozenset())
+    for level_key, *_ in AC_ACCESS_LEVELS
+}
+
 # ─────────────────────────────────────────────
 # PROJECTS  (multi-project support)
 # ─────────────────────────────────────────────
@@ -1203,3 +1306,140 @@ class PasswordResetToken(db.Model):
             if expires_at < datetime.now(timezone.utc):
                 return False
         return True
+
+
+# ═══════════════════════════════════════════════════════════════════
+# ACCESS CONTROL CENTRE — Phase AC-1 Models
+# ProjectMemberAC and ProjectMemberPermission coexist alongside the
+# old ProjectMember table. Old names/tables remain untouched.
+# ═══════════════════════════════════════════════════════════════════
+
+class ProjectMemberAC(db.Model):
+    """Future unified project-member record.
+    Replaces ProjectMember + ProjectTeamMember in Phase AC-3."""
+    __tablename__ = 'project_members_ac'
+    __table_args__ = (
+        db.UniqueConstraint('project_id', 'user_id', name='uq_pm_ac_project_user'),
+    )
+
+    id           = db.Column(db.Integer, primary_key=True)
+    project_id   = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=False)
+    user_id      = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+
+    is_owner     = db.Column(db.Boolean, default=False,  nullable=False)
+    access_level = db.Column(db.String(30), nullable=False, default='engineer')
+    is_active    = db.Column(db.Boolean, default=True,   nullable=False)
+
+    # Display / contact fields (copied from ProjectTeamMember pattern)
+    name         = db.Column(db.String(100), nullable=False)
+    email        = db.Column(db.String(150), default='')
+    position     = db.Column(db.String(100), default='')
+    phone        = db.Column(db.String(50),  default='')
+    company_id   = db.Column(db.Integer, db.ForeignKey('project_companies.id'), nullable=True)
+
+    # Invite lifecycle
+    invite_status      = db.Column(db.String(20), default='not_invited')
+    invite_token_hash  = db.Column(db.String(64), unique=True, nullable=True)
+    invite_sent_at     = db.Column(db.DateTime, nullable=True)
+    invite_expires_at  = db.Column(db.DateTime, nullable=True)
+    invite_accepted_at = db.Column(db.DateTime, nullable=True)
+
+    added_at    = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    added_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+
+    # Relationships
+    project     = db.relationship('Project', foreign_keys=[project_id],
+                                  backref=db.backref('access_members', lazy=True))
+    permissions = db.relationship('ProjectMemberPermission', backref='member',
+                                  lazy=True, cascade='all, delete-orphan')
+
+    # ── Convenience properties ──────────────────────────────────────
+    @property
+    def access_level_label(self):
+        return next(
+            (lbl for key, lbl, *_ in AC_ACCESS_LEVELS if key == self.access_level),
+            self.access_level.replace('_', ' ').title()
+        )
+
+    @property
+    def access_level_color(self):
+        return next(
+            (color for key, lbl, icon, color, *_ in AC_ACCESS_LEVELS if key == self.access_level),
+            '#64748b'
+        )
+
+    @property
+    def access_level_icon(self):
+        return next(
+            (icon for key, lbl, icon, *_ in AC_ACCESS_LEVELS if key == self.access_level),
+            'fa-user'
+        )
+
+    def has_permission(self, permission_key: str) -> bool:
+        """Return True if this member holds the requested permission.
+
+        Owners always return True.
+        All others look up the matching ProjectMemberPermission row.
+        """
+        if self.is_owner:
+            return True
+        perm = next((p for p in self.permissions if p.permission_key == permission_key), None)
+        return bool(perm and perm.value)
+
+
+class ProjectMemberPermission(db.Model):
+    """One row per (ProjectMemberAC × permission_key).
+
+    value  — True = permission granted
+    locked — True = UI toggle disabled (owner rows are locked on)
+    """
+    __tablename__ = 'project_member_permissions'
+    __table_args__ = (
+        db.UniqueConstraint('member_id', 'permission_key', name='uq_pm_perm_member_key'),
+    )
+
+    id             = db.Column(db.Integer, primary_key=True)
+    member_id      = db.Column(db.Integer, db.ForeignKey('project_members_ac.id'), nullable=False)
+    permission_key = db.Column(db.String(50), nullable=False)
+    value          = db.Column(db.Boolean, default=False, nullable=False)
+    locked         = db.Column(db.Boolean, default=False, nullable=False)
+
+
+# ── Phase AC-1 helper functions ─────────────────────────────────────
+
+def default_permissions_for_access_level(access_level: str) -> frozenset:
+    """Return the set of permission keys that are ON by default for an access level."""
+    return DEFAULT_PERMISSIONS.get(access_level, frozenset())
+
+
+def locked_permissions_for_access_level(access_level: str) -> frozenset:
+    """Return the set of permission keys that are locked (cannot be toggled) for an access level."""
+    return LOCKED_PERMISSIONS.get(access_level, frozenset())
+
+
+def seed_member_permissions(member: ProjectMemberAC) -> list:
+    """Create one ProjectMemberPermission row per PERMISSION_KEY for *member*.
+
+    Idempotent — skips keys that already have a row.
+    Does NOT call db.session.commit(); caller is responsible.
+
+    Returns the list of newly-created rows (may be empty if all already exist).
+    """
+    existing_keys = {p.permission_key for p in member.permissions}
+    defaults      = default_permissions_for_access_level(member.access_level)
+    locked_set    = locked_permissions_for_access_level(member.access_level)
+
+    new_rows = []
+    for key in PERMISSION_KEYS:
+        if key in existing_keys:
+            continue
+        row = ProjectMemberPermission(
+            member_id      = member.id,
+            permission_key = key,
+            value          = key in defaults,
+            locked         = key in locked_set,
+        )
+        db.session.add(row)
+        new_rows.append(row)
+
+    return new_rows
