@@ -1,81 +1,444 @@
 {% extends "base.html" %}
-{% block title %}Audit Log — {{ proj.name }}{% endblock %}
-{% block page_title %}Audit Log{% endblock %}
-{% block page_sub %}{{ proj.name }} · Event History{% endblock %}
+{% block title %}{{ page_title }} — {{ proj.name }}{% endblock %}
+{% block page_title %}{{ page_title }}{% endblock %}
+{% block page_sub %}{{ proj.name }}{% endblock %}
+
+{% block head %}
+<style>
+/* ── Layout ──────────────────────────────────────── */
+.audit-wrap { max-width:1100px; margin:0 auto; padding:0 0 48px; }
+
+/* ── Filter bar ─────────────────────────────────── */
+.filter-bar {
+  background:#fff; border:1px solid #e2e8f0; border-radius:16px;
+  padding:18px 20px; margin-bottom:16px;
+  box-shadow:0 2px 8px rgba(0,0,0,.04);
+}
+.filter-row  { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; }
+.filter-field { display:flex; flex-direction:column; gap:4px; flex:1; min-width:140px; }
+.filter-field label { font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.05em; }
+.filter-field input,
+.filter-field select {
+  padding:8px 11px; border:1.5px solid #e2e8f0; border-radius:9px;
+  font-size:13px; color:#1e293b; background:#fafafa;
+  outline:none; transition:border-color .15s;
+}
+.filter-field input:focus,
+.filter-field select:focus { border-color:#6366f1; background:#fff; }
+.filter-btn {
+  padding:9px 18px; border-radius:9px; font-size:13px; font-weight:700;
+  cursor:pointer; border:none; white-space:nowrap;
+}
+.filter-btn.apply { background:#4f46e5; color:#fff; }
+.filter-btn.apply:hover { background:#4338ca; }
+.filter-btn.clear { background:#f1f5f9; color:#64748b; border:1.5px solid #e2e8f0; }
+.filter-btn.clear:hover { background:#e2e8f0; }
+
+/* ── Time chips ─────────────────────────────────── */
+.chip-row { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px; }
+.chip {
+  padding:5px 14px; border-radius:99px; font-size:12px; font-weight:700;
+  cursor:pointer; border:1.5px solid #e2e8f0; background:#f8fafc;
+  color:#475569; text-decoration:none; transition:all .15s;
+}
+.chip:hover, .chip.active { background:#4f46e5; color:#fff; border-color:#4f46e5; }
+
+/* ── Category tabs ──────────────────────────────── */
+.cat-tabs {
+  display:flex; flex-wrap:wrap; gap:6px; margin-bottom:18px;
+}
+.cat-tab {
+  display:inline-flex; align-items:center; gap:5px;
+  padding:6px 14px; border-radius:99px; font-size:12px; font-weight:700;
+  text-decoration:none; color:#475569;
+  border:1.5px solid #e2e8f0; background:#f8fafc;
+  transition:all .15s;
+}
+.cat-tab:hover { border-color:#a5b4fc; background:#eff6ff; color:#4f46e5; }
+.cat-tab.active { background:#4f46e5; color:#fff; border-color:#4f46e5; }
+.cat-tab .badge {
+  padding:1px 7px; border-radius:99px; font-size:10px; font-weight:800;
+  background:rgba(255,255,255,.25); color:inherit;
+}
+.cat-tab:not(.active) .badge { background:#e2e8f0; color:#64748b; }
+
+/* ── Coming soon panel ─────────────────────────── */
+.soon-panel {
+  background:#f8fafc; border:2px dashed #e2e8f0; border-radius:14px;
+  padding:36px 24px; text-align:center; color:#94a3b8; margin-bottom:20px;
+}
+
+/* ── Event list ─────────────────────────────────── */
+.ev-list {
+  background:#fff; border-radius:16px; border:1px solid #e2e8f0;
+  overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,.05);
+}
+.ev-row {
+  display:flex; align-items:flex-start; gap:14px;
+  padding:13px 18px; border-bottom:1px solid #f8fafc;
+  transition:background .1s;
+}
+.ev-row:last-child { border-bottom:none; }
+.ev-row:hover { background:#f8fafc; }
+.ev-icon {
+  width:38px; height:38px; border-radius:11px; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center; font-size:14px;
+}
+.ev-body { flex:1; min-width:0; }
+.ev-title { font-size:13px; font-weight:700; color:#1e293b; }
+.ev-entity { font-size:12px; color:#64748b; }
+.ev-meta { font-size:11px; color:#94a3b8; margin-top:3px; line-height:1.7; }
+.ev-cat {
+  display:inline-flex; align-items:center; gap:4px;
+  padding:2px 8px; border-radius:99px; font-size:10px; font-weight:700;
+  margin-left:6px; vertical-align:middle;
+}
+.ev-actions { display:flex; align-items:center; flex-shrink:0; }
+.rev-btn {
+  display:inline-flex; align-items:center; gap:4px;
+  padding:4px 10px; border-radius:7px; font-size:10px; font-weight:700;
+  border:1.5px solid #e2e8f0; background:#f8fafc; color:#cbd5e1;
+  cursor:not-allowed; opacity:.6;
+}
+.rev-tooltip { position:relative; }
+.rev-tooltip:hover::after {
+  content:attr(data-tip);
+  position:absolute; right:0; top:110%;
+  background:#1e293b; color:#fff; font-size:10px; font-weight:600;
+  padding:5px 10px; border-radius:7px; white-space:nowrap; z-index:10;
+  max-width:220px; white-space:normal;
+}
+
+/* ── Empty state ────────────────────────────────── */
+.ev-empty {
+  padding:60px 24px; text-align:center; color:#94a3b8;
+}
+.ev-empty i { font-size:32px; display:block; margin-bottom:12px; opacity:.35; }
+
+/* ── Category placeholder cards ────────────────── */
+.placeholder-grid {
+  display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:20px;
+}
+@media(max-width:720px) { .placeholder-grid { grid-template-columns:1fr 1fr; } }
+@media(max-width:480px) { .placeholder-grid { grid-template-columns:1fr; } }
+.ph-card {
+  background:#fff; border:1.5px solid #e2e8f0; border-radius:14px;
+  padding:18px 16px; display:flex; align-items:center; gap:12px;
+  opacity:.7;
+}
+.ph-icon {
+  width:40px; height:40px; border-radius:11px; background:#f1f5f9;
+  display:flex; align-items:center; justify-content:center; flex-shrink:0;
+}
+</style>
+{% endblock %}
 
 {% block content %}
-<div style="max-width:900px;margin:0 auto;padding:24px 20px;">
+<div class="audit-wrap">
 
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px;">
+  {# ── Header ─────────────────────────────────────────────── #}
+  <div style="display:flex;align-items:center;justify-content:space-between;
+              flex-wrap:wrap;gap:12px;margin-bottom:20px;">
     <div>
-      <h2 style="font-size:20px;font-weight:800;color:#1e293b;margin:0;">Project Audit Log</h2>
-      <p style="color:#64748b;font-size:13px;margin-top:4px;">All tracked events for <strong>{{ proj.name }}</strong></p>
+      <h2 style="font-size:20px;font-weight:800;color:#1e293b;margin:0;">
+        <i class="fa-solid fa-clock-rotate-left" style="color:#4f46e5;margin-right:8px;font-size:16px;"></i>
+        {{ page_title }}
+      </h2>
+      <p style="color:#64748b;font-size:13px;margin:4px 0 0;">
+        All tracked events for <strong>{{ proj.name }}</strong>
+        {% if preset_category %}
+        · filtered to <strong>{{ preset_category }}</strong>
+        {% endif %}
+      </p>
     </div>
-    <a href="{{ url_for('project_people', pid=proj.id) }}"
-       style="display:inline-flex;align-items:center;gap:6px;padding:9px 16px;
-              background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;
-              font-size:13px;font-weight:700;color:#64748b;text-decoration:none;">
-      <i class="fa-solid fa-arrow-left"></i> Back to People
-    </a>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      {% if preset_category %}
+      <a href="{{ url_for('project_audit', pid=proj.id) }}"
+         style="display:inline-flex;align-items:center;gap:6px;padding:8px 15px;
+                background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;
+                font-size:12px;font-weight:700;color:#64748b;text-decoration:none;">
+        <i class="fa-solid fa-list"></i> All Events
+      </a>
+      {% endif %}
+      <a href="{{ url_for('dashboard') }}"
+         style="display:inline-flex;align-items:center;gap:6px;padding:8px 15px;
+                background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;
+                font-size:12px;font-weight:700;color:#64748b;text-decoration:none;">
+        <i class="fa-solid fa-arrow-left"></i> Dashboard
+      </a>
+    </div>
   </div>
 
-  {% if events %}
-  <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.05);">
-    {% for ev in events %}
-    <div style="display:flex;align-items:flex-start;gap:14px;padding:14px 20px;
-                border-bottom:1px solid #f8fafc;transition:background .12s;"
-         onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='#fff'">
-      <!-- Icon -->
-      <div style="width:36px;height:36px;border-radius:10px;flex-shrink:0;
-                  background:{% if 'signed' in ev.event_type or 'complete' in ev.event_type %}#dcfce7{% elif 'removed' in ev.event_type %}#fee2e2{% elif 'added' in ev.event_type or 'invited' in ev.event_type %}#eff6ff{% else %}#f1f5f9{% endif %};
-                  display:flex;align-items:center;justify-content:center;">
-        <i class="fa-solid
-          {% if 'signed' in ev.event_type %}fa-pen-nib
-          {% elif 'client_reviewed' in ev.event_type %}fa-eye
-          {% elif 'member_added' in ev.event_type %}fa-user-plus
-          {% elif 'member_removed' in ev.event_type %}fa-user-minus
-          {% elif 'company_added' in ev.event_type %}fa-building-circle-arrow-right
-          {% elif 'company_removed' in ev.event_type %}fa-building-circle-xmark
-          {% elif 'invited' in ev.event_type %}fa-envelope
-          {% elif 'complete' in ev.event_type %}fa-check-double
-          {% elif 'document' in ev.event_type %}fa-file-circle-plus
-          {% else %}fa-circle-dot{% endif %}"
-           style="font-size:14px;color:
-          {% if 'signed' in ev.event_type or 'complete' in ev.event_type %}#16a34a
-          {% elif 'removed' in ev.event_type %}#dc2626
-          {% elif 'added' in ev.event_type or 'invited' in ev.event_type %}#2563eb
-          {% else %}#64748b{% endif %};"></i>
+  {# ── Filter bar ──────────────────────────────────────────── #}
+  <form method="get" class="filter-bar" id="audit-filter-form">
+    {% if preset_category %}
+    <input type="hidden" name="category" value="{{ preset_category }}">
+    {% endif %}
+    <div class="filter-row" style="margin-bottom:10px;">
+      <div class="filter-field" style="flex:2;min-width:200px;">
+        <label>Search</label>
+        <input type="text" name="q" value="{{ filters.q }}"
+               placeholder="Event type, entity, actor…">
       </div>
-      <!-- Content -->
-      <div style="flex:1;min-width:0;">
-        <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;">
-          <span style="font-size:13px;font-weight:700;color:#1e293b;">
-            {{ ev.event_type.replace('_', ' ').title() }}
-          </span>
-          {% if ev.entity_label %}
-          <span style="font-size:12px;color:#64748b;">— {{ ev.entity_label }}</span>
-          {% endif %}
+      {% if not preset_category %}
+      <div class="filter-field">
+        <label>Category</label>
+        <select name="category">
+          <option value="">All categories</option>
+          {% for cat in ['Access & People','ITPs','Documents','Map','QA Tests','Proof Rolls','Foundation','Project Setup','System'] %}
+          <option value="{{ cat }}" {{ 'selected' if filters.category == cat else '' }}>{{ cat }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% endif %}
+      <div class="filter-field">
+        <label>Event type</label>
+        <select name="event_type">
+          <option value="">Any</option>
+          {% for et in event_types %}
+          <option value="{{ et }}" {{ 'selected' if filters.event_type == et else '' }}>
+            {{ et.replace('_',' ').title() }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="filter-field">
+        <label>Actor</label>
+        <input type="text" name="actor" value="{{ filters.actor }}"
+               list="actor-list" placeholder="Name or email…">
+        <datalist id="actor-list">
+          {% for a in actors %}<option value="{{ a }}">{% endfor %}
+        </datalist>
+      </div>
+    </div>
+    <div class="filter-row">
+      <div class="filter-field">
+        <label>Date from</label>
+        <input type="date" name="date_from" value="{{ filters.date_from }}">
+      </div>
+      <div class="filter-field">
+        <label>Date to</label>
+        <input type="date" name="date_to" value="{{ filters.date_to }}">
+      </div>
+      <div style="display:flex;gap:8px;align-items:flex-end;">
+        <button type="submit" class="filter-btn apply">
+          <i class="fa-solid fa-magnifying-glass" style="margin-right:5px;"></i>Apply
+        </button>
+        <a href="{{ request.path }}" class="filter-btn clear">Clear</a>
+      </div>
+    </div>
+  </form>
+
+  {# ── Quick time chips ────────────────────────────────────── #}
+  <div class="chip-row">
+    {% set base_url = request.path %}
+    {% set chip_args = {'q': filters.q, 'category': filters.category,
+                        'event_type': filters.event_type, 'actor': filters.actor} %}
+    <span style="font-size:12px;font-weight:700;color:#94a3b8;align-self:center;">Quick filter:</span>
+    <a href="{{ base_url }}?{% for k,v in chip_args.items() %}{% if v %}{{ k }}={{ v|urlencode }}&{% endif %}{% endfor %}chip=today"
+       class="chip {{ 'active' if filters.chip == 'today' else '' }}">Today</a>
+    <a href="{{ base_url }}?{% for k,v in chip_args.items() %}{% if v %}{{ k }}={{ v|urlencode }}&{% endif %}{% endfor %}chip=yesterday"
+       class="chip {{ 'active' if filters.chip == 'yesterday' else '' }}">Yesterday</a>
+    <a href="{{ base_url }}?{% for k,v in chip_args.items() %}{% if v %}{{ k }}={{ v|urlencode }}&{% endif %}{% endfor %}chip=last7"
+       class="chip {{ 'active' if filters.chip == 'last7' else '' }}">Last 7 days</a>
+    <a href="{{ base_url }}?{% for k,v in chip_args.items() %}{% if v %}{{ k }}={{ v|urlencode }}&{% endif %}{% endfor %}chip=last30"
+       class="chip {{ 'active' if filters.chip == 'last30' else '' }}">Last 30 days</a>
+  </div>
+
+  {# ── Category tabs (only on main audit, not preset views) ── #}
+  {% if not preset_category %}
+  <div class="cat-tabs">
+    {% set all_cats = [
+      ('All',            '',                'fa-list',              '#4f46e5'),
+      ('Access & People','Access & People', 'fa-users-gear',        '#7c3aed'),
+      ('ITPs',           'ITPs',            'fa-clipboard-list',    '#8b5cf6'),
+      ('Documents',      'Documents',       'fa-folder-open',       '#d97706'),
+      ('Map',            'Map',             'fa-map-location-dot',  '#0891b2'),
+      ('QA Tests',       'QA Tests',        'fa-microscope',        '#10b981'),
+      ('Proof Rolls',    'Proof Rolls',     'fa-file-circle-check', '#22c55e'),
+      ('Foundation',     'Foundation',      'fa-layer-group',       '#f97316'),
+      ('Project Setup',  'Project Setup',   'fa-sliders',           '#6366f1'),
+      ('System',         'System',          'fa-gear',              '#64748b'),
+    ] %}
+    {% for label, cat_val, icon, color in all_cats %}
+    {% set is_active = (filters.category == cat_val) or (cat_val == '' and not filters.category) %}
+    {% set cnt = cat_counts.get(cat_val, 0) if cat_val else (cat_counts.values()|sum) %}
+    <a href="{{ url_for('project_audit', pid=proj.id) }}{% if cat_val %}?category={{ cat_val|urlencode }}{% endif %}"
+       class="cat-tab {{ 'active' if is_active else '' }}"
+       style="{% if is_active %}border-color:{{ color }};background:{{ color }};{% else %}{% endif %}">
+      <i class="fa-solid {{ icon }}" style="font-size:11px;{% if is_active %}color:#fff;{% else %}color:{{ color }};{% endif %}"></i>
+      {{ label }}
+      {% if cnt %}<span class="badge">{{ cnt }}</span>{% endif %}
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {# ── Coming-soon stub for unimplemented categories ────────── #}
+  {% set _coming_soon_cats = ['Documents','Map','QA Tests','Proof Rolls','Foundation'] %}
+  {% if filters.category in _coming_soon_cats %}
+  <div class="soon-panel">
+    <i class="fa-solid fa-hourglass-half" style="font-size:28px;display:block;margin-bottom:10px;opacity:.4;"></i>
+    <p style="font-size:15px;font-weight:800;color:#475569;margin:0 0 6px;">
+      Detailed {{ filters.category }} audit view — coming soon
+    </p>
+    <p style="font-size:13px;margin:0;">
+      Any existing events will still appear in the main
+      <a href="{{ url_for('project_audit', pid=proj.id) }}" style="color:#4f46e5;font-weight:700;">All Events</a> log.
+    </p>
+  </div>
+  {% endif %}
+
+  {# ── Event list ──────────────────────────────────────────── #}
+  {% macro cat_style(cat) %}
+    {% if cat == 'Access & People' %}background:#ede9fe;color:#7c3aed
+    {% elif cat == 'ITPs' %}background:#f3e8ff;color:#9333ea
+    {% elif cat == 'Documents' %}background:#fef3c7;color:#d97706
+    {% elif cat == 'Map' %}background:#e0f2fe;color:#0891b2
+    {% elif cat == 'QA Tests' %}background:#d1fae5;color:#059669
+    {% elif cat == 'Proof Rolls' %}background:#dcfce7;color:#16a34a
+    {% elif cat == 'Foundation' %}background:#ffedd5;color:#f97316
+    {% elif cat == 'Project Setup' %}background:#e0e7ff;color:#4f46e5
+    {% else %}background:#f1f5f9;color:#64748b{% endif %}
+  {% endmacro %}
+
+  {% macro ev_icon_style(et) %}
+    {% if 'signed' in et or 'complete' in et or 'accepted' in et %}background:#dcfce7;color:#16a34a
+    {% elif 'removed' in et or 'deleted' in et or 'revoked' in et or 'disabled' in et %}background:#fee2e2;color:#dc2626
+    {% elif 'added' in et or 'created' in et or 'invited' in et or 'uploaded' in et %}background:#eff6ff;color:#2563eb
+    {% elif 'changed' in et or 'updated' in et or 'reopened' in et %}background:#fef9c3;color:#ca8a04
+    {% elif 'exported' in et %}background:#f3e8ff;color:#9333ea
+    {% else %}background:#f1f5f9;color:#64748b{% endif %}
+  {% endmacro %}
+
+  {% macro ev_icon(et) %}
+    {% if 'signed' in et %}fa-pen-nib
+    {% elif 'client_reviewed' in et %}fa-eye
+    {% elif 'member_added' in et or 'owner_added' in et or 'user_created' in et %}fa-user-plus
+    {% elif 'member_removed' in et or 'project_access_removed' in et %}fa-user-minus
+    {% elif 'member_disabled' in et %}fa-ban
+    {% elif 'member_updated' in et %}fa-user-pen
+    {% elif 'company_added' in et %}fa-building-circle-arrow-right
+    {% elif 'company_removed' in et %}fa-building-circle-xmark
+    {% elif 'invited' in et or 'invite_sent' in et or 'invite_resent' in et %}fa-envelope
+    {% elif 'invite_accepted' in et or 'user_invite_accepted' in et %}fa-envelope-open-text
+    {% elif 'invite_revoked' in et or 'user_invite_revoked' in et %}fa-envelope-circle-check
+    {% elif 'invite_link_generated' in et %}fa-link
+    {% elif 'permission_changed' in et %}fa-toggle-on
+    {% elif 'access_level_changed' in et %}fa-arrows-rotate
+    {% elif 'project_owner_assigned' in et %}fa-crown
+    {% elif 'project_owner_removed' in et %}fa-crown
+    {% elif 'complete' in et %}fa-check-double
+    {% elif 'document' in et %}fa-file
+    {% elif 'uploaded' in et %}fa-cloud-arrow-up
+    {% elif 'exported' in et %}fa-file-export
+    {% elif 'reopened' in et %}fa-rotate-left
+    {% elif 'metadata' in et %}fa-pencil
+    {% elif 'template_created' in et %}fa-file-circle-plus
+    {% elif 'password' in et %}fa-key
+    {% elif 'profile' in et %}fa-id-card
+    {% elif 'project_member' in et %}fa-user-gear
+    {% else %}fa-circle-dot{% endif %}
+  {% endmacro %}
+
+  <div class="ev-list">
+    {% if events %}
+    {% for ev in events %}
+    {% set cat = audit_category_for_event(ev.event_type) %}
+    <div class="ev-row">
+      <!-- Icon -->
+      <div class="ev-icon" style="{{ ev_icon_style(ev.event_type) }};">
+        <i class="fa-solid {{ ev_icon(ev.event_type) }}"></i>
+      </div>
+      <!-- Body -->
+      <div class="ev-body">
+        <div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px;">
+          <span class="ev-title">{{ ev.event_type.replace('_',' ').title() }}</span>
+          <span class="ev-cat" style="{{ cat_style(cat) }};">{{ cat }}</span>
         </div>
-        <div style="font-size:11px;color:#94a3b8;margin-top:3px;">
+        {% if ev.entity_label %}
+        <div class="ev-entity">{{ ev.entity_label }}</div>
+        {% endif %}
+        <div class="ev-meta">
           {% if ev.actor_name %}
-          <span style="color:#475569;font-weight:600;">{{ ev.actor_name }}</span>
-          {% if ev.actor_company %}<span> · {{ ev.actor_company }}</span>{% endif %}
-          {% if ev.actor_role %}<span> · {{ ev.actor_role.replace('_',' ').title() }}</span>{% endif %}
-          ·
+          <strong style="color:#475569;">{{ ev.actor_name }}</strong>
+          {% if ev.actor_company %} · {{ ev.actor_company }}{% endif %}
+          {% if ev.actor_role %} · <span style="text-transform:capitalize;">{{ ev.actor_role.replace('_',' ') }}</span>{% endif %}
+          &nbsp;·&nbsp;
           {% endif %}
-          {{ ev.created_at.strftime('%d %b %Y at %H:%M') if ev.created_at else '' }}
-          {% if ev.ip_address %} · <span style="font-family:monospace;">{{ ev.ip_address }}</span>{% endif %}
+          <span title="{{ ev.created_at.isoformat() if ev.created_at else '' }}">
+            {{ ev.created_at.strftime('%d %b %Y at %H:%M') if ev.created_at else '—' }}
+          </span>
+          {% if ev.ip_address %}
+          &nbsp;·&nbsp; <code style="font-size:10px;color:#94a3b8;font-family:monospace;">{{ ev.ip_address }}</code>
+          {% endif %}
         </div>
+      </div>
+      <!-- Reverse action (disabled placeholder) -->
+      <div class="ev-actions">
+        <span class="rev-tooltip" data-tip="Coming soon — reversal will require Owner approval.">
+          <button type="button" class="rev-btn" disabled>
+            <i class="fa-solid fa-rotate-left"></i> Reverse
+          </button>
+        </span>
       </div>
     </div>
     {% endfor %}
+
+    <!-- Result count footer -->
+    <div style="padding:10px 18px;text-align:center;font-size:11px;color:#94a3b8;
+                border-top:1px solid #f1f5f9;background:#fafafa;">
+      Showing {{ events|length }} event{{ 's' if events|length != 1 else '' }}
+      {% if events|length == 200 %} (result limit reached — add filters to narrow down){% endif %}
+    </div>
+
+    {% else %}
+    <div class="ev-empty">
+      <i class="fa-solid fa-clock-rotate-left"></i>
+      <p style="font-size:15px;font-weight:700;color:#64748b;margin:0 0 4px;">No events found</p>
+      <p style="font-size:13px;margin:0;">
+        {% if filters.q or filters.category or filters.event_type or filters.actor or filters.date_from %}
+        Try adjusting your filters or
+        <a href="{{ request.path }}" style="color:#4f46e5;font-weight:700;">clear all filters</a>.
+        {% else %}
+        Actions will appear here as the project progresses.
+        {% endif %}
+      </p>
+    </div>
+    {% endif %}
   </div>
-  {% else %}
-  <div style="background:#fff;border-radius:16px;border:2px dashed #e2e8f0;
-              padding:60px 20px;text-align:center;color:#94a3b8;">
-    <i class="fa-solid fa-clock-rotate-left" style="font-size:32px;margin-bottom:12px;display:block;"></i>
-    <p style="font-size:15px;font-weight:700;color:#64748b;margin:0 0 4px;">No events yet</p>
-    <p style="font-size:13px;margin:0;">Actions will appear here as the project progresses.</p>
+
+  {# ── Coming-soon module placeholder cards (main audit only) ── #}
+  {% if not preset_category %}
+  <div style="margin-top:28px;">
+    <div style="font-size:12px;font-weight:800;color:#94a3b8;text-transform:uppercase;
+                letter-spacing:.06em;margin-bottom:12px;">
+      Audit views coming soon
+    </div>
+    <div class="placeholder-grid">
+      {% set ph_modules = [
+        ('Documents Audit',   'fa-folder-open',        '#d97706'),
+        ('Roster Audit',      'fa-users',              '#a21caf'),
+        ('Map Audit',         'fa-map-location-dot',   '#0891b2'),
+        ('QA Tests Audit',    'fa-microscope',         '#10b981'),
+        ('Proof Rolls Audit', 'fa-file-circle-check',  '#22c55e'),
+        ('Foundation Audit',  'fa-layer-group',        '#f97316'),
+      ] %}
+      {% for title, icon, color in ph_modules %}
+      <div class="ph-card">
+        <div class="ph-icon">
+          <i class="fa-solid {{ icon }}" style="color:{{ color }};font-size:16px;"></i>
+        </div>
+        <div style="flex:1;">
+          <div style="font-size:12px;font-weight:800;color:#1e293b;">{{ title }}</div>
+          <div style="font-size:11px;color:#94a3b8;margin-top:2px;">Coming soon</div>
+        </div>
+        <span style="font-size:9px;font-weight:800;padding:2px 8px;border-radius:99px;
+                     background:#f1f5f9;color:#94a3b8;text-transform:uppercase;
+                     letter-spacing:.06em;">Soon</span>
+      </div>
+      {% endfor %}
+    </div>
   </div>
   {% endif %}
 

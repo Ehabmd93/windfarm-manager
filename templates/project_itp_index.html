@@ -29,6 +29,12 @@
     <span style="color:#cbd5e1;">›</span>
     <span style="color:#0f172a;font-weight:700;">ITPs</span>
     <div style="flex:1;"></div>
+    <a href="{{ url_for('project_audit_itps', pid=proj.id) }}"
+       style="display:inline-flex;align-items:center;gap:7px;padding:8px 14px;border-radius:10px;
+              background:#f0fdf4;color:#16a34a;font-size:12px;border:1.5px solid #bbf7d0;
+              font-weight:700;text-decoration:none;">
+      <i class="fa-solid fa-clock-rotate-left"></i> ITP Audit Log
+    </a>
     {% if templates %}
     <a href="{{ url_for('project_itp_backup', pid=proj.id) }}"
        style="display:inline-flex;align-items:center;gap:7px;padding:8px 14px;border-radius:10px;

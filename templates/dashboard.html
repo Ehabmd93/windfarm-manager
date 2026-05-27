@@ -421,6 +421,24 @@
     </a>
     {% endif %}
 
+    <!-- Project Audit Log -->
+    {% if proj %}
+    <a href="{{ url_for('project_audit', pid=proj.id) }}"
+       class="card" style="border-radius:18px;padding:18px;text-decoration:none;
+              display:flex;align-items:center;gap:14px;border:1.5px solid #e2e8f0;
+              opacity:0;animation:fadeInUp .5s ease .45s forwards;transition:all .2s;">
+      <div style="width:44px;height:44px;border-radius:13px;background:#ede9fe;
+                  display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <i class="fa-solid fa-clock-rotate-left" style="color:#7c3aed;font-size:18px;"></i>
+      </div>
+      <div style="flex:1;">
+        <div style="font-size:13px;font-weight:800;color:#0f172a;">Project Audit Log</div>
+        <div style="font-size:11px;color:#94a3b8;">Search every tracked event across this project</div>
+      </div>
+      <i class="fa-solid fa-arrow-right" style="color:#c4b5fd;font-size:12px;"></i>
+    </a>
+    {% endif %}
+
   </div>
 </div>
 

@@ -3153,19 +3153,261 @@ def api_copy_invite_link(pid, invite_id):
     return jsonify({'ok': True, 'invite_url': invite_url})
 
 
+def _audit_query(pid, preset_category=None):
+    """
+    Build and execute an AuditEvent query for project *pid*.
+
+    Reads filter params from request.args:
+      category    — one of the AUDIT_CATEGORIES or empty for All
+      event_type  — exact event_type string filter
+      actor       — partial match on actor_name or actor_email
+      q           — free-text search across entity_label / actor_name / event_type
+      date_from   — YYYY-MM-DD (inclusive start)
+      date_to     — YYYY-MM-DD (inclusive end; same as date_from if only one)
+
+    Returns (events, filters_dict, actors_list, event_types_list).
+    """
+    from datetime import timedelta
+
+    q_category   = preset_category or request.args.get('category',   '').strip()
+    q_event_type = request.args.get('event_type', '').strip()
+    q_actor      = request.args.get('actor',      '').strip()
+    q_search     = request.args.get('q',          '').strip()
+    q_date_from  = request.args.get('date_from',  '').strip()
+    q_date_to    = request.args.get('date_to',    '').strip()
+
+    # Quick-chip aliases passed as date shortcuts
+    q_chip = request.args.get('chip', '').strip()
+    today  = date.today()
+    if q_chip == 'today':
+        q_date_from = q_date_to = today.isoformat()
+    elif q_chip == 'yesterday':
+        yd = (today - timedelta(days=1)).isoformat()
+        q_date_from = q_date_to = yd
+    elif q_chip == 'last7':
+        q_date_from = (today - timedelta(days=6)).isoformat()
+        q_date_to   = today.isoformat()
+    elif q_chip == 'last30':
+        q_date_from = (today - timedelta(days=29)).isoformat()
+        q_date_to   = today.isoformat()
+
+    base = AuditEvent.query.filter(AuditEvent.project_id == pid)
+
+    # Category filter — resolve via audit_category_for_event in Python
+    # (easier than SQL subquery; we pull slightly more than needed and filter)
+    if q_category:
+        # Pull only rows whose event_type maps to the requested category
+        all_candidate_events = (base
+                                .order_by(AuditEvent.created_at.desc())
+                                .limit(2000)
+                                .all())
+        all_candidate_events = [ev for ev in all_candidate_events
+                                 if audit_category_for_event(ev.event_type) == q_category]
+        base = None   # signals we already have the list
+    else:
+        all_candidate_events = None
+
+    # Apply remaining filters
+    def _apply_filters(qobj):
+        if q_event_type:
+            qobj = qobj.filter(AuditEvent.event_type == q_event_type)
+        if q_actor:
+            pat = f'%{q_actor}%'
+            qobj = qobj.filter(
+                db.or_(AuditEvent.actor_name.ilike(pat),
+                       AuditEvent.actor_email.ilike(pat))
+            )
+        if q_search:
+            pat = f'%{q_search}%'
+            qobj = qobj.filter(
+                db.or_(AuditEvent.entity_label.ilike(pat),
+                       AuditEvent.actor_name.ilike(pat),
+                       AuditEvent.event_type.ilike(pat))
+            )
+        if q_date_from:
+            try:
+                dt_from = datetime.strptime(q_date_from, '%Y-%m-%d').replace(
+                    hour=0, minute=0, second=0, tzinfo=timezone.utc)
+                qobj = qobj.filter(AuditEvent.created_at >= dt_from)
+            except ValueError:
+                pass
+        if q_date_to:
+            try:
+                dt_to = datetime.strptime(q_date_to, '%Y-%m-%d').replace(
+                    hour=23, minute=59, second=59, tzinfo=timezone.utc)
+                qobj = qobj.filter(AuditEvent.created_at <= dt_to)
+            except ValueError:
+                pass
+        return qobj
+
+    if base is not None:
+        query = _apply_filters(base).order_by(AuditEvent.created_at.desc()).limit(200)
+        events = query.all()
+    else:
+        # Category pre-filter already applied; apply remaining filters in Python
+        filtered = all_candidate_events
+        if q_event_type:
+            filtered = [ev for ev in filtered if ev.event_type == q_event_type]
+        if q_actor:
+            lo = q_actor.lower()
+            filtered = [ev for ev in filtered
+                        if lo in (ev.actor_name or '').lower()
+                        or lo in (ev.actor_email or '').lower()]
+        if q_search:
+            lo = q_search.lower()
+            filtered = [ev for ev in filtered
+                        if lo in (ev.entity_label or '').lower()
+                        or lo in (ev.actor_name or '').lower()
+                        or lo in ev.event_type.lower()]
+        if q_date_from:
+            try:
+                dt_from = datetime.strptime(q_date_from, '%Y-%m-%d').replace(
+                    hour=0, minute=0, second=0, tzinfo=timezone.utc)
+                filtered = [ev for ev in filtered
+                            if ev.created_at and _ensure_utc(ev.created_at) >= dt_from]
+            except ValueError:
+                pass
+        if q_date_to:
+            try:
+                dt_to = datetime.strptime(q_date_to, '%Y-%m-%d').replace(
+                    hour=23, minute=59, second=59, tzinfo=timezone.utc)
+                filtered = [ev for ev in filtered
+                            if ev.created_at and _ensure_utc(ev.created_at) <= dt_to]
+            except ValueError:
+                pass
+        events = filtered[:200]
+
+    # Side-data for filter dropdowns
+    actors_raw = (AuditEvent.query
+                  .with_entities(AuditEvent.actor_name, AuditEvent.actor_email)
+                  .filter(AuditEvent.project_id == pid,
+                          AuditEvent.actor_name != '')
+                  .distinct()
+                  .order_by(AuditEvent.actor_name)
+                  .limit(100)
+                  .all())
+    actors = sorted({r.actor_name for r in actors_raw if r.actor_name})
+
+    event_types = sorted({ev.event_type for ev in
+                          AuditEvent.query
+                          .with_entities(AuditEvent.event_type)
+                          .filter(AuditEvent.project_id == pid)
+                          .distinct()
+                          .limit(200)
+                          .all()})
+
+    filters = {
+        'category':   q_category,
+        'event_type': q_event_type,
+        'actor':      q_actor,
+        'q':          q_search,
+        'date_from':  q_date_from,
+        'date_to':    q_date_to,
+        'chip':       q_chip,
+    }
+    return events, filters, actors, event_types
+
+
+def _ensure_utc(dt):
+    """Make a datetime timezone-aware (UTC) if it's naive."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
 @app.route('/projects/<int:pid>/audit')
 @login_required
 def project_audit(pid):
-    """Audit trail page — show all events for this project."""
-    if current_user.role not in ('engineer', 'manager', 'admin'):
+    """Main project audit log — owners and users with can_view_audit_log."""
+    member = get_project_member_ac(pid)
+    if not member:
         abort(403)
-    proj   = Project.query.get_or_404(pid)
-    events = (AuditEvent.query
-              .filter_by(project_id=pid)
+    if not (member.is_owner or user_can(pid, 'can_view_audit_log')):
+        abort(403)
+
+    proj = Project.query.get_or_404(pid)
+    from flask import session as fsession
+    fsession['active_project_id'] = pid
+
+    events, filters, actors, event_types = _audit_query(pid)
+
+    # Category counts for tab badges (capped at 200 recent events)
+    recent = (AuditEvent.query
+              .filter(AuditEvent.project_id == pid)
               .order_by(AuditEvent.created_at.desc())
               .limit(500)
               .all())
-    return render_template('project_audit.html', proj=proj, events=events)
+    cat_counts = {}
+    for ev in recent:
+        c = audit_category_for_event(ev.event_type)
+        cat_counts[c] = cat_counts.get(c, 0) + 1
+
+    return render_template('project_audit.html',
+                           proj=proj,
+                           events=events,
+                           filters=filters,
+                           actors=actors,
+                           event_types=event_types,
+                           cat_counts=cat_counts,
+                           audit_category_for_event=audit_category_for_event,
+                           page_title='Project Audit Log',
+                           preset_category=None)
+
+
+@app.route('/projects/<int:pid>/audit/itps')
+@login_required
+def project_audit_itps(pid):
+    """ITP-scoped audit log."""
+    member = get_project_member_ac(pid)
+    if not member:
+        abort(403)
+    if not (member.is_owner or user_can(pid, 'can_view_audit_log')):
+        abort(403)
+
+    proj = Project.query.get_or_404(pid)
+    from flask import session as fsession
+    fsession['active_project_id'] = pid
+
+    events, filters, actors, event_types = _audit_query(pid, preset_category='ITPs')
+
+    return render_template('project_audit.html',
+                           proj=proj,
+                           events=events,
+                           filters=filters,
+                           actors=actors,
+                           event_types=event_types,
+                           cat_counts={},
+                           audit_category_for_event=audit_category_for_event,
+                           page_title='ITP Audit Log',
+                           preset_category='ITPs')
+
+
+@app.route('/projects/<int:pid>/audit/people')
+@login_required
+def project_audit_people(pid):
+    """People & Access audit log."""
+    member = get_project_member_ac(pid)
+    if not member:
+        abort(403)
+    if not (member.is_owner or user_can(pid, 'can_view_audit_log')):
+        abort(403)
+
+    proj = Project.query.get_or_404(pid)
+    from flask import session as fsession
+    fsession['active_project_id'] = pid
+
+    events, filters, actors, event_types = _audit_query(pid, preset_category='Access & People')
+
+    return render_template('project_audit.html',
+                           proj=proj,
+                           events=events,
+                           filters=filters,
+                           actors=actors,
+                           event_types=event_types,
+                           cat_counts={},
+                           audit_category_for_event=audit_category_for_event,
+                           page_title='People & Access Audit Log',
+                           preset_category='Access & People')
 
 
 @app.route('/projects/<int:pid>/hierarchy')
@@ -6418,6 +6660,71 @@ def run_migrations():
 
 
 # ─── Audit event helper ───────────────────────────────────────────────────────
+def audit_category_for_event(event_type):
+    """Return the category name for a given audit event_type string.
+
+    Categories: 'Access & People' | 'ITPs' | 'Documents' | 'Map' |
+                'QA Tests' | 'Proof Rolls' | 'Foundation' |
+                'Project Setup' | 'System'
+    """
+    _ACCESS_PEOPLE = {
+        'permission_changed', 'permission_self_lockout_confirmed',
+        'access_level_changed', 'project_owner_assigned', 'project_owner_removed',
+        'owner_added', 'member_added', 'member_removed', 'member_disabled',
+        'member_updated', 'user_invite_created', 'user_invite_revoked',
+        'invite_sent', 'invite_resent', 'invite_accepted', 'invite_revoked',
+        'invite_link_generated', 'project_access_removed',
+        'company_added', 'company_removed',
+        # AC variants
+        'user_invite_accepted', 'project_member_created',
+        'project_member_linked', 'project_member_link_skipped',
+    }
+    _ITP = {
+        'itp_template_created', 'itp_metadata_changed',
+        'itp_item_signed', 'itp_item_unsigned',
+        'itp_item_client_reviewed', 'itp_client_signed',
+        'itp_document_uploaded', 'itp_document_deleted',
+        'itp_invite_created', 'itp_invite_revoked',
+        'itp_exported_zip', 'itp_reopened',
+        'itp_submitted_for_client_review',
+    }
+    _DOCUMENTS = {
+        'document_uploaded', 'document_deleted', 'document_moved',
+        'document_linked', 'document_unlinked',
+        'folder_created', 'folder_deleted',
+    }
+    _MAP = {
+        'map_layer_added', 'map_layer_removed', 'map_layer_updated',
+        'map_marker_added', 'map_marker_removed',
+    }
+    _QA_TESTS = {
+        'qa_test_created', 'qa_test_updated', 'qa_test_deleted',
+        'test_record_created', 'test_record_updated',
+    }
+    _PROOF_ROLLS = {
+        'proof_roll_created', 'proof_roll_updated', 'proof_roll_deleted',
+        'proof_roll_approved', 'proof_roll_rejected',
+    }
+    _FOUNDATION = {
+        'foundation_stage_completed', 'foundation_stage_updated',
+        'foundation_stage_reset', 'foundation_record_created',
+    }
+    _PROJECT_SETUP = {
+        'project_created', 'project_updated', 'feature_changed',
+        'hierarchy_changed', 'element_created', 'element_updated',
+        'element_deleted', 'group_created', 'group_updated',
+    }
+    if event_type in _ACCESS_PEOPLE:  return 'Access & People'
+    if event_type in _ITP:            return 'ITPs'
+    if event_type in _DOCUMENTS:      return 'Documents'
+    if event_type in _MAP:            return 'Map'
+    if event_type in _QA_TESTS:       return 'QA Tests'
+    if event_type in _PROOF_ROLLS:    return 'Proof Rolls'
+    if event_type in _FOUNDATION:     return 'Foundation'
+    if event_type in _PROJECT_SETUP:  return 'Project Setup'
+    return 'System'
+
+
 def log_audit(event_type, *, project_id=None, actor=None, entity_type='',
               entity_id=None, entity_label='', detail=None, request=None):
     """Write one row to audit_events. Never raises — errors are swallowed."""

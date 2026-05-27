@@ -550,21 +550,32 @@
   </div>
   {% endfor %}
 
-  {# ── Recent Access Changes ── #}
+  {# ── People & Access Activity ── #}
   <div style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;
               margin-top:8px;box-shadow:0 2px 8px rgba(0,0,0,.05);overflow:hidden;">
-    <div style="display:flex;align-items:center;gap:10px;
-                padding:14px 20px;border-bottom:1px solid #f1f5f9;background:#f8fafc;">
-      <div style="width:32px;height:32px;border-radius:8px;background:#ede9fe;
-                  display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-        <i class="fa-solid fa-clock-rotate-left" style="color:#7c3aed;font-size:13px;"></i>
-      </div>
-      <div>
-        <div style="font-size:13px;font-weight:800;color:#1e293b;">Recent Access Changes</div>
-        <div style="font-size:11px;color:#94a3b8;font-weight:500;">
-          Latest {{ access_events|length }} access-related events for this project
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;
+                padding:14px 20px;border-bottom:1px solid #f1f5f9;background:#f8fafc;
+                flex-wrap:wrap;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="width:32px;height:32px;border-radius:8px;background:#ede9fe;
+                    display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <i class="fa-solid fa-clock-rotate-left" style="color:#7c3aed;font-size:13px;"></i>
+        </div>
+        <div>
+          <div style="font-size:13px;font-weight:800;color:#1e293b;">People &amp; Access Activity</div>
+          <div style="font-size:11px;color:#94a3b8;font-weight:500;">
+            Latest {{ access_events|length }} access-related events for this project
+          </div>
         </div>
       </div>
+      <a href="{{ url_for('project_audit_people', pid=proj.id) }}"
+         style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;
+                background:#ede9fe;border:1.5px solid #ddd6fe;border-radius:9px;
+                font-size:12px;font-weight:700;color:#7c3aed;text-decoration:none;
+                white-space:nowrap;">
+        <i class="fa-solid fa-clock-rotate-left" style="font-size:10px;"></i>
+        Open full audit
+      </a>
     </div>
 
     {% if access_events %}
