@@ -22,6 +22,28 @@ This file is split into three concerns:
    - King Rocks Wind Farm demo data only when ENABLE_DEMO_KRWF_SEED=true.
 
 PRODUCTION: set neither env var. No demo accounts will ever be created.
+
+─── Railway environment variables ────────────────────────────────────────────
+
+Required (first-owner bootstrap):
+  SITEGRID_OWNER_EMAIL          e.g. you@yourcompany.com
+  SITEGRID_OWNER_NAME           e.g. Your Name
+  SITEGRID_OWNER_PASSWORD       strong password — never logged
+  SITEGRID_FIRST_PROJECT_NAME   e.g. My First Project
+
+Optional (emergency password reset):
+  SITEGRID_FORCE_OWNER_PASSWORD_RESET=true
+
+  When this flag is set to "true" the bootstrap will:
+    - Find or create the owner user.
+    - Forcibly set their name and password from the env vars.
+    - Ensure is_active=True and email_verified=True.
+    - Ensure the owner ProjectMemberAC row exists on the first project.
+    - Clear and re-seed all 23 permission rows (all True, locked).
+    - Commit.
+  Remove or set to "false" after a successful login.
+
+──────────────────────────────────────────────────────────────────────────────
 """
 import os
 from werkzeug.security import generate_password_hash
@@ -30,7 +52,7 @@ from models import (db, User, WTG, Area, QATest, ITPRecord, ITPItemStatus,
                     WTGGroup, ELEMENT_TYPES,
                     CustomTrackingField, ProgressWidget,
                     Project, ProjectMember, ProjectFeature, ALL_FEATURES,
-                    ProjectMemberAC, seed_member_permissions)
+                    ProjectMemberAC, ProjectMemberPermission, seed_member_permissions)
 
 
 # ─── Demo data constants (KRWF only) ─────────────────────────────────────────
@@ -378,15 +400,18 @@ def _seed_krwf_demo(app):
 def _bootstrap_first_owner(app):
     """Create the real first owner from environment variables.
 
-    Reads four env vars:
+    Required env vars (all four must be non-empty):
       SITEGRID_OWNER_EMAIL
       SITEGRID_OWNER_NAME
       SITEGRID_OWNER_PASSWORD
       SITEGRID_FIRST_PROJECT_NAME
 
-    All four must be non-empty for any action to be taken.
+    Optional:
+      SITEGRID_FORCE_OWNER_PASSWORD_RESET=true
+        Forcibly resets the owner's name + password from env vars on every
+        startup until this flag is removed.  Use for emergency access recovery.
 
-    Behaviour (idempotent — safe on every startup):
+    Normal behaviour (idempotent — safe on every startup):
       - Creates or updates the owner User (is_active=True, email_verified=True).
         Only updates name/password if the existing account is a known demo
         account; otherwise just ensures it is active and verified.
@@ -398,15 +423,21 @@ def _bootstrap_first_owner(app):
 
     Does NOT create demo users.
     Does NOT expose public registration.
-    Does NOT reset a real user's password silently.
+    Does NOT log the password.
     """
     email     = os.environ.get('SITEGRID_OWNER_EMAIL', '').strip().lower()
     name      = os.environ.get('SITEGRID_OWNER_NAME', '').strip()
     password  = os.environ.get('SITEGRID_OWNER_PASSWORD', '').strip()
     proj_name = os.environ.get('SITEGRID_FIRST_PROJECT_NAME', '').strip()
+    force_reset = os.environ.get('SITEGRID_FORCE_OWNER_PASSWORD_RESET', '').strip().lower() == 'true'
 
     if not all([email, name, password, proj_name]):
-        return  # env vars not configured — skip silently
+        print(
+            "Bootstrap skipped: SITEGRID_OWNER_EMAIL, SITEGRID_OWNER_NAME, "
+            "SITEGRID_OWNER_PASSWORD, and SITEGRID_FIRST_PROJECT_NAME are required "
+            "to create the first Owner."
+        )
+        return
 
     _DEMO_NAMES = frozenset({
         'Engineer', 'Supervisor', 'Manager', 'Client',
@@ -428,6 +459,13 @@ def _bootstrap_first_owner(app):
                 )
                 db.session.add(owner)
                 print(f"Bootstrap: creating owner user '{email}'")
+            elif force_reset:
+                # Emergency recovery — forcibly apply name + password from env
+                owner.name           = name
+                owner.password       = generate_password_hash(password)
+                owner.is_active      = True
+                owner.email_verified = True
+                print(f"Bootstrap: owner password reset from env flag")
             else:
                 owner.is_active      = True
                 owner.email_verified = True
@@ -485,15 +523,25 @@ def _bootstrap_first_owner(app):
                 member.is_owner     = True
                 member.access_level = 'owner'
                 member.is_active    = True
+                member.name         = owner.name
+                member.email        = owner.email
                 db.session.flush()
                 print(f"Bootstrap: ensured ProjectMemberAC owner row (id={member.id})")
 
-            # ── 4. Seed 23 permission rows (all value=True, locked=True) ──
-            new_perms = seed_member_permissions(member)
-            if new_perms:
-                print(f"Bootstrap: seeded {len(new_perms)} permission rows (all locked on for owner)")
+            # ── 4. Seed / re-seed permissions ─────────────────────────────
+            if force_reset:
+                # Clear all existing permission rows and fully re-seed so the
+                # owner has all 23 permissions set to True and locked.
+                ProjectMemberPermission.query.filter_by(member_id=member.id).delete()
+                db.session.flush()
+                new_perms = seed_member_permissions(member)
+                print(f"Bootstrap: cleared and re-seeded {len(new_perms)} permission rows (force reset)")
             else:
-                print("Bootstrap: permission rows already complete")
+                new_perms = seed_member_permissions(member)
+                if new_perms:
+                    print(f"Bootstrap: seeded {len(new_perms)} permission rows (all locked on for owner)")
+                else:
+                    print("Bootstrap: permission rows already complete")
 
             db.session.commit()
             print(f"Bootstrap complete — '{email}' can log in as project owner.")
