@@ -4308,19 +4308,13 @@ def api_get_zones():
 def itp_index():
     """Landing: choose Element + ITP type — scoped to active project."""
     proj = getattr(g, 'project', None)
-    if proj:
-        wtgs    = WTG.query.filter_by(project_id=proj.id).order_by(WTG.name).all()
-        wtg_ids = [w.id for w in wtgs]
-        records = (ITPRecord.query
-                   .filter(ITPRecord.wtg_id.in_(wtg_ids)).all()
-                   if wtg_ids else [])
-    elif current_user.role in ('admin', 'manager'):
-        # Global admins/managers can still see the cross-project legacy view
-        wtgs    = WTG.query.order_by(WTG.name).all()
-        records = ITPRecord.query.all()
-    else:
-        # No active project and not a global admin — refuse to expose all records
+    if not proj:
         abort(403)
+    wtgs    = WTG.query.filter_by(project_id=proj.id).order_by(WTG.name).all()
+    wtg_ids = [w.id for w in wtgs]
+    records = (ITPRecord.query
+               .filter(ITPRecord.wtg_id.in_(wtg_ids)).all()
+               if wtg_ids else [])
     by_key = {(r.wtg_id, r.itp_type): r for r in records}
     return render_template('itp_index.html',
                            wtgs=wtgs,
@@ -5328,22 +5322,16 @@ def itp_export():
     """Page to select and bulk-download ITPs as PDFs — scoped to active project."""
     from flask import g
     proj = getattr(g, 'project', None)
-    if proj:
-        if not user_can_view_project_ac(proj.id):
-            abort(403)
-        wtgs    = WTG.query.filter_by(project_id=proj.id).order_by(WTG.name).all()
-        wtg_ids = [w.id for w in wtgs]
-        records = (ITPRecord.query
-                   .filter(ITPRecord.wtg_id.in_(wtg_ids))
-                   .order_by(ITPRecord.wtg_id, ITPRecord.itp_type).all()
-                   if wtg_ids else [])
-    elif current_user.role in ('admin', 'manager'):
-        # Global admins/managers retain cross-project legacy access
-        wtgs    = WTG.query.order_by(WTG.name).all()
-        records = ITPRecord.query.order_by(ITPRecord.wtg_id, ITPRecord.itp_type).all()
-    else:
-        # No active project and not a global admin — refuse to expose all records
+    if not proj:
         abort(403)
+    if not user_can_view_project_ac(proj.id):
+        abort(403)
+    wtgs    = WTG.query.filter_by(project_id=proj.id).order_by(WTG.name).all()
+    wtg_ids = [w.id for w in wtgs]
+    records = (ITPRecord.query
+               .filter(ITPRecord.wtg_id.in_(wtg_ids))
+               .order_by(ITPRecord.wtg_id, ITPRecord.itp_type).all()
+               if wtg_ids else [])
     return render_template('itp_export.html', wtgs=wtgs, records=records,
                            itp_types=list(ITP_DEFINITIONS.keys()))
 
