@@ -2,6 +2,7 @@ import os, json, base64, uuid, unicodedata, re, secrets, hashlib, hmac as _hmac
 import urllib.request, urllib.parse
 from urllib.parse import quote as _urlquote
 from datetime import datetime, date, timezone, timedelta
+from functools import wraps
 from flask import (Flask, render_template, request, redirect,
                    url_for, flash, jsonify, abort, send_from_directory, make_response)
 from flask_login import (LoginManager, login_user, logout_user,
@@ -27,7 +28,10 @@ from models import (db, User, WTG, Area, QATest, TestRecord,
                     DOCUMENT_CATEGORIES, DOCUMENT_LINK_TYPES, DOCUMENT_LINK_DICT,
                     ProjectCompany, ProjectTeamMember, AuditEvent,
                     COMPANY_TYPES, PROJECT_ROLES, ITP_REVIEW_ACTIONS,
-                    UserInvite, PasswordResetToken, INVITE_STATUSES)
+                    UserInvite, PasswordResetToken, INVITE_STATUSES,
+                    ProjectMemberAC, ProjectMemberPermission,
+                    AC_ACCESS_LEVELS, PERMISSION_KEYS, _ALL_AC_PERM_KEYS,
+                    seed_member_permissions)
 from itp_definitions import ITP_DEFINITIONS, CLIENTS
 from seed import seed
 import kml_parser
@@ -295,6 +299,167 @@ def wtg_summary():
     if proj:
         q = q.filter_by(project_id=proj.id)
     return q.all()
+
+# ═══════════════════════════════════════════════════════════════════
+# ACCESS CONTROL CENTRE — Phase AC-2 helpers
+#
+# Project-scoped permission checks built on ProjectMemberAC.
+# Old helpers (_user_can_manage_project, can_enter_data, …) are
+# intentionally kept unchanged; these run alongside them.
+# ═══════════════════════════════════════════════════════════════════
+
+class _ACError(ValueError):
+    """Raised by AC safety helpers when a safety invariant would be broken.
+
+    Callers should catch this and surface it as a 400/409 or flash message
+    rather than letting it propagate as a 500.
+    """
+
+
+# ── 1. Member lookup ─────────────────────────────────────────────────────────
+
+def get_project_member_ac(project_id, user_id=None):
+    """Return the active ProjectMemberAC row for (project_id, user_id).
+
+    Falls back to current_user.id when user_id is None.
+    Returns None if no active row exists.
+    """
+    uid = user_id if user_id is not None else current_user.id
+    return ProjectMemberAC.query.filter_by(
+        project_id=project_id,
+        user_id=uid,
+        is_active=True,
+    ).first()
+
+
+# ── 2. Owner check ───────────────────────────────────────────────────────────
+
+def user_is_project_owner(project_id, user_id=None):
+    """Return True only if the user has an active owner row for this project.
+
+    No global-role bypass — only ProjectMemberAC.is_owner counts.
+    """
+    member = get_project_member_ac(project_id, user_id=user_id)
+    return bool(member and member.is_owner)
+
+
+# ── 3. Generic permission check ──────────────────────────────────────────────
+
+def user_can(project_id, permission_key, user_id=None):
+    """Return True if the user holds *permission_key* on *project_id*.
+
+    Decision order:
+    1. Unknown key          → False  (safe default; avoids 500s on typos)
+    2. No active member     → False
+    3. member.is_owner      → True   (owners have every permission)
+    4. Seed permission rows (idempotent; no commit)
+    5. Look up the row      → bool(permission.value)
+
+    Does not commit. seed_member_permissions may flush pending rows if
+    SQLAlchemy's autoflush is active, but never issues a COMMIT.
+    """
+    if permission_key not in _ALL_AC_PERM_KEYS:
+        return False
+
+    member = get_project_member_ac(project_id, user_id=user_id)
+    if member is None:
+        return False
+    if member.is_owner:
+        return True
+
+    seed_member_permissions(member)
+
+    perm = next(
+        (p for p in member.permissions if p.permission_key == permission_key),
+        None,
+    )
+    return bool(perm and perm.value)
+
+
+# ── 4. Access-management shorthand ───────────────────────────────────────────
+
+def user_can_manage_access(project_id, user_id=None):
+    """Return True if the user can manage project access.
+
+    Owners always pass; others need the can_manage_access permission.
+    """
+    if user_is_project_owner(project_id, user_id=user_id):
+        return True
+    return user_can(project_id, 'can_manage_access', user_id=user_id)
+
+
+# ── 5. Decorator ─────────────────────────────────────────────────────────────
+
+def require_project_permission(permission_key):
+    """Route decorator that gates on user_can(pid, permission_key).
+
+    Reads the project id from the route kwarg named ``pid``.
+    Aborts 403 if the kwarg is absent or permission is denied.
+
+    Usage::
+
+        @app.route('/project/<int:pid>/something')
+        @login_required
+        @require_project_permission('can_create_itp')
+        def something(pid):
+            ...
+    """
+    def decorator(fn):
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            pid = kwargs.get('pid')
+            if pid is None:
+                abort(403)
+            if not user_can(pid, permission_key):
+                abort(403)
+            return fn(*args, **kwargs)
+        return wrapper
+    return decorator
+
+
+# ── 6. Safety helpers ────────────────────────────────────────────────────────
+
+def active_owner_count(project_id):
+    """Return the number of active owner rows for *project_id*."""
+    return ProjectMemberAC.query.filter_by(
+        project_id=project_id,
+        is_owner=True,
+        is_active=True,
+    ).count()
+
+
+def assert_not_last_owner(project_id, target_member_id):
+    """Raise _ACError if the action would leave the project ownerless.
+
+    Passes silently when the target is not an active owner.
+    Passes silently when there are two or more active owners.
+    Raises _ACError when the target IS the only active owner.
+    """
+    target = db.session.get(ProjectMemberAC, target_member_id)
+    if target is None or not target.is_owner or not target.is_active:
+        return  # target is not an active owner — no restriction applies
+    if active_owner_count(project_id) <= 1:
+        raise _ACError(
+            'Cannot remove or demote the last owner of this project. '
+            'Assign at least one other owner first.'
+        )
+
+
+def assert_can_act_on_owner(actor_member, target_member):
+    """Raise _ACError if a non-owner tries to act on an owner.
+
+    actor_member  — ProjectMemberAC of the person taking the action.
+    target_member — ProjectMemberAC of the person being acted on.
+
+    Passes when target is not an owner (anyone can act on non-owners,
+    subject to their own permission checks).
+    Passes when both actor and target are owners.
+    """
+    if target_member.is_owner and not actor_member.is_owner:
+        raise _ACError(
+            'Only a project owner can modify another owner\'s access.'
+        )
+
 
 # ─── Auth ────────────────────────────────────────────────────────────────────
 @app.route('/login', methods=['GET','POST'])

@@ -1458,5 +1458,3 @@ def seed_member_permissions(member: ProjectMemberAC) -> list:
             new_rows.append(row)
 
     return new_rows
-
-    return new_rows
