@@ -1374,9 +1374,24 @@ def new_project():
         new_credentials = []  # track newly created accounts
         added_ids = set()
 
-        # Always add creator as owner
+        # Always add creator as owner — both legacy table AND new AC model
         db.session.add(ProjectMember(project_id=proj.id, user_id=current_user.id, proj_role='owner'))
         added_ids.add(current_user.id)
+
+        # ProjectMemberAC row is required for the project to appear in g.user_projects
+        # and for all AC permission checks. Without this the project is invisible.
+        _ac_owner = ProjectMemberAC(
+            project_id   = proj.id,
+            user_id      = current_user.id,
+            is_owner     = True,
+            access_level = 'owner',
+            is_active    = True,
+            name         = current_user.name,
+            email        = current_user.email or '',
+        )
+        db.session.add(_ac_owner)
+        db.session.flush()   # populate _ac_owner.id before seeding permissions
+        seed_member_permissions(_ac_owner)
 
         for m in members_data:
             email    = (m.get('email') or '').strip().lower()
