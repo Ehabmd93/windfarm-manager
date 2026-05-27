@@ -2282,6 +2282,8 @@ def api_toggle_permission(pid, mid, permission_key):
     target = db.session.get(ProjectMemberAC, mid)
     if target is None or target.project_id != pid:
         return jsonify({'error': 'Member not found.'}), 404
+    if not target.is_active:
+        return jsonify({'error': 'Cannot change permissions for a disabled member.'}), 409
 
     # ── 4. Permission key ─────────────────────────────────────────────────────
     if permission_key not in _ALL_AC_PERM_KEYS:
@@ -2303,9 +2305,11 @@ def api_toggle_permission(pid, mid, permission_key):
     if perm.locked:
         return jsonify({'error': 'This permission is locked and cannot be changed.'}), 409
 
-    # ── Parse value ───────────────────────────────────────────────────────────
-    data      = request.get_json(silent=True) or {}
-    new_value = bool(data.get('value', False))
+    # ── Parse value — strict boolean only ────────────────────────────────────
+    data = request.get_json(silent=True) or {}
+    if 'value' not in data or not isinstance(data.get('value'), bool):
+        return jsonify({'error': 'value must be a boolean.'}), 400
+    new_value = data['value']
     old_value = bool(perm.value)
 
     # ── 7. Self-lockout guard ────────────────────────────────────────────────
