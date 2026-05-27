@@ -30,7 +30,7 @@ from models import (db, User, WTG, Area, QATest, TestRecord,
                     COMPANY_TYPES, PROJECT_ROLES, ITP_REVIEW_ACTIONS,
                     UserInvite, PasswordResetToken, INVITE_STATUSES,
                     ProjectMemberAC, ProjectMemberPermission,
-                    AC_ACCESS_LEVELS, PERMISSION_KEYS, _ALL_AC_PERM_KEYS,
+                    AC_ACCESS_LEVELS, PERMISSION_GROUPS, PERMISSION_KEYS, _ALL_AC_PERM_KEYS,
                     DEFAULT_PERMISSIONS, LOCKED_PERMISSIONS,
                     seed_member_permissions)
 from itp_definitions import ITP_DEFINITIONS, CLIENTS
@@ -2204,6 +2204,60 @@ def project_people(pid):
                            ac_access_levels=AC_ACCESS_LEVELS,
                            invites_by_member=invites_by_member,
                            can_manage=can_manage)
+
+
+@app.route('/projects/<int:pid>/access-control')
+@login_required
+def project_access_control(pid):
+    """AC-4A — Read-only permission matrix. Owners and can_manage_access only."""
+    if not (user_is_project_owner(pid) or user_can(pid, 'can_manage_access')):
+        abort(403)
+
+    proj = Project.query.get_or_404(pid)
+    from flask import session as fsession
+    fsession['active_project_id'] = pid
+
+    # All members (active + disabled), ordered by owner-first then name
+    members = (ProjectMemberAC.query
+               .filter_by(project_id=pid)
+               .order_by(ProjectMemberAC.is_owner.desc(),
+                         ProjectMemberAC.is_active.desc(),
+                         ProjectMemberAC.name)
+               .all())
+
+    # Ensure every active member has a full permission set seeded
+    needs_commit = False
+    for m in members:
+        if m.is_active:
+            new_rows = seed_member_permissions(m)
+            if new_rows:
+                needs_commit = True
+    if needs_commit:
+        db.session.commit()
+
+    # Summary counts
+    active_members  = [m for m in members if m.is_active]
+    owner_count     = sum(1 for m in active_members if m.is_owner)
+    pending_count   = sum(1 for m in active_members if m.invite_status == 'pending')
+    disabled_count  = sum(1 for m in members if not m.is_active)
+
+    # Build permission lookup: {member_id: {permission_key: ProjectMemberPermission}}
+    perm_map = {}
+    for m in members:
+        perm_map[m.id] = {p.permission_key: p for p in m.permissions}
+
+    return render_template(
+        'project_access_control.html',
+        proj            = proj,
+        members         = members,
+        active_members  = active_members,
+        owner_count     = owner_count,
+        pending_count   = pending_count,
+        disabled_count  = disabled_count,
+        permission_groups = PERMISSION_GROUPS,
+        perm_map        = perm_map,
+        is_owner        = user_is_project_owner(pid),
+    )
 
 
 @app.route('/projects/<int:pid>/companies', methods=['POST'])

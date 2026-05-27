@@ -1,0 +1,448 @@
+{% extends "base.html" %}
+{% block title %}Access Control Center — {{ proj.name }}{% endblock %}
+{% block page_title %}Access Control Center{% endblock %}
+{% block page_sub %}{{ proj.name }} · Fine-tune what each person can do on this project.{% endblock %}
+
+{% block head %}
+<style>
+  /* ── Layout ─────────────────────────────────── */
+  .acc-page { padding: 0 0 60px; }
+
+  /* ── Summary cards ──────────────────────────── */
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 12px;
+    margin-bottom: 28px;
+  }
+  .summary-card {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    padding: 16px 18px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.05);
+  }
+  .summary-card .sc-value {
+    font-size: 26px;
+    font-weight: 800;
+    color: #1e293b;
+    line-height: 1;
+  }
+  .summary-card .sc-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: #94a3b8;
+    margin-top: 4px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+  }
+
+  /* ── Filter bar ─────────────────────────────── */
+  .filter-bar {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 12px 16px;
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.04);
+  }
+  .filter-bar input {
+    flex: 1;
+    border: none;
+    outline: none;
+    font-size: 13px;
+    color: #1e293b;
+    background: transparent;
+  }
+  .filter-bar input::placeholder { color: #94a3b8; }
+
+  /* ── Permission group section ───────────────── */
+  .perm-section {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    margin-bottom: 28px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.05);
+    overflow: hidden;
+  }
+  .perm-section-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 20px;
+    border-bottom: 1px solid #f1f5f9;
+    background: #f8fafc;
+  }
+  .perm-section-icon {
+    width: 32px; height: 32px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; flex-shrink: 0;
+  }
+  .perm-section-title {
+    font-size: 13px; font-weight: 800; color: #1e293b;
+  }
+  .perm-section-subtitle {
+    font-size: 11px; color: #94a3b8; font-weight: 500;
+  }
+
+  /* ── Matrix table ───────────────────────────── */
+  .matrix-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .matrix-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 600px;
+  }
+  .matrix-table th {
+    padding: 10px 14px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #64748b;
+    text-align: center;
+    white-space: nowrap;
+    border-bottom: 1px solid #f1f5f9;
+    background: #f8fafc;
+    vertical-align: bottom;
+  }
+  .matrix-table th.member-col {
+    text-align: left;
+    min-width: 200px;
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    border-right: 1px solid #e2e8f0;
+  }
+  .matrix-table td {
+    padding: 10px 14px;
+    border-bottom: 1px solid #f8fafc;
+    vertical-align: middle;
+    text-align: center;
+  }
+  .matrix-table td.member-cell {
+    text-align: left;
+    position: sticky;
+    left: 0;
+    background: #fff;
+    z-index: 1;
+    border-right: 1px solid #f1f5f9;
+  }
+  .matrix-table tr:last-child td { border-bottom: none; }
+  .matrix-table tr:hover td { background: #f8fafc; }
+  .matrix-table tr:hover td.member-cell { background: #f8fafc; }
+
+  /* disabled row */
+  .row-disabled td { opacity: .5; }
+  .row-disabled td.member-cell { background: #fafafa !important; }
+
+  /* member cell inner */
+  .mc-name {
+    font-size: 13px; font-weight: 700; color: #1e293b;
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  }
+  .mc-meta {
+    font-size: 11px; color: #94a3b8; margin-top: 2px;
+  }
+  .mc-level-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 7px; border-radius: 99px;
+    font-size: 10px; font-weight: 700;
+  }
+  .mc-owner-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 7px; border-radius: 99px;
+    font-size: 10px; font-weight: 700;
+    background: #fef3c7; color: #92400e;
+  }
+  .mc-disabled-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 7px; border-radius: 99px;
+    font-size: 10px; font-weight: 700;
+    background: #f1f5f9; color: #94a3b8;
+  }
+
+  /* ── Permission cells ───────────────────────── */
+  .perm-cell {
+    width: 36px;
+  }
+  /* locked owner */
+  .perm-locked {
+    width: 26px; height: 26px; border-radius: 8px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: #fef3c7; color: #d97706; font-size: 11px;
+    margin: auto;
+    title: "Locked — all permissions granted for Owner";
+  }
+  /* granted */
+  .perm-on {
+    width: 26px; height: 26px; border-radius: 8px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: #dcfce7; color: #16a34a; font-size: 11px;
+    margin: auto;
+  }
+  /* denied */
+  .perm-off {
+    width: 26px; height: 26px; border-radius: 8px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: #f1f5f9; color: #cbd5e1; font-size: 11px;
+    margin: auto;
+  }
+
+  /* ── Column header rotated labels ───────────── */
+  .col-label-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding-bottom: 4px;
+  }
+
+  /* ── Filtered-out rows ──────────────────────── */
+  .matrix-table tr.hidden-row { display: none; }
+
+  /* ── Empty state ────────────────────────────── */
+  .empty-filter {
+    display: none;
+    text-align: center;
+    padding: 24px;
+    color: #94a3b8;
+    font-size: 13px;
+  }
+
+  /* ── Back link ──────────────────────────────── */
+  .back-link {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 8px 14px;
+    background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 10px;
+    font-size: 13px; font-weight: 700; color: #64748b;
+    text-decoration: none;
+    transition: all .12s;
+    margin-bottom: 20px;
+  }
+  .back-link:hover { background: #f0f4f8; }
+
+  /* ── Read-only notice ───────────────────────── */
+  .readonly-notice {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 8px 14px;
+    background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px;
+    font-size: 12px; font-weight: 600; color: #92400e;
+    margin-bottom: 20px;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="acc-page">
+
+  {# ── Back link + read-only notice ── #}
+  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:20px;">
+    <a href="{{ url_for('project_people', pid=proj.id) }}" class="back-link">
+      <i class="fa-solid fa-arrow-left"></i> People &amp; Access
+    </a>
+    <span class="readonly-notice">
+      <i class="fa-solid fa-eye"></i> Read-only view &mdash; permission toggles coming soon
+    </span>
+  </div>
+
+  {# ── Page header ── #}
+  <div style="margin-bottom:24px;">
+    <h2 style="font-size:22px;font-weight:800;color:#1e293b;margin:0 0 4px;">
+      <i class="fa-solid fa-sliders" style="color:#7c3aed;margin-right:8px;"></i>Access Control Center
+    </h2>
+    <p style="color:#64748b;font-size:13px;margin:0;">
+      Fine-tune what each person can do on <strong>{{ proj.name }}</strong>.
+    </p>
+  </div>
+
+  {# ── Summary bar ── #}
+  <div class="summary-grid">
+    <div class="summary-card">
+      <div class="sc-value">{{ active_members|length }}</div>
+      <div class="sc-label">Active Members</div>
+    </div>
+    <div class="summary-card">
+      <div class="sc-value" style="color:#d97706;">{{ owner_count }}</div>
+      <div class="sc-label">Owners</div>
+    </div>
+    <div class="summary-card">
+      <div class="sc-value" style="color:#0891b2;">{{ pending_count }}</div>
+      <div class="sc-label">Pending Invites</div>
+    </div>
+    <div class="summary-card">
+      <div class="sc-value" style="color:#94a3b8;">{{ disabled_count }}</div>
+      <div class="sc-label">Disabled</div>
+    </div>
+  </div>
+
+  {# ── Filter bar ── #}
+  <div class="filter-bar">
+    <i class="fa-solid fa-magnifying-glass" style="color:#94a3b8;font-size:13px;"></i>
+    <input
+      id="acc-filter"
+      type="text"
+      placeholder="Filter by name, email, company or access level…"
+      oninput="filterMembers(this.value)"
+      autocomplete="off"
+    >
+    <span id="filter-count" style="font-size:11px;color:#94a3b8;white-space:nowrap;"></span>
+  </div>
+
+  {# ── Permission groups ── #}
+  {% for group_key, group_label, group_icon, group_color, group_perms in permission_groups %}
+  <div class="perm-section" id="group-{{ group_key }}">
+
+    {# Group header #}
+    <div class="perm-section-header">
+      <div class="perm-section-icon" style="background:{{ group_color }}18;">
+        <i class="fa-solid {{ group_icon }}" style="color:{{ group_color }};"></i>
+      </div>
+      <div>
+        <div class="perm-section-title">{{ group_label }}</div>
+        <div class="perm-section-subtitle">{{ group_perms|length }} permission{{ 's' if group_perms|length != 1 }}</div>
+      </div>
+    </div>
+
+    {# Matrix table #}
+    <div class="matrix-wrap">
+      <table class="matrix-table">
+        <thead>
+          <tr>
+            <th class="member-col">Member</th>
+            {% for perm_key, perm_label in group_perms %}
+            <th class="perm-cell">
+              <div class="col-label-wrap">
+                <span>{{ perm_label }}</span>
+              </div>
+            </th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in members %}
+          {%- set company_name = m.company_id and m.company_id|string or '' -%}
+          <tr
+            class="{% if not m.is_active %}row-disabled{% endif %}"
+            data-filter="{{ (m.name ~ ' ' ~ m.email ~ ' ' ~ m.access_level ~ ' ' ~ m.access_level_label)|lower }}"
+          >
+            {# Member info cell #}
+            <td class="member-cell">
+              <div class="mc-name">
+                <span>{{ m.name }}</span>
+                {% if m.is_owner %}
+                <span class="mc-owner-badge">
+                  <i class="fa-solid fa-crown" style="font-size:8px;"></i> Owner
+                </span>
+                {% endif %}
+                {% if not m.is_active %}
+                <span class="mc-disabled-badge">
+                  <i class="fa-solid fa-ban" style="font-size:8px;"></i> Disabled
+                </span>
+                {% endif %}
+              </div>
+              <div class="mc-meta">
+                <span class="mc-level-badge"
+                      style="background:{{ m.access_level_color }}15;color:{{ m.access_level_color }};">
+                  <i class="fa-solid {{ m.access_level_icon }}" style="font-size:7px;"></i>
+                  {{ m.access_level_label }}
+                </span>
+                {% if m.email %}
+                <span style="margin-left:4px;">{{ m.email }}</span>
+                {% endif %}
+              </div>
+            </td>
+
+            {# Permission cells #}
+            {% for perm_key, perm_label in group_perms %}
+            {%- set perm_row = perm_map.get(m.id, {}).get(perm_key) -%}
+            <td class="perm-cell" title="{{ perm_label }}{% if m.name %} — {{ m.name }}{% endif %}">
+              {% if perm_row and perm_row.locked %}
+                {# Locked (owner) — always on #}
+                <div class="perm-locked" title="Locked — granted for {{ m.access_level_label }}">
+                  <i class="fa-solid fa-lock"></i>
+                </div>
+              {% elif perm_row and perm_row.value %}
+                {# Granted #}
+                <div class="perm-on" title="Granted">
+                  <i class="fa-solid fa-check"></i>
+                </div>
+              {% else %}
+                {# Denied / not set #}
+                <div class="perm-off" title="Not granted">
+                  <i class="fa-solid fa-minus"></i>
+                </div>
+              {% endif %}
+            </td>
+            {% endfor %}
+
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="{{ group_perms|length + 1 }}" style="padding:24px;text-align:center;color:#94a3b8;font-size:13px;">
+              No members found.
+            </td>
+          </tr>
+          {% endfor %}
+
+          {# Empty-filter state row #}
+          <tr class="empty-filter-row" style="display:none;">
+            <td colspan="{{ group_perms|length + 1 }}" class="empty-filter" style="display:table-cell;">
+              No members match your filter.
+            </td>
+          </tr>
+
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endfor %}
+
+</div>
+
+<script>
+function filterMembers(q) {
+  const query = q.trim().toLowerCase();
+  const allBodyRows = document.querySelectorAll('.matrix-table tbody tr:not(.empty-filter-row)');
+
+  // Collect unique member data-filter values across all tables
+  const memberRows = document.querySelectorAll('.matrix-table tbody tr[data-filter]');
+  let visibleCount = 0;
+
+  memberRows.forEach(tr => {
+    const text = tr.dataset.filter || '';
+    const show = !query || text.includes(query);
+    tr.classList.toggle('hidden-row', !show);
+    if (show) visibleCount++;
+  });
+
+  // Update filter count display
+  const countEl = document.getElementById('filter-count');
+  if (query) {
+    // unique member count: count distinct data-filter values that are visible
+    const uniqueFilters = new Set();
+    document.querySelectorAll('.matrix-table tbody tr[data-filter]:not(.hidden-row)').forEach(tr => {
+      uniqueFilters.add(tr.dataset.filter);
+    });
+    // Divide by number of groups since each member appears once per group table
+    const groupCount = {{ permission_groups|length }};
+    const uniqueMembers = Math.round(uniqueFilters.size / groupCount);
+    countEl.textContent = uniqueMembers + ' member' + (uniqueMembers !== 1 ? 's' : '') + ' shown';
+  } else {
+    countEl.textContent = '';
+  }
+
+  // Show/hide the empty-filter row per group
+  document.querySelectorAll('.perm-section').forEach(section => {
+    const visibleDataRows = section.querySelectorAll('tbody tr[data-filter]:not(.hidden-row)');
+    const emptyRow = section.querySelector('.empty-filter-row');
+    if (emptyRow) {
+      emptyRow.style.display = visibleDataRows.length === 0 ? '' : 'none';
+    }
+  });
+}
+</script>
+{% endblock %}

@@ -297,6 +297,17 @@
         <i class="fa-solid fa-user-plus"></i> Add Member
       </button>
       {% endif %}
+      {% if can_manage %}
+      <a href="{{ url_for('project_access_control', pid=proj.id) }}"
+         style="display:inline-flex;align-items:center;gap:7px;padding:10px 16px;
+                background:#faf5ff;border:1.5px solid #e9d5ff;border-radius:10px;
+                font-size:13px;font-weight:700;color:#7c3aed;text-decoration:none;
+                transition:all .12s;"
+         onmouseover="this.style.background='#f3e8ff'"
+         onmouseout="this.style.background='#faf5ff'">
+        <i class="fa-solid fa-sliders" style="color:#7c3aed;"></i> Control Center
+      </a>
+      {% endif %}
       <a href="{{ url_for('project_audit', pid=proj.id) }}"
          style="display:inline-flex;align-items:center;gap:7px;padding:10px 16px;
                 background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;
