@@ -172,6 +172,53 @@
   .al-select:disabled { cursor: default; opacity: .7; }
   .al-select option { font-size: 13px; font-weight: 600; }
 
+  /* ── Ownership panel ────────────────────────── */
+  .ownership-panel {
+    background: #fff; border: 1.5px solid #fde68a; border-radius: 16px;
+    margin-bottom: 24px; box-shadow: 0 2px 8px rgba(0,0,0,.04); overflow: hidden;
+  }
+  .ownership-panel-header {
+    display: flex; align-items: center; gap: 10px;
+    padding: 13px 20px; border-bottom: 1px solid #fef3c7; background: #fffbeb;
+  }
+  .ownership-panel-body { padding: 18px 20px; }
+  .ownership-section {
+    margin-bottom: 18px; padding-bottom: 18px; border-bottom: 1px solid #f1f5f9;
+  }
+  .ownership-section:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
+  .ownership-section-label {
+    font-size: 11px; font-weight: 700; color: #94a3b8;
+    text-transform: uppercase; letter-spacing: .05em; margin-bottom: 10px;
+  }
+  .owner-pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 10px; border-radius: 99px;
+    background: #fef3c7; color: #92400e;
+    font-size: 11px; font-weight: 700; margin: 3px 2px;
+  }
+  .ownership-row {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  }
+  .own-select {
+    padding: 7px 11px; border: 1.5px solid #e2e8f0; border-radius: 9px;
+    font-size: 13px; color: #1e293b; background: #fff; outline: none;
+    flex: 1; min-width: 140px; max-width: 220px; cursor: pointer;
+  }
+  .own-select:focus { border-color: #a78bfa; box-shadow: 0 0 0 3px rgba(167,139,250,.15); }
+  .own-select:disabled { opacity: .5; cursor: not-allowed; }
+  .own-btn {
+    padding: 7px 16px; border: none; border-radius: 9px;
+    font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap;
+    transition: opacity .12s;
+  }
+  .own-btn:hover:not(:disabled) { opacity: .85; }
+  .own-btn:disabled { opacity: .45; cursor: not-allowed; }
+  .own-btn-promote { background: #f59e0b; color: #fff; }
+  .own-btn-remove  { background: #ef4444; color: #fff; }
+  .own-last-warn {
+    font-size: 12px; color: #94a3b8; font-style: italic; margin-top: 6px;
+  }
+
   /* ── Misc ───────────────────────────────────── */
   .back-link {
     display: inline-flex; align-items: center; gap: 7px;
@@ -235,6 +282,94 @@
       <div class="sc-label">Disabled</div>
     </div>
   </div>
+
+  {# ── Ownership panel (owners only) ── #}
+  {% if is_owner %}
+  {%- set active_owners    = members | selectattr('is_active') | selectattr('is_owner')    | list -%}
+  {%- set active_non_owners = members | selectattr('is_active') | rejectattr('is_owner')   | list -%}
+  {%- set only_one_owner   = active_owners | length <= 1 -%}
+  <div class="ownership-panel">
+    <div class="ownership-panel-header">
+      <i class="fa-solid fa-crown" style="color:#d97706;font-size:14px;"></i>
+      <div>
+        <div style="font-size:13px;font-weight:800;color:#92400e;">Project Ownership</div>
+        <div style="font-size:11px;color:#b45309;">Owners have all permissions and cannot be fully restricted.</div>
+      </div>
+    </div>
+    <div class="ownership-panel-body">
+
+      {# Current owners list #}
+      <div class="ownership-section">
+        <div class="ownership-section-label">Current Owners</div>
+        <div>
+          {% for m in active_owners %}
+          <span class="owner-pill">
+            <i class="fa-solid fa-crown" style="font-size:8px;"></i>
+            {{ m.name }}
+          </span>
+          {% else %}
+          <span style="font-size:12px;color:#94a3b8;">No owners found.</span>
+          {% endfor %}
+        </div>
+      </div>
+
+      {# Promote to owner #}
+      <div class="ownership-section">
+        <div class="ownership-section-label">Promote to Owner</div>
+        <div class="ownership-row">
+          <select id="promote-select" class="own-select"
+                  {% if not active_non_owners %}disabled{% endif %}>
+            <option value="">— select member —</option>
+            {% for m in active_non_owners %}
+            <option value="{{ m.id }}">{{ m.name }} ({{ m.access_level_label }})</option>
+            {% endfor %}
+          </select>
+          <button class="own-btn own-btn-promote"
+                  onclick="promoteToOwner()"
+                  {% if not active_non_owners %}disabled{% endif %}>
+            <i class="fa-solid fa-crown"></i> Make Owner
+          </button>
+        </div>
+        {% if not active_non_owners %}
+        <div class="own-last-warn">All active members are already owners.</div>
+        {% endif %}
+      </div>
+
+      {# Remove owner status #}
+      <div class="ownership-section">
+        <div class="ownership-section-label">Remove Owner Status</div>
+        {% if only_one_owner %}
+        <div class="own-last-warn">
+          <i class="fa-solid fa-lock" style="font-size:10px;"></i>
+          You cannot remove the last Owner.
+        </div>
+        {% else %}
+        <div class="ownership-row">
+          <select id="remove-owner-select" class="own-select">
+            <option value="">— select owner —</option>
+            {% for m in active_owners %}
+            <option value="{{ m.id }}">{{ m.name }}</option>
+            {% endfor %}
+          </select>
+          <select id="fallback-level-select" class="own-select">
+            <option value="">— new role —</option>
+            {% for lvl_key, lvl_label, lvl_icon, lvl_color, lvl_desc in ac_access_levels %}
+            {% if lvl_key != 'owner' %}
+            <option value="{{ lvl_key }}">{{ lvl_label }}</option>
+            {% endif %}
+            {% endfor %}
+          </select>
+          <button class="own-btn own-btn-remove" onclick="removeOwnerStatus()">
+            <i class="fa-solid fa-crown-solid"></i>
+            <i class="fa-solid fa-xmark"></i> Remove Owner
+          </button>
+        </div>
+        {% endif %}
+      </div>
+
+    </div>
+  </div>
+  {% endif %}
 
   {# ── Filter bar ── #}
   <div class="filter-bar">
@@ -563,6 +698,74 @@ async function doToggle(btn, confirmSelfLockout) {
     btn.className = origClass;
     btn.innerHTML = origHTML;
     btn.disabled  = false;
+    showToast('Network error — please try again.', true);
+  }
+}
+
+// ── Ownership panel ───────────────────────────────────────────────────────────
+async function promoteToOwner() {
+  const sel = document.getElementById('promote-select');
+  if (!sel) return;
+  const mid = parseInt(sel.value, 10);
+  if (!mid) { showToast('Please select a member to promote.', true); return; }
+
+  sel.disabled = true;
+  try {
+    const resp = await fetch(
+      PERM_URL_BASE + mid + '/make-owner',
+      {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
+        body:    JSON.stringify({}),
+      }
+    );
+    const json = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      sel.disabled = false;
+      showToast(json.error || 'Error promoting member.', true);
+      return;
+    }
+    showToast('Member promoted to Owner. Refreshing…', false);
+    setTimeout(() => location.reload(), 700);
+  } catch (err) {
+    sel.disabled = false;
+    showToast('Network error — please try again.', true);
+  }
+}
+
+async function removeOwnerStatus() {
+  const ownerSel   = document.getElementById('remove-owner-select');
+  const levelSel   = document.getElementById('fallback-level-select');
+  if (!ownerSel || !levelSel) return;
+
+  const mid       = parseInt(ownerSel.value, 10);
+  const newLevel  = levelSel.value;
+  if (!mid)      { showToast('Please select an owner to demote.', true); return; }
+  if (!newLevel) { showToast('Please select a fallback access level.', true); return; }
+
+  ownerSel.disabled = true;
+  levelSel.disabled = true;
+  try {
+    const resp = await fetch(
+      PERM_URL_BASE + mid + '/remove-owner',
+      {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
+        body:    JSON.stringify({ new_access_level: newLevel }),
+      }
+    );
+    const json = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      ownerSel.disabled = false;
+      levelSel.disabled = false;
+      showToast(json.error || 'Error removing owner status.', true);
+      return;
+    }
+    showToast('Owner status removed. Refreshing…', false);
+    setTimeout(() => location.reload(), 700);
+  } catch (err) {
+    ownerSel.disabled = false;
+    levelSel.disabled = false;
     showToast('Network error — please try again.', true);
   }
 }

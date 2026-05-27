@@ -2381,8 +2381,11 @@ def api_change_access_level(pid, mid):
         return jsonify({'error': 'Cannot change access level for a disabled member.'}), 409
 
     # ── 4. Parse + validate access_level ─────────────────────────────────────
-    data = request.get_json(silent=True) or {}
-    new_level = (data.get('access_level') or '').strip()
+    data      = request.get_json(silent=True) or {}
+    raw_level = data.get('access_level')
+    if not isinstance(raw_level, str):
+        return jsonify({'error': 'access_level must be a string.'}), 400
+    new_level    = raw_level.strip()
     valid_levels = {k for k, *_ in AC_ACCESS_LEVELS}
     if new_level not in valid_levels:
         return jsonify({'error': f'Invalid access level: {new_level!r}'}), 400
@@ -2454,6 +2457,139 @@ def api_change_access_level(pid, mid):
         'access_level':     target.access_level,
         'access_level_label': target.access_level_label,
         'is_owner':         target.is_owner,
+    })
+
+
+@app.route('/projects/<int:pid>/access-control/members/<int:mid>/make-owner',
+           methods=['POST'])
+@login_required
+def api_make_owner(pid, mid):
+    """AC-4D — Promote a member to Owner. Only project owners may call this."""
+    # ── 1. CSRF ──────────────────────────────────────────────────────────────
+    if not _validate_csrf_token():
+        return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
+
+    # ── 2. Actor must be an owner ─────────────────────────────────────────────
+    actor = get_project_member_ac(pid)
+    if actor is None:
+        return jsonify({'error': 'You are not a member of this project.'}), 403
+    if not actor.is_owner:
+        return jsonify({'error': 'Only a project owner can promote another member to Owner.'}), 403
+
+    # ── 3. Target ─────────────────────────────────────────────────────────────
+    target = db.session.get(ProjectMemberAC, mid)
+    if target is None or target.project_id != pid:
+        return jsonify({'error': 'Member not found.'}), 404
+    if not target.is_active:
+        return jsonify({'error': 'Cannot promote a disabled member to Owner.'}), 409
+
+    # ── 4. Already owner — idempotent ─────────────────────────────────────────
+    if target.is_owner:
+        return jsonify({
+            'ok':               True,
+            'member_id':        mid,
+            'is_owner':         True,
+            'access_level':     target.access_level,
+            'access_level_label': target.access_level_label,
+        })
+
+    # ── 5. Apply ──────────────────────────────────────────────────────────────
+    prev_level         = target.access_level
+    target.access_level = 'owner'
+    target.is_owner     = True
+
+    target.permissions.clear()
+    db.session.flush()
+    seed_member_permissions(target)
+
+    log_audit('project_owner_assigned',
+              project_id=pid, actor=current_user,
+              entity_type='project_member_ac', entity_id=target.id,
+              entity_label=target.name,
+              detail={
+                  'assigned_by':          current_user.name,
+                  'previous_access_level': prev_level,
+                  'permissions_reset':    True,
+              })
+    db.session.commit()
+
+    return jsonify({
+        'ok':               True,
+        'member_id':        mid,
+        'is_owner':         True,
+        'access_level':     target.access_level,
+        'access_level_label': target.access_level_label,
+    })
+
+
+@app.route('/projects/<int:pid>/access-control/members/<int:mid>/remove-owner',
+           methods=['POST'])
+@login_required
+def api_remove_owner(pid, mid):
+    """AC-4D — Remove Owner status from a member. Only project owners may call this."""
+    # ── 1. CSRF ──────────────────────────────────────────────────────────────
+    if not _validate_csrf_token():
+        return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
+
+    # ── 2. Actor must be an owner ─────────────────────────────────────────────
+    actor = get_project_member_ac(pid)
+    if actor is None:
+        return jsonify({'error': 'You are not a member of this project.'}), 403
+    if not actor.is_owner:
+        return jsonify({'error': 'Only a project owner can remove Owner status.'}), 403
+
+    # ── 3. Target ─────────────────────────────────────────────────────────────
+    target = db.session.get(ProjectMemberAC, mid)
+    if target is None or target.project_id != pid:
+        return jsonify({'error': 'Member not found.'}), 404
+    if not target.is_active:
+        return jsonify({'error': 'Cannot modify a disabled member.'}), 409
+    if not target.is_owner:
+        return jsonify({'error': 'This member is not an Owner.'}), 409
+
+    # ── 4. Last-owner guard ───────────────────────────────────────────────────
+    try:
+        assert_not_last_owner(pid, target.id)
+    except _ACError as e:
+        return jsonify({'error': str(e)}), 409
+
+    # ── 5. Parse + validate fallback access_level ─────────────────────────────
+    data      = request.get_json(silent=True) or {}
+    raw_level = data.get('new_access_level')
+    if not isinstance(raw_level, str):
+        return jsonify({'error': 'new_access_level must be a string.'}), 400
+    new_level = raw_level.strip()
+    if new_level == 'owner':
+        return jsonify({'error': 'new_access_level cannot be "owner".'}), 400
+    valid_levels = {k for k, *_ in AC_ACCESS_LEVELS}
+    if new_level not in valid_levels:
+        return jsonify({'error': f'Invalid access level: {new_level!r}'}), 400
+
+    # ── 6. Apply ──────────────────────────────────────────────────────────────
+    target.is_owner     = False
+    target.access_level = new_level
+
+    target.permissions.clear()
+    db.session.flush()
+    seed_member_permissions(target)
+
+    log_audit('project_owner_removed',
+              project_id=pid, actor=current_user,
+              entity_type='project_member_ac', entity_id=target.id,
+              entity_label=target.name,
+              detail={
+                  'removed_by':       current_user.name,
+                  'new_access_level': new_level,
+                  'permissions_reset': True,
+              })
+    db.session.commit()
+
+    return jsonify({
+        'ok':               True,
+        'member_id':        mid,
+        'is_owner':         False,
+        'access_level':     target.access_level,
+        'access_level_label': target.access_level_label,
     })
 
 
