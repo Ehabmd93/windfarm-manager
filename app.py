@@ -2209,10 +2209,10 @@ def project_people(pid):
 @app.route('/projects/<int:pid>/companies', methods=['POST'])
 @login_required
 def api_add_company(pid):
-    """AJAX — add a company to the project. Requires manager or admin."""
+    """AJAX — add a company to the project. Requires can_manage_companies or access management."""
     if not _validate_csrf_token():
         return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
-    if not _user_can_manage_project(pid):
+    if not (user_can(pid, 'can_manage_companies') or user_can_manage_access(pid)):
         return jsonify({'error': 'You do not have permission to manage this project.'}), 403
     proj = Project.query.get_or_404(pid)
     data = request.get_json(silent=True) or {}
@@ -2245,10 +2245,10 @@ def api_add_company(pid):
 @app.route('/projects/<int:pid>/companies/<int:cid>', methods=['DELETE'])
 @login_required
 def api_delete_company(pid, cid):
-    """AJAX — remove a company from the project. Requires manager or admin."""
+    """AJAX — remove a company from the project. Requires can_manage_companies or access management."""
     if not _validate_csrf_token():
         return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
-    if not _user_can_manage_project(pid):
+    if not (user_can(pid, 'can_manage_companies') or user_can_manage_access(pid)):
         return jsonify({'error': 'You do not have permission to manage this project.'}), 403
     c = ProjectCompany.query.filter_by(id=cid, project_id=pid).first_or_404()
     log_audit('company_removed', project_id=pid, actor=current_user,
@@ -2296,13 +2296,24 @@ def api_add_team_member(pid):
     # Link to existing user if email matches a registered account
     linked_user = User.query.filter_by(email=email_norm).first() if email_norm else None
 
-    # Duplicate guard: same user already an active member?
+    # Duplicate guard — two paths:
+    # 1. If the email matches a registered user, check by user_id (catches accepted invites).
+    # 2. Always check by email on active ProjectMemberAC rows (catches pending/unlinked invites).
     if linked_user:
         existing = ProjectMemberAC.query.filter_by(
             project_id=pid, user_id=linked_user.id, is_active=True
         ).first()
         if existing:
-            return jsonify({'error': 'This user is already an active member of this project.'}), 400
+            return jsonify({'error': 'This email is already an active member or pending invite for this project.'}), 400
+
+    if email_norm:
+        email_dup = ProjectMemberAC.query.filter(
+            ProjectMemberAC.project_id == pid,
+            ProjectMemberAC.is_active == True,
+            db.func.lower(ProjectMemberAC.email) == email_norm,
+        ).first()
+        if email_dup:
+            return jsonify({'error': 'This email is already an active member or pending invite for this project.'}), 400
 
     now = datetime.now(timezone.utc)
     m = ProjectMemberAC(

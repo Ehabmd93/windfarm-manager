@@ -163,7 +163,7 @@ def _email_shell(title, body_html, preheader=''):
     Produces a clean, mobile-friendly layout with no project-specific branding.
     """
     year     = datetime.now().year
-    app_name = 'QA Manager'
+    app_name = 'SiteGrid'
     tagline  = 'Construction Quality Management Platform'
     pre_tag  = (
         f'<div style="display:none;max-height:0;overflow:hidden;'
@@ -454,7 +454,7 @@ def email_project_invitation(
     The invite_url must already contain the raw token as a query/path parameter;
     this function never generates or sees a token.
     """
-    subject = f"You are invited to join {project_name} on QA Manager"
+    subject = f"You are invited to join {project_name} on SiteGrid"
 
     rows = [
         ('Project',  project_name),
@@ -471,7 +471,7 @@ def email_project_invitation(
       </h2>
       <p style="color:#334155;font-size:14px;line-height:1.7;margin:0 0 4px;">
         <strong>{_safe(inviter_name)}</strong> has invited you to join
-        <strong>{_safe(project_name)}</strong> on QA Manager as
+        <strong>{_safe(project_name)}</strong> on SiteGrid as
         <strong>{_safe(role_label)}</strong>.
       </p>
       <p style="color:#64748b;font-size:13px;line-height:1.6;margin:0 0 20px;">
