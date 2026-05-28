@@ -11,9 +11,9 @@
   /* ── Summary cards ──────────────────────────── */
   .summary-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
     gap: 12px;
-    margin-bottom: 28px;
+    margin-bottom: 24px;
   }
   .summary-card {
     background: #fff;
@@ -33,24 +33,31 @@
   /* ── Filter bar ─────────────────────────────── */
   .filter-bar {
     background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
-    padding: 12px 16px; margin-bottom: 24px;
-    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px; margin-bottom: 12px;
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
     box-shadow: 0 1px 4px rgba(0,0,0,.04);
   }
-  .filter-bar input {
-    flex: 1; border: none; outline: none;
+  .filter-bar-search {
+    flex: 1; min-width: 160px; border: none; outline: none;
     font-size: 13px; color: #1e293b; background: transparent;
   }
-  .filter-bar input::placeholder { color: #94a3b8; }
+  .filter-bar-search::placeholder { color: #94a3b8; }
+  .filter-select {
+    border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc;
+    font-size: 12px; color: #374151; padding: 5px 10px; outline: none; cursor: pointer;
+  }
+  .filter-select:focus { border-color: #a78bfa; }
+  .filter-divider { width: 1px; height: 24px; background: #e2e8f0; flex-shrink: 0; }
 
   /* ── Permission group section ───────────────── */
   .perm-section {
     background: #fff; border: 1px solid #e2e8f0; border-radius: 16px;
-    margin-bottom: 28px; box-shadow: 0 2px 8px rgba(0,0,0,.05); overflow: hidden;
+    margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,.05); overflow: hidden;
   }
   .perm-section-header {
     display: flex; align-items: center; gap: 10px;
-    padding: 14px 20px; border-bottom: 1px solid #f1f5f9; background: #f8fafc;
+    padding: 13px 20px; border-bottom: 1px solid #f1f5f9; background: #f8fafc;
+    cursor: pointer; user-select: none;
   }
   .perm-section-icon {
     width: 32px; height: 32px; border-radius: 8px;
@@ -71,7 +78,7 @@
     border-bottom: 1px solid #f1f5f9; background: #f8fafc; vertical-align: bottom;
   }
   .matrix-table th.member-col {
-    text-align: left; min-width: 220px;
+    text-align: left; min-width: 240px;
     position: sticky; left: 0; z-index: 2; border-right: 1px solid #e2e8f0;
   }
   .matrix-table td {
@@ -81,6 +88,7 @@
   .matrix-table td.member-cell {
     text-align: left; position: sticky; left: 0;
     background: #fff; z-index: 1; border-right: 1px solid #f1f5f9;
+    padding: 10px 14px;
   }
   .matrix-table tr:last-child td { border-bottom: none; }
   .matrix-table tr:hover td { background: #f8fafc; }
@@ -89,12 +97,29 @@
   .row-disabled td.member-cell { background: #fafafa !important; }
   .matrix-table tr.hidden-row { display: none; }
 
+  /* Company group rows */
+  .company-group-row td {
+    background: #f1f5f9 !important; padding: 6px 14px;
+    font-size: 11px; font-weight: 700; color: #64748b;
+    text-transform: uppercase; letter-spacing: .05em;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  .company-group-row { display: none; }
+  body.group-by-company .company-group-row { display: table-row; }
+
   /* member cell */
+  .mc-avatar {
+    width: 34px; height: 34px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 800; color: #fff;
+    flex-shrink: 0; text-transform: uppercase;
+  }
   .mc-name {
     font-size: 13px; font-weight: 700; color: #1e293b;
-    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    display: flex; align-items: center; gap: 5px; flex-wrap: wrap; line-height: 1.2;
   }
-  .mc-meta { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+  .mc-meta { font-size: 11px; color: #94a3b8; margin-top: 2px; line-height: 1.35; }
+  .mc-company { font-size: 11px; color: #64748b; margin-top: 1px; }
   .mc-level-badge {
     display: inline-flex; align-items: center; gap: 4px;
     padding: 2px 7px; border-radius: 99px; font-size: 10px; font-weight: 700;
@@ -109,27 +134,33 @@
     padding: 2px 7px; border-radius: 99px; font-size: 10px; font-weight: 700;
     background: #f1f5f9; color: #94a3b8;
   }
+  .mc-pending-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 7px; border-radius: 99px; font-size: 10px; font-weight: 700;
+    background: #e0f2fe; color: #0369a1;
+  }
 
   /* ── Permission cell states ─────────────────── */
   .perm-cell { width: 36px; }
-
-  /* shared chip base */
   .perm-chip {
     width: 30px; height: 30px; border-radius: 8px;
     display: inline-flex; align-items: center; justify-content: center;
     font-size: 12px; margin: auto; cursor: default;
     border: none; padding: 0; transition: background .12s, transform .08s;
+    position: relative;
   }
-  /* locked owner */
-  .perm-locked { background: #fef3c7; color: #d97706; }
-  /* granted — clickable */
-  .perm-on     { background: #dcfce7; color: #16a34a; cursor: pointer; }
+  .perm-locked  { background: #fef3c7; color: #d97706; }
+  .perm-on      { background: #dcfce7; color: #16a34a; cursor: pointer; }
   .perm-on:hover:not(:disabled)  { background: #bbf7d0; transform: scale(1.1); }
-  /* denied — clickable */
-  .perm-off    { background: #f1f5f9; color: #94a3b8; cursor: pointer; }
+  .perm-off     { background: #f1f5f9; color: #94a3b8; cursor: pointer; }
   .perm-off:hover:not(:disabled) { background: #e2e8f0; transform: scale(1.1); }
-  /* busy spinner */
-  .perm-busy   { background: #f1f5f9; color: #94a3b8; opacity: .6; cursor: wait; }
+  .perm-busy    { background: #f1f5f9; color: #94a3b8; opacity: .6; cursor: wait; }
+  /* Modified from default dot */
+  .perm-modified::after {
+    content: ''; position: absolute; top: 3px; right: 3px;
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #f59e0b; border: 1.5px solid #fff;
+  }
 
   /* ── Toast ──────────────────────────────────── */
   #acc-toast {
@@ -175,7 +206,7 @@
   /* ── Ownership panel ────────────────────────── */
   .ownership-panel {
     background: #fff; border: 1.5px solid #fde68a; border-radius: 16px;
-    margin-bottom: 24px; box-shadow: 0 2px 8px rgba(0,0,0,.04); overflow: hidden;
+    margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,.04); overflow: hidden;
   }
   .ownership-panel-header {
     display: flex; align-items: center; gap: 10px;
@@ -231,6 +262,72 @@
     display: flex; flex-direction: column; align-items: center;
     gap: 4px; padding-bottom: 4px;
   }
+  .ctrl-btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 6px 12px; border-radius: 8px;
+    font-size: 12px; font-weight: 700; cursor: pointer;
+    border: 1.5px solid #e2e8f0; background: #f8fafc; color: #475569;
+    transition: all .12s; white-space: nowrap;
+  }
+  .ctrl-btn:hover { background: #f0f4f8; }
+  .ctrl-btn.active { background: #ede9fe; border-color: #ddd6fe; color: #7c3aed; }
+  .modified-legend {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11px; color: #78716c;
+  }
+  .modified-dot {
+    width: 8px; height: 8px; border-radius: 50%; background: #f59e0b; flex-shrink: 0;
+  }
+
+  /* ── Mobile permissions drawer ──────────────── */
+  @media (max-width: 640px) {
+    .matrix-wrap { display: none; }
+    .matrix-mobile-hint {
+      padding: 16px 20px; font-size: 12px; color: #94a3b8; text-align: center;
+      border-top: 1px solid #f1f5f9;
+    }
+    .mobile-member-list { padding: 8px 0; }
+    .mobile-member-row {
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px 20px; border-bottom: 1px solid #f8fafc;
+      cursor: pointer; transition: background .1s;
+    }
+    .mobile-member-row:hover { background: #f8fafc; }
+    .mobile-member-row:last-child { border-bottom: none; }
+    .mobile-chevron { margin-left: auto; color: #94a3b8; font-size: 11px; }
+    .perm-drawer-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,.4); z-index: 1500;
+    }
+    .perm-drawer-overlay.open { display: block; }
+    .perm-drawer {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: #fff; border-radius: 20px 20px 0 0;
+      max-height: 80vh; overflow-y: auto;
+      box-shadow: 0 -8px 40px rgba(0,0,0,.2); z-index: 1600;
+      transform: translateY(100%); transition: transform .3s ease;
+    }
+    .perm-drawer.open { transform: translateY(0); }
+    .perm-drawer-handle {
+      width: 40px; height: 4px; background: #e2e8f0; border-radius: 2px;
+      margin: 12px auto 0;
+    }
+    .perm-drawer-header { padding: 16px 20px; border-bottom: 1px solid #f1f5f9; }
+    .perm-drawer-body { padding: 12px 20px 32px; }
+    .perm-drawer-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 0; border-bottom: 1px solid #f8fafc;
+    }
+    .perm-drawer-row:last-child { border-bottom: none; }
+    .perm-drawer-label { font-size: 13px; color: #374151; font-weight: 500; }
+    .matrix-mobile-hint { display: block; }
+  }
+  @media (min-width: 641px) {
+    .mobile-member-list { display: none; }
+    .matrix-mobile-hint { display: none !important; }
+    .perm-drawer-overlay { display: none !important; }
+    .perm-drawer { display: none !important; }
+  }
 </style>
 {% endblock %}
 
@@ -242,25 +339,46 @@
   const ACTOR_IS_OWNER  = {{ is_owner|tojson }};
   const PID             = {{ proj.id }};
   const PERM_URL_BASE   = "/projects/" + PID + "/access-control/members/";
+
+  // Precomputed modified-from-default sets: {member_id: [perm_key, ...]}
+  const MODIFIED_MAP = {{ modified_map | tojson }};
 </script>
 
 <div class="acc-page">
 
-  {# ── Back link ── #}
-  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:20px;">
+  {# ── Back + toolbar ── #}
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:20px;">
     <a href="{{ url_for('project_people', pid=proj.id) }}" class="back-link">
       <i class="fa-solid fa-arrow-left"></i> People &amp; Access
     </a>
+    <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="ctrl-btn" id="btn-group-company" onclick="toggleGroupByCompany()"
+              title="Group rows by company">
+        <i class="fa-solid fa-building"></i> Group by company
+      </button>
+      <button class="ctrl-btn" onclick="expandAll()" title="Expand all permission groups">
+        <i class="fa-solid fa-expand"></i> Expand all
+      </button>
+      <button class="ctrl-btn" onclick="collapseAll()" title="Collapse all permission groups">
+        <i class="fa-solid fa-compress"></i> Collapse all
+      </button>
+    </div>
   </div>
 
   {# ── Page header ── #}
-  <div style="margin-bottom:24px;">
+  <div style="margin-bottom:20px;">
     <h2 style="font-size:22px;font-weight:800;color:#1e293b;margin:0 0 4px;">
       <i class="fa-solid fa-sliders" style="color:#7c3aed;margin-right:8px;"></i>Access Control Center
     </h2>
-    <p style="color:#64748b;font-size:13px;margin:0;">
+    <p style="color:#64748b;font-size:13px;margin:0 0 6px;">
       Fine-tune what each person can do on <strong>{{ proj.name }}</strong>.
     </p>
+    <div style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;
+                background:#fffbeb;border:1px solid #fde68a;border-radius:8px;
+                font-size:11px;color:#92400e;margin-top:4px;">
+      <i class="fa-solid fa-lightbulb" style="font-size:10px;"></i>
+      Access level sets default permissions. Fine-tune exact permissions for each person using the toggles below.
+    </div>
   </div>
 
   {# ── Summary bar ── #}
@@ -281,6 +399,12 @@
       <div class="sc-value" style="color:#94a3b8;">{{ disabled_count }}</div>
       <div class="sc-label">Disabled</div>
     </div>
+    <div class="summary-card">
+      <div class="sc-value" style="color:#f59e0b;">
+        {{ modified_map.values() | map('length') | sum }}
+      </div>
+      <div class="sc-label">Modified Perms</div>
+    </div>
   </div>
 
   {# ── Ownership panel (owners only) ── #}
@@ -289,16 +413,18 @@
   {%- set active_non_owners = members | selectattr('is_active') | rejectattr('is_owner')   | list -%}
   {%- set only_one_owner   = active_owners | length <= 1 -%}
   <div class="ownership-panel">
-    <div class="ownership-panel-header">
+    <div class="ownership-panel-header"
+         style="cursor:pointer;" onclick="toggleOwnerPanel()">
       <i class="fa-solid fa-crown" style="color:#d97706;font-size:14px;"></i>
-      <div>
+      <div style="flex:1;">
         <div style="font-size:13px;font-weight:800;color:#92400e;">Project Ownership</div>
         <div style="font-size:11px;color:#b45309;">Owners have all permissions and cannot be fully restricted.</div>
       </div>
+      <i class="fa-solid fa-chevron-down" id="owner-panel-chevron"
+         style="color:#b45309;font-size:11px;transition:transform .2s;"></i>
     </div>
-    <div class="ownership-panel-body">
+    <div id="owner-panel-body" class="ownership-panel-body">
 
-      {# Current owners list #}
       <div class="ownership-section">
         <div class="ownership-section-label">Current Owners</div>
         <div>
@@ -313,7 +439,6 @@
         </div>
       </div>
 
-      {# Promote to owner #}
       <div class="ownership-section">
         <div class="ownership-section-label">Promote to Owner</div>
         <div class="ownership-row">
@@ -335,7 +460,6 @@
         {% endif %}
       </div>
 
-      {# Remove owner status #}
       <div class="ownership-section">
         <div class="ownership-section-label">Remove Owner Status</div>
         {% if only_one_owner %}
@@ -373,18 +497,48 @@
   {# ── Filter bar ── #}
   <div class="filter-bar">
     <i class="fa-solid fa-magnifying-glass" style="color:#94a3b8;font-size:13px;"></i>
-    <input id="acc-filter" type="text"
-           placeholder="Search people, company, email, or access level…"
-           oninput="filterMembers(this.value)" autocomplete="off">
+    <input id="acc-filter" class="filter-bar-search" type="text"
+           placeholder="Search name, email…"
+           oninput="applyFilters()" autocomplete="off">
+    <div class="filter-divider"></div>
+    <select id="filter-level" class="filter-select" onchange="applyFilters()">
+      <option value="">All access levels</option>
+      {% for lvl_key, lvl_label, *_ in ac_access_levels %}
+      <option value="{{ lvl_key }}">{{ lvl_label }}</option>
+      {% endfor %}
+    </select>
+    {% if companies_map %}
+    <select id="filter-company" class="filter-select" onchange="applyFilters()">
+      <option value="">All companies</option>
+      {% for cid, cname in companies_map.items() %}
+      <option value="{{ cid }}">{{ cname }}</option>
+      {% endfor %}
+    </select>
+    {% endif %}
+    <select id="filter-status" class="filter-select" onchange="applyFilters()">
+      <option value="">All statuses</option>
+      <option value="active">Active</option>
+      <option value="pending">Pending invite</option>
+      <option value="disabled">Disabled</option>
+    </select>
+    <button class="ctrl-btn" onclick="clearFilters()" style="padding:5px 10px;font-size:11px;">
+      <i class="fa-solid fa-xmark"></i> Clear
+    </button>
     <span id="filter-count" style="font-size:11px;color:#94a3b8;white-space:nowrap;"></span>
   </div>
 
-  {# ── Action note ── #}
-  <div style="display:inline-flex;align-items:center;gap:7px;padding:7px 14px;
-              background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;
-              font-size:12px;font-weight:600;color:#15803d;margin-bottom:20px;">
-    <i class="fa-solid fa-circle-check" style="font-size:11px;"></i>
-    Changes are saved immediately and recorded in the audit log.
+  {# ── Legend + action note ── #}
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:20px;">
+    <div style="display:inline-flex;align-items:center;gap:7px;padding:7px 14px;
+                background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;
+                font-size:12px;font-weight:600;color:#15803d;">
+      <i class="fa-solid fa-circle-check" style="font-size:11px;"></i>
+      Changes are saved immediately and recorded in the audit log.
+    </div>
+    <div class="modified-legend">
+      <span class="modified-dot"></span>
+      Permission modified from default for this access level
+    </div>
   </div>
 
   {# ── Permission groups ── #}
@@ -392,7 +546,6 @@
   <div class="perm-section" id="group-{{ group_key }}">
 
     <div class="perm-section-header"
-         style="cursor:pointer;user-select:none;"
          onclick="toggleGroup('{{ group_key }}')"
          title="Click to collapse / expand">
       <div class="perm-section-icon" style="background:{{ group_color }}18;">
@@ -407,6 +560,7 @@
          style="color:#94a3b8;font-size:11px;transition:transform .2s;"></i>
     </div>
 
+    {# ── Desktop matrix ── #}
     <div class="matrix-wrap" id="matrix-{{ group_key }}">
       <table class="matrix-table">
         <thead>
@@ -420,70 +574,99 @@
           </tr>
         </thead>
         <tbody>
+          {# Group-by-company separators — inserted before first member of each company #}
+          {%- set _seen_companies = namespace(v=[]) -%}
           {% for m in members %}
+          {%- set cname = companies_map.get(m.company_id, '') if m.company_id else '' -%}
+          {%- if cname and cname not in _seen_companies.v -%}
+            {%- set _ = _seen_companies.v.append(cname) -%}
+          <tr class="company-group-row" data-company="{{ cname }}">
+            <td colspan="{{ group_perms|length + 1 }}">
+              <i class="fa-solid fa-building" style="margin-right:5px;"></i>{{ cname }}
+            </td>
+          </tr>
+          {%- endif -%}
+
           {%- set m_perms = perm_map.get(m.id, {}) -%}
-          {#
-            Editability rules per row:
-            - disabled member  → never editable
-            - owner target     → only editable if actor is also owner
-          #}
+          {%- set modified_keys = modified_map.get(m.id|string, []) -%}
           {%- set row_editable = m.is_active and (is_owner or not m.is_owner) -%}
+          {%- set status_val = 'disabled' if not m.is_active else ('pending' if m.invite_status == 'pending' else 'active') -%}
           <tr
             class="{% if not m.is_active %}row-disabled{% endif %}"
-            data-filter="{{ (m.name ~ ' ' ~ m.email ~ ' ' ~ m.access_level ~ ' ' ~ m.access_level_label)|lower }}"
+            data-filter-name="{{ m.name|lower }} {{ m.email|lower }}"
+            data-filter-level="{{ m.access_level }}"
+            data-filter-company="{{ m.company_id or '' }}"
+            data-filter-status="{{ status_val }}"
             {% if not m.is_active %}title="Disabled members cannot be edited."{% endif %}
           >
             <td class="member-cell">
-              <div class="mc-name">
-                <span>{{ m.name }}</span>
-                {% if m.is_owner %}
-                <span class="mc-owner-badge">
-                  <i class="fa-solid fa-crown" style="font-size:8px;"></i> Owner
-                </span>
-                {% endif %}
-                {% if not m.is_active %}
-                <span class="mc-disabled-badge">
-                  <i class="fa-solid fa-ban" style="font-size:8px;"></i> Disabled
-                </span>
-                {% endif %}
-              </div>
-              <div class="mc-meta">
-                {% if row_editable %}
-                {# Editable access-level select — only shown on rows the actor can edit #}
-                <span class="al-select-wrap"
-                      style="background:{{ m.access_level_color }}12;
-                             border-color:{{ m.access_level_color }}55;
-                             color:{{ m.access_level_color }};">
-                  <i class="fa-solid {{ m.access_level_icon }}" style="font-size:7px;"></i>
-                  <select
-                    class="al-select"
-                    style="color:{{ m.access_level_color }};"
-                    data-mid="{{ m.id }}"
-                    data-original="{{ m.access_level }}"
-                    onchange="initAccessLevelChange(this)"
-                  >
-                    {% for lvl_key, lvl_label, lvl_icon, lvl_color, lvl_desc in ac_access_levels %}
-                    {# Hide owner option for non-owner actors #}
-                    {% if lvl_key != 'owner' or is_owner %}
-                    <option value="{{ lvl_key }}"
-                            {{ 'selected' if m.access_level == lvl_key }}>
-                      {{ lvl_label }}
-                    </option>
+              <div style="display:flex;align-items:center;gap:10px;">
+                {# Avatar with initials #}
+                <div class="mc-avatar"
+                     style="background:{{ m.access_level_color }};">
+                  {{ (m.name or '?')[0] | upper }}
+                </div>
+                <div style="min-width:0;">
+                  <div class="mc-name">
+                    <span>{{ m.name }}</span>
+                    {% if m.is_owner %}
+                    <span class="mc-owner-badge">
+                      <i class="fa-solid fa-crown" style="font-size:8px;"></i> Owner
+                    </span>
                     {% endif %}
-                    {% endfor %}
-                  </select>
-                  <i class="fa-solid fa-chevron-down" style="font-size:7px;opacity:.6;"></i>
-                </span>
-                {% else %}
-                <span class="mc-level-badge"
-                      style="background:{{ m.access_level_color }}15;color:{{ m.access_level_color }};">
-                  <i class="fa-solid {{ m.access_level_icon }}" style="font-size:7px;"></i>
-                  {{ m.access_level_label }}
-                </span>
-                {% endif %}
-                {% if m.email %}
-                <span style="margin-left:4px;">{{ m.email }}</span>
-                {% endif %}
+                    {% if not m.is_active %}
+                    <span class="mc-disabled-badge">
+                      <i class="fa-solid fa-ban" style="font-size:8px;"></i> Disabled
+                    </span>
+                    {% elif m.invite_status == 'pending' %}
+                    <span class="mc-pending-badge">
+                      <i class="fa-solid fa-envelope" style="font-size:8px;"></i> Pending
+                    </span>
+                    {% endif %}
+                  </div>
+                  <div class="mc-meta">
+                    {% if row_editable %}
+                    <span class="al-select-wrap"
+                          style="background:{{ m.access_level_color }}12;
+                                 border-color:{{ m.access_level_color }}55;
+                                 color:{{ m.access_level_color }};">
+                      <i class="fa-solid {{ m.access_level_icon }}" style="font-size:7px;"></i>
+                      <select
+                        class="al-select"
+                        style="color:{{ m.access_level_color }};"
+                        data-mid="{{ m.id }}"
+                        data-original="{{ m.access_level }}"
+                        onchange="initAccessLevelChange(this)"
+                      >
+                        {% for lvl_key, lvl_label, lvl_icon, lvl_color, lvl_desc in ac_access_levels %}
+                        {% if lvl_key != 'owner' or is_owner %}
+                        <option value="{{ lvl_key }}"
+                                {{ 'selected' if m.access_level == lvl_key }}>
+                          {{ lvl_label }}
+                        </option>
+                        {% endif %}
+                        {% endfor %}
+                      </select>
+                      <i class="fa-solid fa-chevron-down" style="font-size:7px;opacity:.6;"></i>
+                    </span>
+                    {% else %}
+                    <span class="mc-level-badge"
+                          style="background:{{ m.access_level_color }}15;color:{{ m.access_level_color }};">
+                      <i class="fa-solid {{ m.access_level_icon }}" style="font-size:7px;"></i>
+                      {{ m.access_level_label }}
+                    </span>
+                    {% endif %}
+                    {% if m.email %}
+                    <span style="margin-left:4px;">{{ m.email }}</span>
+                    {% endif %}
+                  </div>
+                  {% if m.company_id and companies_map.get(m.company_id) %}
+                  <div class="mc-company">
+                    <i class="fa-solid fa-building" style="font-size:9px;margin-right:3px;opacity:.5;"></i>
+                    {{ companies_map[m.company_id] }}
+                  </div>
+                  {% endif %}
+                </div>
               </div>
             </td>
 
@@ -491,17 +674,15 @@
             {%- set prow = m_perms.get(perm_key) -%}
             {%- set is_locked  = prow and prow.locked -%}
             {%- set is_granted = prow and prow.value -%}
-            {%- set cell_id    = 'pc-' ~ m.id ~ '-' ~ perm_key -%}
-            <td class="perm-cell"
-                title="{{ perm_label }} — {{ m.name }}">
+            {%- set is_modified = perm_key in modified_keys -%}
+            {%- set cell_id = 'pc-' ~ m.id ~ '-' ~ perm_key -%}
+            <td class="perm-cell" title="{{ perm_label }} — {{ m.name }}">
               {% if is_locked %}
-                {# Locked (owner) — always on, never clickable #}
                 <button id="{{ cell_id }}" class="perm-chip perm-locked"
                         disabled title="Locked — all permissions granted for {{ m.access_level_label }}">
                   <i class="fa-solid fa-lock"></i>
                 </button>
               {% elif not row_editable %}
-                {# Inactive or non-owner actor on owner row — display only #}
                 {% if is_granted %}
                 <button class="perm-chip perm-on" disabled>
                   <i class="fa-solid fa-check"></i>
@@ -512,15 +693,14 @@
                 </button>
                 {% endif %}
               {% else %}
-                {# Interactive toggle #}
                 <button
                   id="{{ cell_id }}"
-                  class="perm-chip {{ 'perm-on' if is_granted else 'perm-off' }}"
+                  class="perm-chip {{ 'perm-on' if is_granted else 'perm-off' }}{% if is_modified %} perm-modified{% endif %}"
                   data-mid="{{ m.id }}"
                   data-key="{{ perm_key }}"
                   data-value="{{ 'true' if is_granted else 'false' }}"
                   onclick="togglePerm(this)"
-                  title="{{ perm_label }}">
+                  title="{{ perm_label }}{% if is_modified %} — modified from default{% endif %}">
                   <i class="fa-solid {{ 'fa-check' if is_granted else 'fa-minus' }}"></i>
                 </button>
               {% endif %}
@@ -547,6 +727,32 @@
         </tbody>
       </table>
     </div>
+
+    {# ── Mobile member list (shown instead of matrix on small screens) ── #}
+    <div class="mobile-member-list" id="mobile-{{ group_key }}">
+      {% for m in members %}
+      {%- set m_perms = perm_map.get(m.id, {}) -%}
+      <div class="mobile-member-row"
+           onclick="openDrawer({{ m.id }}, {{ m.name|tojson }}, {{ m.access_level_label|tojson }}, '{{ group_key }}')"
+           data-filter-name="{{ m.name|lower }} {{ m.email|lower }}"
+           data-filter-level="{{ m.access_level }}"
+           data-filter-company="{{ m.company_id or '' }}"
+           data-filter-status="{{ 'disabled' if not m.is_active else ('pending' if m.invite_status == 'pending' else 'active') }}">
+        <div class="mc-avatar" style="background:{{ m.access_level_color }};">
+          {{ (m.name or '?')[0] | upper }}
+        </div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;font-weight:700;color:#1e293b;">{{ m.name }}</div>
+          <div style="font-size:11px;color:#94a3b8;">{{ m.access_level_label }}{% if m.email %} · {{ m.email }}{% endif %}</div>
+        </div>
+        <i class="fa-solid fa-chevron-right mobile-chevron"></i>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="matrix-mobile-hint">
+      Tap a member to review permissions for <strong>{{ group_label }}</strong>.
+    </div>
+
   </div>
   {% endfor %}
 
@@ -554,8 +760,7 @@
   <div style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;
               margin-top:8px;box-shadow:0 2px 8px rgba(0,0,0,.05);overflow:hidden;">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;
-                padding:14px 20px;border-bottom:1px solid #f1f5f9;background:#f8fafc;
-                flex-wrap:wrap;">
+                padding:14px 20px;border-bottom:1px solid #f1f5f9;background:#f8fafc;flex-wrap:wrap;">
       <div style="display:flex;align-items:center;gap:10px;">
         <div style="width:32px;height:32px;border-radius:8px;background:#ede9fe;
                     display:flex;align-items:center;justify-content:center;flex-shrink:0;">
@@ -571,8 +776,7 @@
       <a href="{{ url_for('project_audit_people', pid=proj.id) }}"
          style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;
                 background:#ede9fe;border:1.5px solid #ddd6fe;border-radius:9px;
-                font-size:12px;font-weight:700;color:#7c3aed;text-decoration:none;
-                white-space:nowrap;">
+                font-size:12px;font-weight:700;color:#7c3aed;text-decoration:none;white-space:nowrap;">
         <i class="fa-solid fa-clock-rotate-left" style="font-size:10px;"></i>
         Open full audit
       </a>
@@ -583,27 +787,14 @@
       <table style="width:100%;border-collapse:collapse;min-width:560px;">
         <thead>
           <tr style="background:#f8fafc;">
-            <th style="padding:9px 16px;font-size:11px;font-weight:700;color:#64748b;
-                        text-align:left;border-bottom:1px solid #f1f5f9;white-space:nowrap;">
-              When
-            </th>
-            <th style="padding:9px 16px;font-size:11px;font-weight:700;color:#64748b;
-                        text-align:left;border-bottom:1px solid #f1f5f9;white-space:nowrap;">
-              Actor
-            </th>
-            <th style="padding:9px 16px;font-size:11px;font-weight:700;color:#64748b;
-                        text-align:left;border-bottom:1px solid #f1f5f9;white-space:nowrap;">
-              Event
-            </th>
-            <th style="padding:9px 16px;font-size:11px;font-weight:700;color:#64748b;
-                        text-align:left;border-bottom:1px solid #f1f5f9;">
-              Target / Detail
-            </th>
+            <th style="padding:9px 16px;font-size:11px;font-weight:700;color:#64748b;text-align:left;border-bottom:1px solid #f1f5f9;white-space:nowrap;">When</th>
+            <th style="padding:9px 16px;font-size:11px;font-weight:700;color:#64748b;text-align:left;border-bottom:1px solid #f1f5f9;white-space:nowrap;">Actor</th>
+            <th style="padding:9px 16px;font-size:11px;font-weight:700;color:#64748b;text-align:left;border-bottom:1px solid #f1f5f9;white-space:nowrap;">Event</th>
+            <th style="padding:9px 16px;font-size:11px;font-weight:700;color:#64748b;text-align:left;border-bottom:1px solid #f1f5f9;">Target / Detail</th>
           </tr>
         </thead>
         <tbody>
           {% for ev in access_events %}
-          {# Map event_type to a readable label + colour #}
           {%- set ev_meta = {
             'permission_changed':               ('Permission Changed',     '#4f46e5', 'fa-toggle-on'),
             'permission_self_lockout_confirmed': ('Self-Lockout Confirmed', '#ef4444', 'fa-triangle-exclamation'),
@@ -628,9 +819,7 @@
             </td>
             <td style="padding:9px 16px;font-size:12px;color:#374151;vertical-align:top;white-space:nowrap;">
               {{ ev.actor_name or '—' }}
-              {% if ev.actor_email %}
-              <br><span style="font-size:10px;color:#94a3b8;">{{ ev.actor_email }}</span>
-              {% endif %}
+              {% if ev.actor_email %}<br><span style="font-size:10px;color:#94a3b8;">{{ ev.actor_email }}</span>{% endif %}
             </td>
             <td style="padding:9px 16px;vertical-align:top;white-space:nowrap;">
               <span style="display:inline-flex;align-items:center;gap:5px;
@@ -661,6 +850,21 @@
 {# ── Toast ── #}
 <div id="acc-toast"></div>
 
+{# ── Mobile permissions drawer ── #}
+<div class="perm-drawer-overlay" id="drawer-overlay" onclick="closeDrawer()"></div>
+<div class="perm-drawer" id="perm-drawer">
+  <div class="perm-drawer-handle"></div>
+  <div class="perm-drawer-header">
+    <div style="font-size:14px;font-weight:800;color:#1e293b;" id="drawer-member-name">—</div>
+    <div style="font-size:11px;color:#94a3b8;" id="drawer-member-role">—</div>
+  </div>
+  <div class="perm-drawer-body" id="drawer-body">
+    <div style="font-size:13px;color:#94a3b8;text-align:center;padding:24px 0;">
+      Select a member to view permissions.
+    </div>
+  </div>
+</div>
+
 {# ── Access-level reset confirm dialog ── #}
 <div class="confirm-overlay" id="level-reset-confirm">
   <div class="confirm-box">
@@ -675,13 +879,11 @@
     </p>
     <div style="display:flex;gap:10px;justify-content:flex-end;">
       <button onclick="cancelAccessLevelReset()"
-              style="padding:8px 16px;border:1.5px solid #e2e8f0;border-radius:8px;
-                     background:#f8fafc;color:#64748b;font-size:13px;font-weight:700;cursor:pointer;">
+              style="padding:8px 16px;border:1.5px solid #e2e8f0;border-radius:8px;background:#f8fafc;color:#64748b;font-size:13px;font-weight:700;cursor:pointer;">
         Cancel
       </button>
       <button id="reset-confirm-btn" onclick="confirmAccessLevelReset()"
-              style="padding:8px 16px;border:none;border-radius:8px;
-                     background:#7c3aed;color:#fff;font-size:13px;font-weight:700;cursor:pointer;">
+              style="padding:8px 16px;border:none;border-radius:8px;background:#7c3aed;color:#fff;font-size:13px;font-weight:700;cursor:pointer;">
         Yes, change &amp; reset permissions
       </button>
     </div>
@@ -701,13 +903,11 @@
     </p>
     <div style="display:flex;gap:10px;justify-content:flex-end;">
       <button onclick="closeLockoutConfirm()"
-              style="padding:8px 16px;border:1.5px solid #e2e8f0;border-radius:8px;
-                     background:#f8fafc;color:#64748b;font-size:13px;font-weight:700;cursor:pointer;">
+              style="padding:8px 16px;border:1.5px solid #e2e8f0;border-radius:8px;background:#f8fafc;color:#64748b;font-size:13px;font-weight:700;cursor:pointer;">
         Cancel
       </button>
       <button id="lockout-confirm-btn"
-              style="padding:8px 16px;border:none;border-radius:8px;
-                     background:#dc2626;color:#fff;font-size:13px;font-weight:700;cursor:pointer;">
+              style="padding:8px 16px;border:none;border-radius:8px;background:#dc2626;color:#fff;font-size:13px;font-weight:700;cursor:pointer;">
         Yes, remove my access
       </button>
     </div>
@@ -728,25 +928,21 @@ function showToast(msg, isErr) {
 
 // ── Self-lockout confirm ───────────────────────────────────────────────────────
 let _pendingLockoutBtn = null;
-
 function closeLockoutConfirm() {
   document.getElementById('lockout-confirm').classList.remove('open');
   _pendingLockoutBtn = null;
 }
-
 function openLockoutConfirm(btn) {
   _pendingLockoutBtn = btn;
   document.getElementById('lockout-confirm').classList.add('open');
   document.getElementById('lockout-confirm-btn').onclick = () => {
     closeLockoutConfirm();
-    doToggle(btn, true);   // retry with confirm flag
+    doToggle(btn, true);
   };
 }
 
 // ── Main toggle handler ───────────────────────────────────────────────────────
-function togglePerm(btn) {
-  doToggle(btn, false);
-}
+function togglePerm(btn) { doToggle(btn, false); }
 
 async function doToggle(btn, confirmSelfLockout) {
   const mid     = btn.dataset.mid;
@@ -754,7 +950,6 @@ async function doToggle(btn, confirmSelfLockout) {
   const current = btn.dataset.value === 'true';
   const newVal  = !current;
 
-  // Busy state
   const origClass = btn.className;
   const origHTML  = btn.innerHTML;
   btn.className = 'perm-chip perm-busy';
@@ -767,37 +962,18 @@ async function doToggle(btn, confirmSelfLockout) {
   try {
     const resp = await fetch(
       PERM_URL_BASE + mid + '/permissions/' + key,
-      {
-        method:  'PATCH',
-        headers: {
-          'Content-Type':  'application/json',
-          'X-CSRF-Token':  CSRF_TOKEN,
-        },
-        body: JSON.stringify(body),
-      }
+      { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN }, body: JSON.stringify(body) }
     );
-
     const json = await resp.json().catch(() => ({}));
-
     if (!resp.ok) {
-      // Self-lockout needs confirmation
       if (resp.status === 409 && json.self_lockout) {
-        // Restore btn before opening dialog
-        btn.className = origClass;
-        btn.innerHTML = origHTML;
-        btn.disabled  = false;
-        openLockoutConfirm(btn);
-        return;
+        btn.className = origClass; btn.innerHTML = origHTML; btn.disabled = false;
+        openLockoutConfirm(btn); return;
       }
-      // Generic error
-      btn.className = origClass;
-      btn.innerHTML = origHTML;
-      btn.disabled  = false;
-      showToast(json.error || 'Error updating permission.', true);
-      return;
+      btn.className = origClass; btn.innerHTML = origHTML; btn.disabled = false;
+      showToast(json.error || 'Error updating permission.', true); return;
     }
-
-    // ── Success — update ALL cells for this member+key across groups ──
+    // Update ALL cells for this member+key across groups
     const cellId = 'pc-' + mid + '-' + key;
     document.querySelectorAll('[id="' + cellId + '"]').forEach(cell => {
       if (newVal) {
@@ -811,13 +987,9 @@ async function doToggle(btn, confirmSelfLockout) {
       }
       cell.disabled = false;
     });
-
     showToast(newVal ? 'Permission granted.' : 'Permission removed.', false);
-
   } catch (err) {
-    btn.className = origClass;
-    btn.innerHTML = origHTML;
-    btn.disabled  = false;
+    btn.className = origClass; btn.innerHTML = origHTML; btn.disabled = false;
     showToast('Network error — please try again.', true);
   }
 }
@@ -825,11 +997,40 @@ async function doToggle(btn, confirmSelfLockout) {
 // ── Group collapse / expand ───────────────────────────────────────────────────
 function toggleGroup(groupKey) {
   const wrap    = document.getElementById('matrix-' + groupKey);
+  const mobile  = document.getElementById('mobile-' + groupKey);
   const chevron = document.getElementById('chevron-' + groupKey);
-  if (!wrap) return;
-  const collapsed = wrap.style.display === 'none';
-  wrap.style.display    = collapsed ? '' : 'none';
+  const collapsed = wrap && wrap.style.display === 'none';
+  [wrap, mobile].forEach(el => { if (el) el.style.display = collapsed ? '' : 'none'; });
   if (chevron) chevron.style.transform = collapsed ? '' : 'rotate(180deg)';
+}
+function expandAll() {
+  document.querySelectorAll('[id^="matrix-"]').forEach(el => el.style.display = '');
+  document.querySelectorAll('[id^="mobile-"]').forEach(el => el.style.display = '');
+  document.querySelectorAll('.group-chevron').forEach(c => c.style.transform = '');
+}
+function collapseAll() {
+  document.querySelectorAll('[id^="matrix-"]').forEach(el => el.style.display = 'none');
+  document.querySelectorAll('[id^="mobile-"]').forEach(el => el.style.display = 'none');
+  document.querySelectorAll('.group-chevron').forEach(c => c.style.transform = 'rotate(180deg)');
+}
+
+// ── Owner panel collapse ──────────────────────────────────────────────────────
+function toggleOwnerPanel() {
+  const body    = document.getElementById('owner-panel-body');
+  const chevron = document.getElementById('owner-panel-chevron');
+  if (!body) return;
+  const collapsed = body.style.display === 'none';
+  body.style.display = collapsed ? '' : 'none';
+  if (chevron) chevron.style.transform = collapsed ? '' : 'rotate(180deg)';
+}
+
+// ── Group by company ──────────────────────────────────────────────────────────
+let _groupedByCompany = false;
+function toggleGroupByCompany() {
+  _groupedByCompany = !_groupedByCompany;
+  document.body.classList.toggle('group-by-company', _groupedByCompany);
+  const btn = document.getElementById('btn-group-company');
+  if (btn) btn.classList.toggle('active', _groupedByCompany);
 }
 
 // ── Ownership panel ───────────────────────────────────────────────────────────
@@ -838,196 +1039,201 @@ async function promoteToOwner() {
   if (!sel) return;
   const mid = parseInt(sel.value, 10);
   if (!mid) { showToast('Please select a member to promote.', true); return; }
-
   sel.disabled = true;
   try {
-    const resp = await fetch(
-      PERM_URL_BASE + mid + '/make-owner',
-      {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
-        body:    JSON.stringify({}),
-      }
-    );
+    const resp = await fetch(PERM_URL_BASE + mid + '/make-owner',
+      { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN }, body: JSON.stringify({}) });
     const json = await resp.json().catch(() => ({}));
-    if (!resp.ok) {
-      sel.disabled = false;
-      showToast(json.error || 'Error promoting member.', true);
-      return;
-    }
+    if (!resp.ok) { sel.disabled = false; showToast(json.error || 'Error promoting member.', true); return; }
     showToast('Member promoted to Owner. Refreshing…', false);
     setTimeout(() => location.reload(), 700);
-  } catch (err) {
-    sel.disabled = false;
-    showToast('Network error — please try again.', true);
-  }
+  } catch (err) { sel.disabled = false; showToast('Network error — please try again.', true); }
 }
 
 async function removeOwnerStatus() {
-  const ownerSel   = document.getElementById('remove-owner-select');
-  const levelSel   = document.getElementById('fallback-level-select');
+  const ownerSel  = document.getElementById('remove-owner-select');
+  const levelSel  = document.getElementById('fallback-level-select');
   if (!ownerSel || !levelSel) return;
-
-  const mid       = parseInt(ownerSel.value, 10);
-  const newLevel  = levelSel.value;
+  const mid      = parseInt(ownerSel.value, 10);
+  const newLevel = levelSel.value;
   if (!mid)      { showToast('Please select an owner to demote.', true); return; }
   if (!newLevel) { showToast('Please select a fallback access level.', true); return; }
-
-  ownerSel.disabled = true;
-  levelSel.disabled = true;
+  ownerSel.disabled = true; levelSel.disabled = true;
   try {
-    const resp = await fetch(
-      PERM_URL_BASE + mid + '/remove-owner',
-      {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
-        body:    JSON.stringify({ new_access_level: newLevel }),
-      }
-    );
+    const resp = await fetch(PERM_URL_BASE + mid + '/remove-owner',
+      { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN }, body: JSON.stringify({ new_access_level: newLevel }) });
     const json = await resp.json().catch(() => ({}));
-    if (!resp.ok) {
-      ownerSel.disabled = false;
-      levelSel.disabled = false;
-      showToast(json.error || 'Error removing owner status.', true);
-      return;
-    }
+    if (!resp.ok) { ownerSel.disabled = false; levelSel.disabled = false; showToast(json.error || 'Error removing owner status.', true); return; }
     showToast('Owner status removed. Refreshing…', false);
     setTimeout(() => location.reload(), 700);
-  } catch (err) {
-    ownerSel.disabled = false;
-    levelSel.disabled = false;
-    showToast('Network error — please try again.', true);
-  }
+  } catch (err) { ownerSel.disabled = false; levelSel.disabled = false; showToast('Network error — please try again.', true); }
 }
 
 // ── Access-level change ───────────────────────────────────────────────────────
 let _resetConfirmData = null;
-
 async function initAccessLevelChange(sel) {
   const mid       = parseInt(sel.dataset.mid, 10);
   const newLevel  = sel.value;
   const origLevel = sel.dataset.original;
-
   if (newLevel === origLevel) return;
-
   sel.disabled = true;
-
   try {
-    const resp = await fetch(
-      PERM_URL_BASE + mid + '/access-level',
-      {
-        method:  'PATCH',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
-        body:    JSON.stringify({ access_level: newLevel }),
-      }
-    );
+    const resp = await fetch(PERM_URL_BASE + mid + '/access-level',
+      { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN }, body: JSON.stringify({ access_level: newLevel }) });
     const json = await resp.json().catch(() => ({}));
-
     if (!resp.ok) {
       sel.disabled = false;
       if (resp.status === 409 && json.reset_required) {
-        // Store context, show confirm dialog
         _resetConfirmData = { sel, mid, newLevel, origLevel };
         const levelLabel = sel.options[sel.selectedIndex].text.trim();
         document.getElementById('reset-level-name').textContent = levelLabel;
         document.getElementById('level-reset-confirm').classList.add('open');
         return;
       }
-      // Other errors (403, 400, etc.)
       sel.value = origLevel;
-      showToast(json.error || 'Error changing access level.', true);
-      return;
+      showToast(json.error || 'Error changing access level.', true); return;
     }
-
-    // Direct success (should not happen without confirm_reset, but handle gracefully)
     showToast('Access level changed. Refreshing…', false);
     setTimeout(() => location.reload(), 800);
-
   } catch (err) {
-    sel.disabled = false;
-    sel.value = origLevel;
+    sel.disabled = false; sel.value = origLevel;
     showToast('Network error — please try again.', true);
   }
 }
-
 async function confirmAccessLevelReset() {
   if (!_resetConfirmData) return;
   const { sel, mid, newLevel, origLevel } = _resetConfirmData;
-
   document.getElementById('level-reset-confirm').classList.remove('open');
   document.getElementById('reset-confirm-btn').disabled = true;
   sel.disabled = true;
-
   try {
-    const resp = await fetch(
-      PERM_URL_BASE + mid + '/access-level',
-      {
-        method:  'PATCH',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
-        body:    JSON.stringify({ access_level: newLevel, confirm_reset: true }),
-      }
-    );
+    const resp = await fetch(PERM_URL_BASE + mid + '/access-level',
+      { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN }, body: JSON.stringify({ access_level: newLevel, confirm_reset: true }) });
     const json = await resp.json().catch(() => ({}));
-
     if (!resp.ok) {
-      sel.disabled = false;
-      sel.value    = origLevel;
+      sel.disabled = false; sel.value = origLevel;
       document.getElementById('reset-confirm-btn').disabled = false;
-      showToast(json.error || 'Error changing access level.', true);
-      return;
+      showToast(json.error || 'Error changing access level.', true); return;
     }
-
     showToast('Access level changed. Refreshing…', false);
     setTimeout(() => location.reload(), 700);
-
   } catch (err) {
-    sel.disabled = false;
-    sel.value    = origLevel;
+    sel.disabled = false; sel.value = origLevel;
     document.getElementById('reset-confirm-btn').disabled = false;
     showToast('Network error — please try again.', true);
-  } finally {
-    _resetConfirmData = null;
-  }
+  } finally { _resetConfirmData = null; }
 }
-
 function cancelAccessLevelReset() {
   if (_resetConfirmData) {
     const { sel, origLevel } = _resetConfirmData;
-    sel.value    = origLevel;
-    sel.disabled = false;
-    _resetConfirmData = null;
+    sel.value = origLevel; sel.disabled = false; _resetConfirmData = null;
   }
   document.getElementById('level-reset-confirm').classList.remove('open');
   document.getElementById('reset-confirm-btn').disabled = false;
 }
 
-// ── Filter ────────────────────────────────────────────────────────────────────
-function filterMembers(q) {
-  const query = q.trim().toLowerCase();
-  const groupCount = {{ permission_groups|length }};
+// ── Filters ───────────────────────────────────────────────────────────────────
+function applyFilters() {
+  const q       = (document.getElementById('acc-filter').value || '').trim().toLowerCase();
+  const level   = (document.getElementById('filter-level').value || '').trim();
+  const company = (document.getElementById('filter-company') ? document.getElementById('filter-company').value : '').trim();
+  const status  = (document.getElementById('filter-status').value || '').trim();
 
-  document.querySelectorAll('.matrix-table tbody tr[data-filter]').forEach(tr => {
-    tr.classList.toggle('hidden-row', !!query && !tr.dataset.filter.includes(query));
+  let shown = 0;
+  document.querySelectorAll('.matrix-table tbody tr[data-filter-name]').forEach(tr => {
+    const matchName    = !q       || tr.dataset.filterName.includes(q);
+    const matchLevel   = !level   || tr.dataset.filterLevel === level;
+    const matchCompany = !company || tr.dataset.filterCompany === company;
+    const matchStatus  = !status  || tr.dataset.filterStatus === status;
+    const hide         = !(matchName && matchLevel && matchCompany && matchStatus);
+    tr.classList.toggle('hidden-row', hide);
+    if (!hide) shown++;
+  });
+  // Mirror filters to mobile rows
+  document.querySelectorAll('.mobile-member-row[data-filter-name]').forEach(row => {
+    const matchName    = !q       || row.dataset.filterName.includes(q);
+    const matchLevel   = !level   || row.dataset.filterLevel === level;
+    const matchCompany = !company || row.dataset.filterCompany === company;
+    const matchStatus  = !status  || row.dataset.filterStatus === status;
+    row.classList.toggle('hidden-row', !(matchName && matchLevel && matchCompany && matchStatus));
   });
 
-  // Update count badge
   const countEl = document.getElementById('filter-count');
-  if (query) {
-    const unique = new Set();
-    document.querySelectorAll('.matrix-table tbody tr[data-filter]:not(.hidden-row)')
-      .forEach(tr => unique.add(tr.dataset.filter));
-    const n = Math.round(unique.size / groupCount);
-    countEl.textContent = n + ' member' + (n !== 1 ? 's' : '') + ' shown';
-  } else {
-    countEl.textContent = '';
-  }
+  const anyFilter = q || level || company || status;
+  countEl.textContent = anyFilter ? (shown + ' member' + (shown !== 1 ? 's' : '') + ' shown') : '';
 
   // Per-group empty state
   document.querySelectorAll('.perm-section').forEach(section => {
-    const visible  = section.querySelectorAll('tbody tr[data-filter]:not(.hidden-row)');
-    const emptyRow = section.querySelector('.empty-filter-row');
+    const groupKey  = section.id.replace('group-','');
+    const matrix    = document.getElementById('matrix-' + groupKey);
+    if (!matrix) return;
+    const visible   = matrix.querySelectorAll('tbody tr[data-filter-name]:not(.hidden-row)');
+    const emptyRow  = matrix.querySelector('.empty-filter-row');
     if (emptyRow) emptyRow.style.display = visible.length === 0 ? '' : 'none';
   });
+}
+
+function clearFilters() {
+  document.getElementById('acc-filter').value  = '';
+  document.getElementById('filter-level').value = '';
+  if (document.getElementById('filter-company')) document.getElementById('filter-company').value = '';
+  document.getElementById('filter-status').value = '';
+  applyFilters();
+}
+
+// ── Mobile drawer ─────────────────────────────────────────────────────────────
+// _drawerData[group_key] = [{key, label, mid, value, locked}, ...]
+const _drawerData = {};
+{% for group_key, group_label, group_icon, group_color, group_perms in permission_groups %}
+_drawerData['{{ group_key }}'] = [
+  {% for perm_key, perm_label in group_perms %}
+  { key: {{ perm_key|tojson }}, label: {{ perm_label|tojson }} },
+  {% endfor %}
+];
+{% endfor %}
+
+// Perm state lookup from DOM (cells are in the matrix table — we use their data attrs)
+function getPermState(mid, key) {
+  const el = document.getElementById('pc-' + mid + '-' + key);
+  if (!el) return null;
+  return {
+    locked:  el.classList.contains('perm-locked'),
+    granted: el.dataset.value === 'true',
+  };
+}
+
+function openDrawer(mid, name, role, groupKey) {
+  document.getElementById('drawer-member-name').textContent = name;
+  document.getElementById('drawer-member-role').textContent = role;
+  const body   = document.getElementById('drawer-body');
+  const perms  = _drawerData[groupKey] || [];
+  body.innerHTML = perms.map(p => {
+    const state = getPermState(mid, p.key);
+    if (!state) return '';
+    if (state.locked) {
+      return `<div class="perm-drawer-row">
+        <span class="perm-drawer-label">${p.label}</span>
+        <button class="perm-chip perm-locked" disabled><i class="fa-solid fa-lock"></i></button>
+      </div>`;
+    }
+    const cls = state.granted ? 'perm-on' : 'perm-off';
+    const ico = state.granted ? 'fa-check' : 'fa-minus';
+    return `<div class="perm-drawer-row">
+      <span class="perm-drawer-label">${p.label}</span>
+      <button id="pc-${mid}-${p.key}" class="perm-chip ${cls}"
+              data-mid="${mid}" data-key="${p.key}" data-value="${state.granted}"
+              onclick="togglePerm(this)">
+        <i class="fa-solid ${ico}"></i>
+      </button>
+    </div>`;
+  }).join('');
+  document.getElementById('drawer-overlay').classList.add('open');
+  document.getElementById('perm-drawer').classList.add('open');
+}
+
+function closeDrawer() {
+  document.getElementById('drawer-overlay').classList.remove('open');
+  document.getElementById('perm-drawer').classList.remove('open');
 }
 </script>
 {% endblock %}

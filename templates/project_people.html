@@ -320,6 +320,32 @@
     </div>
   </div>
 
+  <!-- ── Invite your team CTA (shown when only 1 member = the creator) ── -->
+  {% if members|length == 1 and can_manage %}
+  <div style="background:linear-gradient(135deg,#f0f7ff,#e0f2fe);border:1.5px solid #bfdbfe;
+              border-radius:16px;padding:20px 24px;margin-bottom:24px;
+              display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+    <div style="width:44px;height:44px;border-radius:12px;background:#2563eb;
+                display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+      <i class="fa-solid fa-users-gear" style="color:#fff;font-size:18px;"></i>
+    </div>
+    <div style="flex:1;min-width:180px;">
+      <div style="font-size:15px;font-weight:800;color:#1e40af;margin-bottom:3px;">Invite your team</div>
+      <div style="font-size:13px;color:#3b82f6;line-height:1.55;">
+        You're the only member so far. Add companies and team members to get started.
+        Access levels set default permissions — fine-tune them in the Control Center.
+      </div>
+    </div>
+    <button onclick="openAddMember()"
+            style="display:inline-flex;align-items:center;gap:7px;padding:10px 20px;
+                   background:#2563eb;color:white;border:none;border-radius:10px;
+                   font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;
+                   box-shadow:0 4px 12px rgba(37,99,235,.35);">
+      <i class="fa-solid fa-user-plus"></i> Add Member
+    </button>
+  </div>
+  {% endif %}
+
   <!-- ── Summary bar ───────────────────────────────────────── -->
   {% set active_members     = members|selectattr('is_active')|list %}
   {% set linked_user_count  = active_members|selectattr('user_id')|list|length %}
@@ -573,6 +599,12 @@
             {% endif %}
             {% endfor %}
           </select>
+          <p style="font-size:10px;color:#6366f1;margin:4px 0 0;line-height:1.45;">
+            Access level sets default permissions. Fine-tune exact permissions in the
+            <a href="{{ url_for('project_access_control', pid=proj.id) }}"
+               style="color:#6366f1;font-weight:700;text-decoration:underline;"
+               target="_blank">Control Center</a>.
+          </p>
         </div>
         <div>
           <label class="form-label">Company</label>

@@ -1343,7 +1343,6 @@ def new_project():
         abort(403)
 
     if request.method == 'POST':
-        import secrets, string
         # ── Basic info ──
         start_raw = request.form.get('start_date', '').strip()
         end_raw   = request.form.get('end_date',   '').strip()
@@ -1364,19 +1363,9 @@ def new_project():
         db.session.add(proj)
         db.session.flush()
 
-        # ── Members (JSON list from wizard) ──
-        members_json = request.form.get('members_json', '[]')
-        try:
-            members_data = json.loads(members_json)
-        except Exception:
-            members_data = []
-
-        new_credentials = []  # track newly created accounts
-        added_ids = set()
-
-        # Always add creator as owner — both legacy table AND new AC model
+        # ── Creator is the sole owner — team members are managed via People & Access after creation ──
+        # Legacy compatibility: keep ProjectMember row for creator so old queries still work.
         db.session.add(ProjectMember(project_id=proj.id, user_id=current_user.id, proj_role='owner'))
-        added_ids.add(current_user.id)
 
         # ProjectMemberAC row is required for the project to appear in g.user_projects
         # and for all AC permission checks. Without this the project is invisible.
@@ -1393,41 +1382,6 @@ def new_project():
         db.session.flush()   # populate _ac_owner.id before seeding permissions
         seed_member_permissions(_ac_owner)
 
-        for m in members_data:
-            email    = (m.get('email') or '').strip().lower()
-            name     = (m.get('name')  or '').strip()
-            position = (m.get('position') or '').strip()
-            access   = (m.get('access') or 'viewer').strip()
-            if not email:
-                continue
-            user = User.query.filter_by(email=email).first()
-            if not user:
-                # Create new account with temp password
-                alphabet = string.ascii_letters + string.digits
-                temp_pw  = ''.join(secrets.choice(alphabet) for _ in range(10))
-                # Map project access → system role
-                sys_role = 'engineer' if access in ('admin','lead','engineer') else \
-                           'client'   if access == 'client' else 'supervisor'
-                user = User(
-                    name=name or email.split('@')[0].title(),
-                    email=email,
-                    password=generate_password_hash(temp_pw),
-                    role=sys_role,
-                    position=position,
-                    company=proj.client_name or '',
-                )
-                db.session.add(user)
-                db.session.flush()
-                new_credentials.append({'name': user.name, 'email': email, 'password': temp_pw})
-            else:
-                # Update position if provided and currently blank
-                if position and not user.position:
-                    user.position = position
-
-            if user.id not in added_ids:
-                db.session.add(ProjectMember(project_id=proj.id, user_id=user.id, proj_role=access))
-                added_ids.add(user.id)
-
         # ── Features ──
         for key, *_ in ALL_FEATURES:
             enabled = request.form.get(f'feat_{key}') == '1'
@@ -1437,13 +1391,10 @@ def new_project():
         from flask import session as fsession
         fsession['active_project_id'] = proj.id
 
-        if new_credentials:
-            cred_lines = ' | '.join([f"{c['name']} → {c['email']} / {c['password']}" for c in new_credentials])
-            flash(f'New accounts created — share these credentials: {cred_lines}', 'success')
-        flash(f'Project "{proj.name}" created successfully!', 'success')
-        return redirect(url_for('project_setup', pid=proj.id))
+        flash(f'Project "{proj.name}" created! Now invite your team from People & Access.', 'success')
+        return redirect(url_for('project_people', pid=proj.id))
 
-    return render_template('project_new.html', access_levels=PROJECT_ACCESS_LEVELS)
+    return render_template('project_new.html')
 
 
 @app.route('/projects/<int:pid>/settings', methods=['GET', 'POST'])
@@ -2299,6 +2250,26 @@ def project_access_control(pid):
 
     actor_is_owner = user_is_project_owner(pid)
     actor_ac       = get_project_member_ac(pid)
+
+    # Companies map for display in member rows and filter dropdown
+    companies_map = {c.id: c.name
+                     for c in ProjectCompany.query.filter_by(project_id=pid).all()}
+
+    # Compute modified-from-default flags: {member_id: set(perm_keys that differ from defaults)}
+    modified_map = {}
+    for m in members:
+        if m.is_owner:
+            continue
+        defaults = DEFAULT_PERMISSIONS.get(m.access_level, frozenset())
+        modified = set()
+        for pkey, prow in perm_map.get(m.id, {}).items():
+            if prow.locked:
+                continue
+            expected = pkey in defaults
+            if bool(prow.value) != expected:
+                modified.add(pkey)
+        modified_map[m.id] = modified
+
     return render_template(
         'project_access_control.html',
         proj              = proj,
@@ -2313,6 +2284,8 @@ def project_access_control(pid):
         actor_member_id   = actor_ac.id if actor_ac else None,
         ac_access_levels  = AC_ACCESS_LEVELS,
         access_events     = access_events,
+        companies_map     = companies_map,
+        modified_map      = modified_map,
     )
 
 

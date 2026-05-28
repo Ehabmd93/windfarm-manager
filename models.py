@@ -225,6 +225,9 @@ class Project(db.Model):
         return round(sum(w.completion_pct for w in self.wtgs) / len(self.wtgs))
 
 
+# Legacy compatibility only. New people/access flows use ProjectMemberAC.
+# This table is kept for backward-compatible queries (e.g. old report generators
+# that still join project_members). Do NOT add new UI flows on top of this table.
 class ProjectMember(db.Model):
     __tablename__ = 'project_members'
     id          = db.Column(db.Integer, primary_key=True)
@@ -1085,6 +1088,9 @@ class ProjectCompany(db.Model):
         return next((icon for k, lbl, icon, color in COMPANY_TYPES if k == self.company_type), 'fa-building')
 
 
+# Legacy compatibility only. New people/access flows use ProjectMemberAC.
+# ProjectTeamMember was the pre-AC-phase named-person record. Kept for
+# backward compatibility with company.members FK. Do NOT build new UI on this.
 class ProjectTeamMember(db.Model):
     """A named person on the project — not necessarily a registered user."""
     __tablename__ = 'project_team_members'
