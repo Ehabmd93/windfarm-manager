@@ -152,11 +152,9 @@
       {% if proj %}
       {% set _has_loc = (proj.location or proj.postcode) %}
       <!-- ── Weather widget ─────────────────────────────────────────────────────
-           Server-rendered HTML is always a safe, non-skeleton fallback.
-           JavaScript adds wx-skeleton classes itself when it starts, then
-           removes them once data arrives (or the safety net fires).
-           If JS never runs the user sees "Checking weather…" — never "Loading…"
-           frozen forever with a pulsing animation.
+           Server-rendered state is always the FINAL safe fallback.
+           No skeleton, no loading, no checking. JavaScript only upgrades
+           the card if the weather fetch succeeds — failures leave it as-is.
       ─────────────────────────────────────────────────────────────────────── -->
       <div id="weather-widget" style="margin-top:11px;">
         <div class="wx-card">
@@ -164,13 +162,13 @@
           <div>
             <div style="display:flex;align-items:baseline;gap:7px;">
               <span id="wx-temp" style="color:white;font-size:22px;font-weight:900;letter-spacing:-.5px;">{% if _has_loc %}--°{% endif %}</span>
-              <span id="wx-cond" style="color:#94a3b8;font-size:11px;font-weight:700;">{% if _has_loc %}Checking weather…{% else %}Set project location{% endif %}</span>
+              <span id="wx-cond" style="color:#94a3b8;font-size:11px;font-weight:700;">{% if _has_loc %}Weather unavailable{% else %}Set project location{% endif %}</span>
             </div>
             <div style="font-size:10px;margin-top:3px;display:flex;align-items:center;gap:6px;">
               {% if _has_loc %}
               <span>
                 <i class="fa-solid fa-wind" style="color:#7dd3fc;font-size:9px;margin-right:3px;"></i>
-                <span id="wx-wind" style="color:#7dd3fc;">--</span>
+                <span id="wx-wind" style="color:#7dd3fc;"></span>
               </span>
               <span style="color:#334155;">·</span>
               <span id="wx-loc" style="color:#475569;">{{ proj.location or proj.postcode }}</span>
@@ -711,83 +709,51 @@ const g  = document.getElementById('greeting-text');
 if (g) g.textContent = hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening';
 
 // ── Weather widget ────────────────────────────────────────────────────────────
-// Single backend call to /api/weather — no browser calls to third-party APIs.
-// Skeletons are added HERE by JS (not in server HTML) so if this script never
-// runs the user sees "Checking weather…" — never a frozen loading state.
+// Success-only enhancement. The server HTML already shows "Weather unavailable"
+// as a permanent safe default. JS only updates the card when the fetch succeeds.
+// Any failure (network, timeout, API error) leaves the default untouched.
 const PROJ_LOC = {{ (proj.location or '')|tojson if proj else '""' }};
 const PROJ_PC  = {{ (proj.postcode  or '')|tojson if proj else '""' }};
 const WX_DIRS  = ['N','NE','E','SE','S','SW','W','NW'];
 
-// Add skeleton animation now that JS is running
-if ((PROJ_LOC||'').trim() || (PROJ_PC||'').trim()) {
-  ['wx-temp','wx-cond','wx-wind','wx-loc'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.classList.add('wx-skeleton');
-  });
+function setText(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = val;
 }
 
-function wxDone() {
-  document.querySelectorAll('.wx-skeleton').forEach(el => el.classList.remove('wx-skeleton'));
+function setWeatherUnavailable() {
+  setText('wx-icon', '🌡️');
+  setText('wx-temp', '--°');
+  setText('wx-cond', 'Weather unavailable');
+  setText('wx-wind', '');
+  setText('wx-loc',  (PROJ_LOC||'').trim() || (PROJ_PC||'').trim() || '');
 }
-
-// d = { temp, icon, cond, wind_speed, wind_dir, city, admin } from /api/weather
-function wxShow(d) {
-  const dir = WX_DIRS[Math.round(((d.wind_dir || 0) % 360) / 45) % 8];
-  document.getElementById('wx-icon').textContent = d.icon  || '🌡️';
-  document.getElementById('wx-temp').textContent = (d.temp != null ? d.temp : '--') + '°';
-  document.getElementById('wx-cond').textContent = d.cond  || '';
-  document.getElementById('wx-wind').textContent = dir + ' ' + (d.wind_speed || 0) + ' km/h';
-  document.getElementById('wx-loc').textContent  = d.city  || d.admin || '';
-  wxDone();
-}
-
-function wxPrompt(msg, sub) {
-  document.getElementById('wx-icon').textContent = '📍';
-  document.getElementById('wx-temp').textContent = '';
-  document.getElementById('wx-cond').textContent = msg;
-  document.getElementById('wx-wind').textContent = '';
-  document.getElementById('wx-loc').textContent  = sub || '';
-  wxDone();
-}
-
-// Hard safety net — widget will NEVER stay loading past 4 seconds
-const __wxSafety = setTimeout(() => {
-  if (document.querySelector('.wx-skeleton')) {
-    const hasLoc = (PROJ_LOC||'').trim() || (PROJ_PC||'').trim();
-    wxPrompt(hasLoc ? 'Weather unavailable' : 'Set project location',
-             hasLoc ? '' : 'Project Settings → Info');
-  }
-}, 4000);
 
 async function loadWeather() {
   const loc = (PROJ_LOC||'').trim();
   const pc  = (PROJ_PC ||'').trim();
+  if (!loc && !pc) return; // no location — server default already correct
 
-  if (!loc && !pc) {
-    // No project location saved — show prompt immediately, don't hit the API
-    clearTimeout(__wxSafety);
-    wxPrompt('Set project location', 'Project Settings → Info');
-    return;
-  }
-
-  const url = `/api/weather?loc=${encodeURIComponent(loc)}&pc=${encodeURIComponent(pc)}`;
+  const url  = `/api/weather?loc=${encodeURIComponent(loc)}&pc=${encodeURIComponent(pc)}`;
   const ctrl = new AbortController();
-  const __fetchTimer = setTimeout(() => ctrl.abort(), 7000);
+  const t    = setTimeout(() => ctrl.abort(), 3000);
 
   try {
     const r = await fetch(url, { signal: ctrl.signal });
-    clearTimeout(__fetchTimer);
-    clearTimeout(__wxSafety);
+    clearTimeout(t);
+    if (!r.ok) return; // leave server default
     const d = await r.json();
-    if (!r.ok || d.error) {
-      wxPrompt('Weather unavailable', '');
-    } else {
-      wxShow(d);
-    }
+    if (d.error) return; // leave server default
+    // ── Success: update card ──────────────────────────────────────────────
+    const dir = WX_DIRS[Math.round(((d.wind_dir || 0) % 360) / 45) % 8];
+    setText('wx-icon', d.icon || '🌡️');
+    setText('wx-temp', (d.temp != null ? d.temp : '--') + '°');
+    setText('wx-cond', d.cond || '');
+    setText('wx-wind', dir + ' ' + (d.wind_speed || 0) + ' km/h');
+    setText('wx-loc',  d.city || d.admin || loc || pc);
   } catch(e) {
-    clearTimeout(__fetchTimer);
-    clearTimeout(__wxSafety);
-    wxPrompt('Weather unavailable', '');
+    clearTimeout(t);
+    // timeout or network error — leave server default as-is
   }
 }
 
