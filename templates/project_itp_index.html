@@ -17,6 +17,101 @@
   display:inline-flex;align-items:center;gap:6px;padding:4px 11px;border-radius:8px;
   font-size:11px;font-weight:700;white-space:nowrap;
 }
+
+/* ── Selection / Archive UI ─────────────────────── */
+.itp-checkbox-wrap {
+  display:none; align-items:center; justify-content:center;
+  width:26px; height:26px; flex-shrink:0;
+}
+.select-mode .itp-checkbox-wrap { display:flex; }
+.itp-cb {
+  width:18px; height:18px; cursor:pointer; accent-color:#7c3aed;
+}
+.itp-template-card { transition:outline .1s; }
+.itp-template-card.selected { outline:2px solid #7c3aed; outline-offset:2px; }
+
+/* Sticky bulk action bar */
+.bulk-bar {
+  position:fixed; bottom:0; left:0; right:0; z-index:200;
+  background:#1e1b4b; color:white;
+  padding:14px 24px;
+  display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+  box-shadow:0 -4px 24px rgba(0,0,0,.25);
+  transform:translateY(100%); transition:transform .25s cubic-bezier(.34,1.2,.64,1);
+}
+.bulk-bar.visible { transform:translateY(0); }
+.bulk-btn {
+  padding:9px 20px; border-radius:9px; font-size:13px; font-weight:700;
+  cursor:pointer; border:none; white-space:nowrap;
+}
+.bulk-btn.archive { background:#ef4444; color:#fff; }
+.bulk-btn.archive:hover { background:#dc2626; }
+.bulk-btn.cancel  { background:rgba(255,255,255,.12); color:#fff; border:1.5px solid rgba(255,255,255,.2); }
+.bulk-btn.cancel:hover { background:rgba(255,255,255,.2); }
+
+/* Archive modal */
+.arch-overlay {
+  display:none; position:fixed; inset:0; z-index:400;
+  background:rgba(0,0,0,.55); backdrop-filter:blur(3px);
+  align-items:center; justify-content:center; padding:20px;
+}
+.arch-overlay.open { display:flex; }
+.arch-modal {
+  background:#fff; border-radius:20px; width:100%; max-width:580px;
+  max-height:90vh; overflow-y:auto;
+  box-shadow:0 24px 80px rgba(0,0,0,.3);
+  animation:fadeUp .25s ease both;
+}
+.arch-modal-hdr {
+  padding:22px 24px 18px;
+  border-bottom:1px solid #f1f5f9;
+  display:flex; align-items:flex-start; justify-content:space-between; gap:12px;
+}
+.arch-modal-body { padding:20px 24px; }
+.arch-modal-ftr {
+  padding:16px 24px;
+  border-top:1px solid #f1f5f9;
+  display:flex; align-items:center; justify-content:space-between;
+  gap:10px; flex-wrap:wrap;
+}
+.arch-itp-row {
+  display:flex; align-items:flex-start; gap:10px;
+  padding:9px 12px; border-radius:10px; background:#f8fafc;
+  border:1px solid #f1f5f9; margin-bottom:6px;
+}
+.arch-confirm-input {
+  width:100%; padding:10px 13px;
+  border:2px solid #e2e8f0; border-radius:9px;
+  font-size:14px; font-weight:700; font-family:monospace;
+  outline:none; transition:border-color .15s;
+  letter-spacing:.1em;
+}
+.arch-confirm-input:focus { border-color:#ef4444; }
+.arch-confirm-input.valid { border-color:#16a34a; background:#f0fdf4; }
+.arch-reason {
+  width:100%; padding:10px 13px;
+  border:1.5px solid #e2e8f0; border-radius:9px;
+  font-size:13px; resize:vertical; min-height:80px;
+  outline:none; transition:border-color .15s; box-sizing:border-box;
+}
+.arch-reason:focus { border-color:#7c3aed; }
+.arch-submit {
+  padding:11px 28px; border-radius:10px; font-size:14px; font-weight:800;
+  cursor:pointer; border:none;
+  background:#ef4444; color:#fff;
+  transition:all .15s;
+}
+.arch-submit:disabled { opacity:.4; cursor:not-allowed; }
+.arch-submit:not(:disabled):hover { background:#dc2626; }
+
+/* Toast */
+#itp-toast {
+  position:fixed; bottom:80px; left:50%; transform:translateX(-50%) translateY(20px);
+  background:#1e293b; color:#fff; padding:11px 22px; border-radius:12px;
+  font-size:13px; font-weight:700; z-index:500;
+  opacity:0; transition:all .3s; pointer-events:none; white-space:nowrap;
+}
+#itp-toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
 </style>
 {% endblock %}
 
@@ -42,6 +137,14 @@
               font-weight:700;text-decoration:none;">
       <i class="fa-solid fa-file-zipper"></i> Backup
     </a>
+    {% if ac_can_delete %}
+    <button id="manage-btn" onclick="toggleSelectMode()"
+            style="display:inline-flex;align-items:center;gap:7px;padding:8px 14px;border-radius:10px;
+                   background:#fef2f2;color:#dc2626;font-size:12px;border:1.5px solid #fecaca;
+                   font-weight:700;cursor:pointer;">
+      <i class="fa-solid fa-boxes-stacked"></i> <span id="manage-btn-label">Manage ITPs</span>
+    </button>
+    {% endif %}
     <a href="{{ url_for('project_itp_create', pid=proj.id) }}"
        style="display:inline-flex;align-items:center;gap:7px;padding:8px 18px;border-radius:10px;
               background:linear-gradient(135deg,#7c3aed,#6d28d9);color:white;font-size:12px;
@@ -183,33 +286,58 @@
         {{ proj.name }}
       </p>
       <h2 style="color:white;font-size:20px;font-weight:900;margin:0;">
-        Inspection & Test Plans
+        Inspection &amp; Test Plans
       </h2>
       <p style="color:rgba(255,255,255,.6);font-size:12px;margin:4px 0 0;">
         {{ templates|length }} ITP{{ 's' if templates|length != 1 }} defined for this project
       </p>
     </div>
-    <a href="{{ url_for('project_hierarchy', pid=proj.id) }}"
-       style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;
-              background:rgba(255,255,255,.15);color:white;border-radius:10px;
-              font-size:12px;font-weight:700;text-decoration:none;border:1px solid rgba(255,255,255,.2);">
-      <i class="fa-solid fa-sitemap"></i> Hierarchy
-    </a>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      {% if ac_can_delete %}
+      <!-- Select-all shown only in selection mode -->
+      <button id="select-all-btn" onclick="selectAll()" style="display:none;
+              padding:8px 14px;border-radius:10px;background:rgba(255,255,255,.15);color:white;
+              font-size:12px;font-weight:700;border:1px solid rgba(255,255,255,.25);cursor:pointer;">
+        <i class="fa-solid fa-check-double"></i> Select all
+      </button>
+      <button id="clear-all-btn" onclick="clearAll()" style="display:none;
+              padding:8px 14px;border-radius:10px;background:rgba(255,255,255,.1);color:rgba(255,255,255,.7);
+              font-size:12px;font-weight:700;border:1px solid rgba(255,255,255,.15);cursor:pointer;">
+        <i class="fa-solid fa-xmark"></i> Clear
+      </button>
+      {% endif %}
+      <a href="{{ url_for('project_hierarchy', pid=proj.id) }}"
+         style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;
+                background:rgba(255,255,255,.15);color:white;border-radius:10px;
+                font-size:12px;font-weight:700;text-decoration:none;border:1px solid rgba(255,255,255,.2);">
+        <i class="fa-solid fa-sitemap"></i> Hierarchy
+      </a>
+    </div>
   </div>
 
-  <!-- ITP cards -->
+  <!-- ITP template cards -->
+  <div id="itp-list">
   {% for t in templates %}
-  {% set t_records = [] %}
-  {% for el in elements %}
-    {% set r = by_key.get((el.id, t.id)) %}
-    {% if r %}{% set _ = t_records.append(r) %}{% endif %}
-  {% endfor %}
-  {% set done_count = t_records|selectattr('status', 'equalto', 'complete')|list|length %}
+  {%- set stats = template_stats.get(t.id, {'total':0,'counts':{}}) -%}
+  {%- set stats_json = stats.counts | tojson -%}
 
-  <div style="background:white;border-radius:20px;border:1.5px solid #f1f5f9;
+  <div class="itp-template-card"
+       id="card-{{ t.id }}"
+       data-tid="{{ t.id }}"
+       data-name="{{ t.name | e }}"
+       data-itp-number="{{ t.itp_number | e }}"
+       data-total-records="{{ stats.total }}"
+       data-status-counts="{{ stats_json | e }}"
+       style="background:white;border-radius:20px;border:1.5px solid #f1f5f9;
               box-shadow:0 1px 4px rgba(0,0,0,.04);overflow:hidden;margin-bottom:20px;">
     <!-- Template header -->
     <div style="padding:18px 22px 14px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;gap:14px;">
+      <!-- Checkbox (selection mode only) -->
+      {% if ac_can_delete %}
+      <label class="itp-checkbox-wrap" title="Select this ITP">
+        <input type="checkbox" class="itp-cb" value="{{ t.id }}" onchange="onCheckChange()">
+      </label>
+      {% endif %}
       <div style="width:44px;height:44px;border-radius:13px;background:#f5f3ff;
                   display:flex;align-items:center;justify-content:center;flex-shrink:0;">
         <i class="fa-solid fa-clipboard-check" style="color:#7c3aed;font-size:17px;"></i>
@@ -224,6 +352,7 @@
           Rev {{ t.revision }}
           {% if t.spec %} · Spec: {{ t.spec }}{% endif %}
           {% if t.date %} · {{ t.date }}{% endif %}
+          {% if stats.total %} · <strong style="color:#475569;">{{ stats.total }} record{{ 's' if stats.total != 1 }}</strong>{% endif %}
         </p>
       </div>
       <div style="display:flex;align-items:center;gap:8px;">
@@ -233,14 +362,15 @@
                   font-weight:700;text-decoration:none;">
           <i class="fa-solid fa-arrow-right"></i> Open
         </a>
-        <form method="POST" action="{{ url_for('project_itp_delete', pid=proj.id, tid=t.id) }}"
-              onsubmit="return confirm('Delete this ITP template?')" style="margin:0;">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" style="padding:7px 10px;background:#fef2f2;color:#dc2626;
-                  border:1px solid #fecaca;border-radius:9px;font-size:11px;font-weight:700;cursor:pointer;">
-            <i class="fa-solid fa-trash"></i>
-          </button>
-        </form>
+        {% if ac_can_delete %}
+        <button type="button"
+                onclick="archiveSingle({{ t.id }}, '{{ t.name | replace("'","\\'")|replace('"','&quot;') }}', '{{ t.itp_number }}')"
+                title="Archive this ITP"
+                style="padding:7px 10px;background:#fef2f2;color:#dc2626;
+                       border:1px solid #fecaca;border-radius:9px;font-size:11px;font-weight:700;cursor:pointer;">
+          <i class="fa-solid fa-box-archive"></i>
+        </button>
+        {% endif %}
       </div>
     </div>
 
@@ -259,7 +389,7 @@
     </div>
     {% endif %}
 
-    <!-- Element grid (filtered to applicable scope only) -->
+    <!-- Element grid -->
     {% set t_elements = elements_by_tid.get(t.id, []) %}
     {% if t_elements %}
     <div style="padding:14px 22px;">
@@ -299,8 +429,399 @@
     {% endif %}
   </div>
   {% endfor %}
+  </div>{# /itp-list #}
 
   {% endif %}
 
+</div>{# /max-width #}
+
+{# ════════════ STICKY BULK ACTION BAR ════════════ #}
+{% if ac_can_delete %}
+<div class="bulk-bar" id="bulk-bar">
+  <i class="fa-solid fa-box-archive" style="font-size:18px;color:#fca5a5;"></i>
+  <span style="font-size:14px;font-weight:800;">
+    <span id="sel-count">0</span> ITP<span id="sel-plural">s</span> selected
+  </span>
+  <div style="flex:1;"></div>
+  <button class="bulk-btn archive" onclick="openArchiveModal()">
+    <i class="fa-solid fa-box-archive" style="margin-right:6px;"></i>Archive selected
+  </button>
+  <button class="bulk-btn cancel" onclick="toggleSelectMode()">
+    <i class="fa-solid fa-xmark" style="margin-right:5px;"></i>Cancel
+  </button>
 </div>
+
+{# ════════════ ARCHIVE MODAL ════════════ #}
+<div class="arch-overlay" id="arch-overlay" onclick="overlayClick(event)">
+  <div class="arch-modal" id="arch-modal">
+    <!-- Header -->
+    <div class="arch-modal-hdr">
+      <div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+          <div style="width:36px;height:36px;border-radius:10px;background:#fef2f2;
+                      display:flex;align-items:center;justify-content:center;">
+            <i class="fa-solid fa-box-archive" style="color:#ef4444;font-size:15px;"></i>
+          </div>
+          <h3 style="font-size:17px;font-weight:900;color:#0f172a;margin:0;">Archive ITP Templates</h3>
+        </div>
+        <p style="font-size:12px;color:#64748b;margin:0;">
+          <strong>{{ proj.name }}</strong> — ITPs are sensitive QA records.
+        </p>
+      </div>
+      <button onclick="closeArchiveModal()"
+              style="padding:6px 8px;background:#f1f5f9;border:none;border-radius:8px;
+                     font-size:14px;color:#64748b;cursor:pointer;flex-shrink:0;">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+
+    <!-- Body -->
+    <div class="arch-modal-body">
+
+      <!-- Warning banner -->
+      <div style="background:#fef2f2;border:1.5px solid #fecaca;border-radius:12px;
+                  padding:14px 16px;margin-bottom:18px;display:flex;gap:12px;align-items:flex-start;">
+        <i class="fa-solid fa-triangle-exclamation" style="color:#ef4444;font-size:16px;flex-shrink:0;margin-top:1px;"></i>
+        <div>
+          <p style="font-size:13px;font-weight:700;color:#7f1d1d;margin:0 0 4px;">
+            This will hide the selected ITPs from active use.
+          </p>
+          <p style="font-size:12px;color:#991b1b;margin:0;line-height:1.6;">
+            Existing signed records, uploaded evidence, client signatures, and audit logs
+            will be retained. Archived ITPs can be reviewed through the ITP Audit Log.
+          </p>
+        </div>
+      </div>
+
+      <!-- Selected ITPs list -->
+      <div style="margin-bottom:16px;">
+        <div style="font-size:11px;font-weight:800;color:#475569;text-transform:uppercase;
+                    letter-spacing:.05em;margin-bottom:8px;">
+          ITPs to archive (<span id="modal-itp-count">0</span>)
+        </div>
+        <div id="modal-itp-list" style="max-height:180px;overflow-y:auto;"></div>
+      </div>
+
+      <!-- Record count summary -->
+      <div id="modal-record-summary" style="margin-bottom:16px;display:none;">
+        <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px 14px;">
+          <div style="font-size:12px;font-weight:700;color:#92400e;margin-bottom:6px;">
+            <i class="fa-solid fa-database" style="margin-right:5px;"></i>Linked ITP Records
+          </div>
+          <div id="modal-status-breakdown" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+        </div>
+      </div>
+
+      <!-- Backup suggestion -->
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;
+                  padding:12px 14px;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
+        <div>
+          <p style="font-size:12px;font-weight:700;color:#166534;margin:0 0 2px;">
+            <i class="fa-solid fa-file-zipper" style="margin-right:5px;"></i>Download a backup first
+          </p>
+          <p style="font-size:11px;color:#15803d;margin:0;">
+            Export all ITP records and evidence before archiving.
+          </p>
+        </div>
+        <a href="{{ url_for('project_itp_backup', pid=proj.id) }}" target="_blank"
+           style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;
+                  background:#16a34a;color:#fff;border-radius:9px;font-size:12px;
+                  font-weight:700;text-decoration:none;white-space:nowrap;">
+          <i class="fa-solid fa-download"></i> Backup
+        </a>
+      </div>
+
+      <!-- Reason textarea -->
+      <div style="margin-bottom:14px;">
+        <label style="font-size:12px;font-weight:700;color:#1e293b;display:block;margin-bottom:6px;">
+          Reason for archiving <span style="color:#ef4444;">*</span>
+        </label>
+        <textarea id="arch-reason" class="arch-reason"
+                  placeholder="Explain why these ITPs are being archived (required)…"
+                  oninput="validateModal()"></textarea>
+      </div>
+
+      <!-- Confirmation input -->
+      <div style="margin-bottom:4px;">
+        <label style="font-size:12px;font-weight:700;color:#1e293b;display:block;margin-bottom:6px;">
+          Type <code style="background:#fef2f2;color:#ef4444;padding:1px 6px;border-radius:4px;font-weight:800;">ARCHIVE</code> to confirm <span style="color:#ef4444;">*</span>
+        </label>
+        <input type="text" id="arch-confirm" class="arch-confirm-input"
+               placeholder="Type ARCHIVE here…"
+               oninput="validateModal()"
+               autocomplete="off" spellcheck="false">
+      </div>
+      <p style="font-size:11px;color:#94a3b8;margin:6px 0 0;">
+        <i class="fa-solid fa-shield-halved" style="margin-right:4px;"></i>
+        Archived ITPs are hidden from active use. Signed records remain preserved.
+      </p>
+    </div>
+
+    <!-- Footer -->
+    <div class="arch-modal-ftr">
+      <button onclick="closeArchiveModal()"
+              style="padding:10px 20px;border-radius:9px;background:#f1f5f9;color:#475569;
+                     border:1.5px solid #e2e8f0;font-size:13px;font-weight:700;cursor:pointer;">
+        Cancel
+      </button>
+      <button id="arch-submit-btn" class="arch-submit" onclick="submitArchive()" disabled>
+        <i class="fa-solid fa-box-archive" style="margin-right:7px;"></i>
+        Archive <span id="arch-submit-count">0</span> ITP<span id="arch-submit-plural">s</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="itp-toast"></div>
+
+<script>
+const CSRF_TOKEN = '{{ csrf_token() }}';
+const ARCHIVE_URL = '{{ url_for("api_itp_bulk_archive", pid=proj.id) }}';
+const STATUS_LABELS = {
+  draft:             'Not Started',
+  in_progress:       'In Progress',
+  engineer_signed:   'Eng. Signed',
+  client_invited:    'Client Invited',
+  client_signed:     'Client Signed',
+  complete:          'Complete',
+  client_commented:  'Client Commented',
+  reopened:          'Reopened',
+};
+const STATUS_COLORS = {
+  draft:             '#94a3b8',
+  in_progress:       '#f59e0b',
+  engineer_signed:   '#7c3aed',
+  client_invited:    '#2563eb',
+  client_signed:     '#0891b2',
+  complete:          '#16a34a',
+  client_commented:  '#d97706',
+  reopened:          '#ef4444',
+};
+
+let selectMode = false;
+let pendingIds = [];   // IDs queued when opening modal from single-archive button
+
+/* ── Selection mode ─────────────────────────────── */
+function toggleSelectMode() {
+  selectMode = !selectMode;
+  document.getElementById('itp-list').classList.toggle('select-mode', selectMode);
+  const btn       = document.getElementById('manage-btn');
+  const lbl       = document.getElementById('manage-btn-label');
+  const selAll    = document.getElementById('select-all-btn');
+  const clearAll_ = document.getElementById('clear-all-btn');
+  if (btn) {
+    lbl.textContent = selectMode ? 'Done' : 'Manage ITPs';
+    btn.style.background = selectMode ? '#fef9c3' : '#fef2f2';
+    btn.style.color = selectMode ? '#92400e' : '#dc2626';
+    btn.style.borderColor = selectMode ? '#fde68a' : '#fecaca';
+  }
+  if (selAll)  selAll.style.display  = selectMode ? 'inline-flex' : 'none';
+  if (clearAll_) clearAll_.style.display = selectMode ? 'inline-flex' : 'none';
+  if (!selectMode) {
+    clearAll();
+    hideBulkBar();
+  }
+}
+
+function selectAll() {
+  document.querySelectorAll('.itp-cb').forEach(cb => cb.checked = true);
+  onCheckChange();
+}
+function clearAll() {
+  document.querySelectorAll('.itp-cb').forEach(cb => cb.checked = false);
+  document.querySelectorAll('.itp-template-card').forEach(c => c.classList.remove('selected'));
+  onCheckChange();
+}
+
+function onCheckChange() {
+  const checked = [...document.querySelectorAll('.itp-cb:checked')];
+  const count   = checked.length;
+  document.querySelectorAll('.itp-template-card').forEach(c => {
+    const cb = c.querySelector('.itp-cb');
+    c.classList.toggle('selected', !!(cb && cb.checked));
+  });
+  if (count > 0) showBulkBar(count);
+  else hideBulkBar();
+}
+
+function showBulkBar(n) {
+  const bar = document.getElementById('bulk-bar');
+  bar.classList.add('visible');
+  document.getElementById('sel-count').textContent = n;
+  document.getElementById('sel-plural').textContent = n === 1 ? '' : 's';
+}
+function hideBulkBar() {
+  document.getElementById('bulk-bar').classList.remove('visible');
+}
+
+/* ── Single-ITP archive (opens modal pre-loaded) ── */
+function archiveSingle(tid, name, itpNum) {
+  pendingIds = [tid];
+  openArchiveModal();
+}
+
+/* ── Modal ──────────────────────────────────────── */
+function openArchiveModal() {
+  // Gather selected IDs (or use pendingIds for single)
+  let ids;
+  if (pendingIds.length) {
+    ids = pendingIds;
+    pendingIds = [];
+  } else {
+    ids = [...document.querySelectorAll('.itp-cb:checked')].map(cb => parseInt(cb.value));
+  }
+  if (!ids.length) return;
+
+  // Collect card data
+  const itps = ids.map(id => {
+    const card = document.getElementById('card-' + id);
+    return {
+      id:            id,
+      name:          card ? card.dataset.name : '(unknown)',
+      itpNumber:     card ? card.dataset.itpNumber : '',
+      totalRecords:  card ? parseInt(card.dataset.totalRecords || '0') : 0,
+      statusCounts:  card ? JSON.parse(card.dataset.statusCounts || '{}') : {},
+    };
+  });
+
+  // Populate modal ITP list
+  const listEl = document.getElementById('modal-itp-list');
+  listEl.innerHTML = itps.map(it => `
+    <div class="arch-itp-row">
+      <div style="width:30px;height:30px;border-radius:8px;background:#f5f3ff;
+                  display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <i class="fa-solid fa-clipboard-check" style="color:#7c3aed;font-size:12px;"></i>
+      </div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:700;color:#0f172a;">${_esc(it.name)}</div>
+        <div style="font-size:11px;color:#94a3b8;">ITP #${_esc(it.itpNumber)}
+          ${it.totalRecords ? ` · <strong style="color:#475569;">${it.totalRecords} record${it.totalRecords!==1?'s':''}</strong>` : ' · No records'}
+        </div>
+      </div>
+    </div>`).join('');
+
+  document.getElementById('modal-itp-count').textContent = itps.length;
+
+  // Status breakdown
+  const allCounts = {};
+  let totalRecords = 0;
+  itps.forEach(it => {
+    totalRecords += it.totalRecords;
+    Object.entries(it.statusCounts).forEach(([k,v]) => {
+      allCounts[k] = (allCounts[k] || 0) + v;
+    });
+  });
+  const sumEl = document.getElementById('modal-record-summary');
+  if (totalRecords > 0) {
+    sumEl.style.display = 'block';
+    document.getElementById('modal-status-breakdown').innerHTML =
+      Object.entries(allCounts).map(([s, n]) => {
+        const lbl = STATUS_LABELS[s] || s;
+        const col = STATUS_COLORS[s] || '#64748b';
+        return `<span style="padding:3px 10px;border-radius:99px;font-size:11px;font-weight:700;
+                             background:${col}18;color:${col};border:1px solid ${col}33;">
+                  ${_esc(lbl)}: ${n}
+                </span>`;
+      }).join('');
+  } else {
+    sumEl.style.display = 'none';
+  }
+
+  // Archive button text
+  document.getElementById('arch-submit-count').textContent = itps.length;
+  document.getElementById('arch-submit-plural').textContent = itps.length === 1 ? '' : 's';
+
+  // Store IDs for submit
+  document.getElementById('arch-overlay').dataset.ids = JSON.stringify(ids);
+
+  // Reset inputs
+  document.getElementById('arch-reason').value  = '';
+  document.getElementById('arch-confirm').value = '';
+  document.getElementById('arch-confirm').classList.remove('valid');
+  document.getElementById('arch-submit-btn').disabled = true;
+
+  document.getElementById('arch-overlay').classList.add('open');
+  setTimeout(() => document.getElementById('arch-reason').focus(), 80);
+}
+
+function closeArchiveModal() {
+  document.getElementById('arch-overlay').classList.remove('open');
+}
+function overlayClick(e) {
+  if (e.target === document.getElementById('arch-overlay')) closeArchiveModal();
+}
+
+function validateModal() {
+  const reason  = document.getElementById('arch-reason').value.trim();
+  const confirm_ = document.getElementById('arch-confirm').value.trim();
+  const valid   = reason.length > 0 && confirm_ === 'ARCHIVE';
+  document.getElementById('arch-confirm').classList.toggle('valid', confirm_ === 'ARCHIVE');
+  document.getElementById('arch-submit-btn').disabled = !valid;
+}
+
+async function submitArchive() {
+  const ids    = JSON.parse(document.getElementById('arch-overlay').dataset.ids || '[]');
+  const reason = document.getElementById('arch-reason').value.trim();
+  const conf   = document.getElementById('arch-confirm').value.trim();
+  if (!ids.length || !reason || conf !== 'ARCHIVE') return;
+
+  const btn = document.getElementById('arch-submit-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin" style="margin-right:7px;"></i>Archiving…';
+
+  try {
+    const resp = await fetch(ARCHIVE_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': CSRF_TOKEN,
+      },
+      body: JSON.stringify({ template_ids: ids, reason, confirmation: conf }),
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      closeArchiveModal();
+      // Remove archived cards from DOM
+      data.archived_ids.forEach(id => {
+        const card = document.getElementById('card-' + id);
+        if (card) {
+          card.style.transition = 'opacity .3s, transform .3s';
+          card.style.opacity = '0';
+          card.style.transform = 'scale(.97)';
+          setTimeout(() => card.remove(), 320);
+        }
+      });
+      if (selectMode) toggleSelectMode();
+      hideBulkBar();
+      showToast(`<i class="fa-solid fa-box-archive" style="margin-right:6px;color:#86efac;"></i>${data.archived_count} ITP${data.archived_count===1?'':'s'} archived successfully`);
+    } else {
+      showToast('<i class="fa-solid fa-circle-xmark" style="margin-right:6px;color:#fca5a5;"></i>' + _esc(data.error || 'Archive failed'), true);
+      btn.disabled = false;
+      btn.innerHTML = `<i class="fa-solid fa-box-archive" style="margin-right:7px;"></i>Archive`;
+    }
+  } catch(e) {
+    showToast('<i class="fa-solid fa-circle-xmark" style="margin-right:6px;color:#fca5a5;"></i>Network error. Please try again.', true);
+    btn.disabled = false;
+    btn.innerHTML = `<i class="fa-solid fa-box-archive" style="margin-right:7px;"></i>Archive`;
+  }
+}
+
+/* ── Helpers ────────────────────────────────────── */
+function _esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+let _toastTimer;
+function showToast(msg, isError) {
+  clearTimeout(_toastTimer);
+  const t = document.getElementById('itp-toast');
+  t.innerHTML = msg;
+  t.style.background = isError ? '#7f1d1d' : '#1e293b';
+  t.classList.add('show');
+  _toastTimer = setTimeout(() => t.classList.remove('show'), 4500);
+}
+</script>
+{% endif %}
+
 {% endblock %}

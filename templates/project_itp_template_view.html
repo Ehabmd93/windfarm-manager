@@ -99,16 +99,228 @@
               background:#f1f5f9;color:#475569;border-radius:10px;font-weight:700;font-size:12px;text-decoration:none;">
       <i class="fa-solid fa-list"></i> All ITPs
     </a>
-    <form method="POST" action="{{ url_for('project_itp_delete', pid=proj.id, tid=template.id) }}"
-          onsubmit="return confirm('Delete this ITP template? All sign-off data will be retained but the template will be hidden.')">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit"
-              style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;
-                     background:#fef2f2;color:#dc2626;border-radius:10px;font-weight:700;font-size:12px;border:none;cursor:pointer;">
-        <i class="fa-solid fa-trash"></i> Delete
-      </button>
-    </form>
+    {% if ac_can_delete %}
+    <button type="button" onclick="openSingleArchiveModal()"
+            style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;
+                   background:#fef2f2;color:#dc2626;border-radius:10px;font-weight:700;font-size:12px;border:1px solid #fecaca;cursor:pointer;">
+      <i class="fa-solid fa-box-archive"></i> Archive ITP
+    </button>
+    {% endif %}
   </div>
+
+  {# ── Archive modal (single ITP view) ── #}
+  {% if ac_can_delete %}
+  <style>
+  .tvarch-overlay {
+    display:none;position:fixed;inset:0;z-index:400;
+    background:rgba(0,0,0,.55);backdrop-filter:blur(3px);
+    align-items:center;justify-content:center;padding:20px;
+  }
+  .tvarch-overlay.open { display:flex; }
+  .tvarch-modal {
+    background:#fff;border-radius:20px;width:100%;max-width:560px;
+    max-height:90vh;overflow-y:auto;
+    box-shadow:0 24px 80px rgba(0,0,0,.3);
+  }
+  .tvarch-modal-hdr { padding:22px 24px 16px;border-bottom:1px solid #f1f5f9;
+    display:flex;align-items:flex-start;justify-content:space-between;gap:12px; }
+  .tvarch-modal-body { padding:20px 24px; }
+  .tvarch-modal-ftr { padding:16px 24px;border-top:1px solid #f1f5f9;
+    display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap; }
+  .tvarch-reason {
+    width:100%;padding:10px 13px;border:1.5px solid #e2e8f0;border-radius:9px;
+    font-size:13px;resize:vertical;min-height:80px;outline:none;box-sizing:border-box;
+    transition:border-color .15s;
+  }
+  .tvarch-reason:focus { border-color:#7c3aed; }
+  .tvarch-confirm-input {
+    width:100%;padding:10px 13px;border:2px solid #e2e8f0;border-radius:9px;
+    font-size:14px;font-weight:700;font-family:monospace;letter-spacing:.1em;
+    outline:none;transition:border-color .15s;
+  }
+  .tvarch-confirm-input:focus  { border-color:#ef4444; }
+  .tvarch-confirm-input.valid  { border-color:#16a34a;background:#f0fdf4; }
+  </style>
+
+  <div class="tvarch-overlay" id="tvarch-overlay" onclick="if(event.target===this)closeTVArchive()">
+    <div class="tvarch-modal">
+      <div class="tvarch-modal-hdr">
+        <div>
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+            <div style="width:36px;height:36px;border-radius:10px;background:#fef2f2;
+                        display:flex;align-items:center;justify-content:center;">
+              <i class="fa-solid fa-box-archive" style="color:#ef4444;font-size:15px;"></i>
+            </div>
+            <h3 style="font-size:17px;font-weight:900;color:#0f172a;margin:0;">Archive ITP Template</h3>
+          </div>
+          <p style="font-size:12px;color:#64748b;margin:0;"><strong>{{ proj.name }}</strong></p>
+        </div>
+        <button onclick="closeTVArchive()"
+                style="padding:6px 8px;background:#f1f5f9;border:none;border-radius:8px;color:#64748b;cursor:pointer;flex-shrink:0;">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <div class="tvarch-modal-body">
+
+        <!-- Warning -->
+        <div style="background:#fef2f2;border:1.5px solid #fecaca;border-radius:12px;
+                    padding:14px 16px;margin-bottom:18px;display:flex;gap:12px;align-items:flex-start;">
+          <i class="fa-solid fa-triangle-exclamation" style="color:#ef4444;font-size:16px;flex-shrink:0;margin-top:1px;"></i>
+          <div>
+            <p style="font-size:13px;font-weight:700;color:#7f1d1d;margin:0 0 4px;">
+              This will hide this ITP from active use.
+            </p>
+            <p style="font-size:12px;color:#991b1b;margin:0;line-height:1.6;">
+              Existing signed records, uploaded evidence, client signatures, and audit logs will be retained.
+            </p>
+          </div>
+        </div>
+
+        <!-- ITP summary -->
+        <div style="background:#f8fafc;border:1px solid #f1f5f9;border-radius:10px;
+                    padding:12px 14px;margin-bottom:16px;">
+          <div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:4px;">
+            ITP #{{ template.itp_number }} — {{ template.name }}
+          </div>
+          <div style="font-size:11px;color:#64748b;">
+            Rev {{ template.revision }}
+            {% if linked_record_count %}
+            · <strong style="color:#475569;">{{ linked_record_count }} linked record{{ 's' if linked_record_count != 1 }}</strong>
+            {% endif %}
+          </div>
+          {% if status_counts %}
+          <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;">
+            {% set sc_labels = {'draft':'Not Started','in_progress':'In Progress','engineer_signed':'Eng. Signed',
+                                'client_invited':'Client Invited','client_signed':'Client Signed',
+                                'complete':'Complete','client_commented':'Client Commented','reopened':'Reopened'} %}
+            {% set sc_colors = {'draft':'#94a3b8','in_progress':'#f59e0b','engineer_signed':'#7c3aed',
+                                'client_invited':'#2563eb','client_signed':'#0891b2',
+                                'complete':'#16a34a','client_commented':'#d97706','reopened':'#ef4444'} %}
+            {% for s, n in status_counts.items() %}
+            {% set lbl = sc_labels.get(s, s) %}
+            {% set col = sc_colors.get(s, '#64748b') %}
+            <span style="padding:2px 9px;border-radius:99px;font-size:10px;font-weight:700;
+                         background:{{ col }}18;color:{{ col }};border:1px solid {{ col }}33;">
+              {{ lbl }}: {{ n }}
+            </span>
+            {% endfor %}
+          </div>
+          {% endif %}
+        </div>
+
+        <!-- Backup suggestion -->
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;
+                    padding:12px 14px;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
+          <p style="font-size:12px;font-weight:700;color:#166534;margin:0;">
+            <i class="fa-solid fa-file-zipper" style="margin-right:5px;"></i>Download a backup first
+          </p>
+          <a href="{{ url_for('project_itp_backup', pid=proj.id) }}" target="_blank"
+             style="display:inline-flex;align-items:center;gap:6px;padding:7px 12px;
+                    background:#16a34a;color:#fff;border-radius:9px;font-size:12px;
+                    font-weight:700;text-decoration:none;white-space:nowrap;">
+            <i class="fa-solid fa-download"></i> Backup
+          </a>
+        </div>
+
+        <!-- Reason -->
+        <div style="margin-bottom:14px;">
+          <label style="font-size:12px;font-weight:700;color:#1e293b;display:block;margin-bottom:6px;">
+            Reason for archiving <span style="color:#ef4444;">*</span>
+          </label>
+          <textarea id="tvarch-reason" class="tvarch-reason"
+                    placeholder="Explain why this ITP is being archived (required)…"
+                    oninput="validateTVArchive()"></textarea>
+        </div>
+
+        <!-- Confirmation -->
+        <div style="margin-bottom:4px;">
+          <label style="font-size:12px;font-weight:700;color:#1e293b;display:block;margin-bottom:6px;">
+            Type <code style="background:#fef2f2;color:#ef4444;padding:1px 6px;border-radius:4px;font-weight:800;">ARCHIVE</code> to confirm <span style="color:#ef4444;">*</span>
+          </label>
+          <input type="text" id="tvarch-confirm" class="tvarch-confirm-input"
+                 placeholder="Type ARCHIVE here…"
+                 oninput="validateTVArchive()"
+                 autocomplete="off" spellcheck="false">
+        </div>
+        <p style="font-size:11px;color:#94a3b8;margin:6px 0 0;">
+          <i class="fa-solid fa-shield-halved" style="margin-right:4px;"></i>
+          Signed records remain preserved after archiving.
+        </p>
+      </div>
+      <div class="tvarch-modal-ftr">
+        <button onclick="closeTVArchive()"
+                style="padding:10px 20px;border-radius:9px;background:#f1f5f9;color:#475569;
+                       border:1.5px solid #e2e8f0;font-size:13px;font-weight:700;cursor:pointer;">
+          Cancel
+        </button>
+        <button id="tvarch-submit-btn" onclick="submitTVArchive()" disabled
+                style="padding:11px 28px;border-radius:10px;font-size:14px;font-weight:800;
+                       cursor:pointer;border:none;background:#ef4444;color:#fff;transition:all .15s;"
+                onmouseenter="if(!this.disabled)this.style.background='#dc2626'"
+                onmouseleave="if(!this.disabled)this.style.background='#ef4444'">
+          <i class="fa-solid fa-box-archive" style="margin-right:7px;"></i>Archive ITP
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="tvarch-toast"
+       style="position:fixed;bottom:30px;left:50%;transform:translateX(-50%) translateY(20px);
+              background:#1e293b;color:#fff;padding:11px 22px;border-radius:12px;
+              font-size:13px;font-weight:700;z-index:500;opacity:0;transition:all .3s;
+              pointer-events:none;white-space:nowrap;" id="tvarch-toast"></div>
+
+  <script>
+  function openSingleArchiveModal() {
+    document.getElementById('tvarch-reason').value  = '';
+    document.getElementById('tvarch-confirm').value = '';
+    document.getElementById('tvarch-confirm').classList.remove('valid');
+    document.getElementById('tvarch-submit-btn').disabled = true;
+    document.getElementById('tvarch-overlay').classList.add('open');
+    setTimeout(() => document.getElementById('tvarch-reason').focus(), 80);
+  }
+  function closeTVArchive() {
+    document.getElementById('tvarch-overlay').classList.remove('open');
+  }
+  function validateTVArchive() {
+    const reason  = document.getElementById('tvarch-reason').value.trim();
+    const conf    = document.getElementById('tvarch-confirm').value.trim();
+    const valid   = reason.length > 0 && conf === 'ARCHIVE';
+    document.getElementById('tvarch-confirm').classList.toggle('valid', conf === 'ARCHIVE');
+    document.getElementById('tvarch-submit-btn').disabled = !valid;
+  }
+  async function submitTVArchive() {
+    const reason = document.getElementById('tvarch-reason').value.trim();
+    const conf   = document.getElementById('tvarch-confirm').value.trim();
+    if (!reason || conf !== 'ARCHIVE') return;
+    const btn = document.getElementById('tvarch-submit-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin" style="margin-right:7px;"></i>Archiving…';
+    try {
+      const resp = await fetch('{{ url_for("api_itp_bulk_archive", pid=proj.id) }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': '{{ csrf_token() }}' },
+        body: JSON.stringify({ template_ids: [{{ template.id }}], reason, confirmation: conf }),
+      });
+      const data = await resp.json();
+      if (data.ok) {
+        const t = document.getElementById('tvarch-toast');
+        t.innerHTML = '<i class="fa-solid fa-box-archive" style="margin-right:6px;color:#86efac;"></i>ITP archived successfully. Redirecting…';
+        t.style.opacity = '1'; t.style.transform = 'translateX(-50%) translateY(0)';
+        setTimeout(() => { window.location = '{{ url_for("project_itp_index", pid=proj.id) }}'; }, 1400);
+      } else {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-box-archive" style="margin-right:7px;"></i>Archive ITP';
+        alert(data.error || 'Archive failed');
+      }
+    } catch(e) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa-solid fa-box-archive" style="margin-right:7px;"></i>Archive ITP';
+      alert('Network error. Please try again.');
+    }
+  }
+  </script>
+  {% endif %}
 </div>
 
 <!-- Top banner -->

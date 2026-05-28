@@ -4627,10 +4627,38 @@ def project_itp_index(pid):
 
     elements_by_tid = {t.id: _scope_elements(t, elements) for t in templates}
 
+    # Permission flag for archive/delete UI
+    ac_can_delete = user_can(pid, 'can_delete_itp')
+
+    # Per-template record-count stats for the archive modal
+    _STATUS_LABELS = {
+        'draft':            'Not Started',
+        'in_progress':      'In Progress',
+        'engineer_signed':  'Engineer Signed',
+        'client_invited':   'Client Invited',
+        'client_signed':    'Client Signed',
+        'complete':         'Complete',
+        'client_commented': 'Client Commented',
+        'reopened':         'Reopened',
+    }
+    template_stats = {}
+    for t in templates:
+        t_recs = [r for r in records_all if r.project_itp_template_id == t.id]
+        counts = {}
+        for r in t_recs:
+            counts[r.status] = counts.get(r.status, 0) + 1
+        template_stats[t.id] = {
+            'total':    len(t_recs),
+            'counts':   counts,
+        }
+
     return render_template('project_itp_index.html',
                            proj=proj, templates=templates,
                            by_key=by_key, elements_by_tid=elements_by_tid,
-                           elements=elements, groups=groups, work_packages=work_packages)
+                           elements=elements, groups=groups, work_packages=work_packages,
+                           ac_can_delete=ac_can_delete,
+                           template_stats=template_stats,
+                           status_labels=_STATUS_LABELS)
 
 
 @app.route('/projects/<int:pid>/itp/create', methods=['GET', 'POST'])
@@ -4986,28 +5014,127 @@ def project_itp_template_view(pid, tid):
                 eids.update(e.id for e in all_elements if e.group_id == sid)
         elements = [e for e in all_elements if e.id in eids] if eids else all_elements
 
-    records  = ITPRecord.query.filter_by(itp_type=itp_type).all()
+    records  = ITPRecord.query.filter_by(
+        project_itp_template_id=tid).all()
     by_eid   = {r.wtg_id: r for r in records}
+
+    # Permission + stats for archive button
+    ac_can_delete = user_can(pid, 'can_delete_itp')
+    status_counts = {}
+    for r in records:
+        status_counts[r.status] = status_counts.get(r.status, 0) + 1
 
     return render_template('project_itp_template_view.html',
                            proj=proj, template=template,
                            elements=elements, by_eid=by_eid,
-                           pid=pid, tid=tid)
+                           pid=pid, tid=tid,
+                           ac_can_delete=ac_can_delete,
+                           linked_record_count=len(records),
+                           status_counts=status_counts)
 
 
 @app.route('/projects/<int:pid>/itp/<int:tid>/delete', methods=['POST'])
 @login_required
 def project_itp_delete(pid, tid):
-    """Soft-delete an ITP template. Requires can_delete_itp permission."""
+    """Legacy single-template soft-archive. Kept for backward compatibility."""
     if not _validate_csrf_token():
         abort(403)
     if not user_can(pid, 'can_delete_itp'):
         abort(403)
     t = ProjectITPTemplate.query.filter_by(id=tid, project_id=pid).first_or_404()
     t.is_active = False
+    log_audit('itp_template_archived',
+              project_id=pid, actor=current_user,
+              entity_type='itp_template', entity_id=t.id,
+              entity_label=f'ITP #{t.itp_number} — {t.name}',
+              detail={'reason': '(single archive via legacy route)',
+                      'selected_count': 1,
+                      'linked_record_count': ITPRecord.query.filter_by(
+                          project_itp_template_id=tid).count()})
     db.session.commit()
-    flash('ITP template deleted.', 'success')
+    flash('ITP template archived.', 'success')
     return redirect(url_for('project_itp_index', pid=pid))
+
+
+@app.route('/projects/<int:pid>/itp/archive', methods=['POST'])
+@login_required
+def api_itp_bulk_archive(pid):
+    """
+    Bulk archive ITP templates (soft-delete, data preserved).
+
+    JSON body:
+      template_ids  – list of int template IDs to archive
+      reason        – required free-text reason
+      confirmation  – must equal the string "ARCHIVE"
+    """
+    if not _validate_csrf_token():
+        return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
+    if not user_can(pid, 'can_delete_itp'):
+        return jsonify({'error': 'You do not have permission to archive ITP templates.'}), 403
+
+    data         = request.get_json(silent=True) or {}
+    template_ids = data.get('template_ids') or []
+    reason       = (data.get('reason') or '').strip()
+    confirmation = (data.get('confirmation') or '').strip()
+
+    if not template_ids:
+        return jsonify({'error': 'No ITP templates selected.'}), 400
+    if not reason:
+        return jsonify({'error': 'A reason is required.'}), 400
+    if confirmation != 'ARCHIVE':
+        return jsonify({'error': 'Confirmation text must be exactly ARCHIVE.'}), 400
+
+    # Validate all IDs belong to this project (never touch other projects)
+    templates = ProjectITPTemplate.query.filter(
+        ProjectITPTemplate.id.in_(template_ids),
+        ProjectITPTemplate.project_id == pid,
+        ProjectITPTemplate.is_active == True,
+    ).all()
+
+    if not templates:
+        return jsonify({'error': 'No matching active ITP templates found.'}), 400
+
+    archived_ids = []
+    total_records = 0
+    for t in templates:
+        linked = ITPRecord.query.filter_by(project_itp_template_id=t.id).count()
+        status_counts = {}
+        for r in ITPRecord.query.filter_by(project_itp_template_id=t.id).all():
+            status_counts[r.status] = status_counts.get(r.status, 0) + 1
+
+        t.is_active = False
+        log_audit('itp_template_archived',
+                  project_id=pid, actor=current_user,
+                  entity_type='itp_template', entity_id=t.id,
+                  entity_label=f'ITP #{t.itp_number} — {t.name}',
+                  detail={
+                      'reason':              reason,
+                      'selected_count':      len(template_ids),
+                      'linked_record_count': linked,
+                      'status_breakdown':    status_counts,
+                  })
+        archived_ids.append(t.id)
+        total_records += linked
+
+    # Bulk summary event
+    log_audit('itp_templates_bulk_archived',
+              project_id=pid, actor=current_user,
+              entity_type='itp_template', entity_id=None,
+              entity_label=f'{len(archived_ids)} template(s) archived',
+              detail={
+                  'reason':               reason,
+                  'archived_ids':         archived_ids,
+                  'archived_count':       len(archived_ids),
+                  'total_linked_records': total_records,
+              })
+
+    db.session.commit()
+
+    return jsonify({
+        'ok':            True,
+        'archived_ids':  archived_ids,
+        'archived_count': len(archived_ids),
+    })
 
 
 @app.route('/projects/<int:pid>/itp/<int:tid>/element/<int:eid>/reopen', methods=['POST'])
