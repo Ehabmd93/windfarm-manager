@@ -177,9 +177,9 @@ def _fmt_dt(dt, default='Not specified'):
 def _action_button(label, url):
     """Return HTML for a centred primary CTA button.
 
-    Uses a VML-based button for Outlook and a standard <a> tag for modern
-    clients (the 'bulletproof button' pattern).  The URL is HTML-escaped
-    to guard against malformed markup if it contains special characters.
+    Uses a plain table+<a> pattern that works in every email client
+    (Gmail, Outlook, Apple Mail, webmail) without VML or conditional
+    comments that can render as raw text in some clients.
     """
     safe_url   = _html_lib.escape(url, quote=True)
     safe_label = _safe(label)
@@ -188,26 +188,22 @@ def _action_button(label, url):
              style="margin:32px 0;">
         <tr>
           <td align="center">
-            <!--[if mso]>
-            <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml"
-                         xmlns:w="urn:schemas-microsoft-com:office:word"
-                         href="{safe_url}"
-                         style="height:48px;v-text-anchor:middle;width:220px;"
-                         arcsize="12%" strokecolor="#1d4ed8" fillcolor="#2563eb">
-              <w:anchorlock/>
-              <center style="color:#ffffff;font-family:Arial,Helvetica,sans-serif;
-                             font-size:15px;font-weight:700;">{safe_label}</center>
-            </v:roundrect>
-            <![endif]-->
-            <!--[if !mso]><!-->
-            <a href="{safe_url}" target="_blank"
-               style="display:inline-block;background:#2563eb;color:#ffffff;
-                      padding:14px 38px;border-radius:6px;text-decoration:none;
-                      font-weight:700;font-size:15px;letter-spacing:0.01em;
-                      mso-hide:all;">
-              {safe_label}
-            </a>
-            <!--<![endif]-->
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td align="center" bgcolor="#2563eb"
+                    style="border-radius:8px;background-color:#2563eb;">
+                  <a href="{safe_url}" target="_blank"
+                     style="display:inline-block;background-color:#2563eb;color:#ffffff;
+                            font-family:Arial,Helvetica,sans-serif;
+                            font-size:16px;font-weight:700;line-height:1;
+                            padding:16px 40px;border-radius:8px;
+                            text-decoration:none;border:2px solid #1d4ed8;
+                            letter-spacing:0.02em;">
+                    {safe_label}
+                  </a>
+                </td>
+              </tr>
+            </table>
           </td>
         </tr>
       </table>"""
