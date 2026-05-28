@@ -755,7 +755,7 @@ async function loadWeather() {
     return;
   }
 
-  const url = '/api/weather?loc=' + encodeURIComponent(loc) + '&pc=' + encodeURIComponent(pc);
+  const url = `/api/weather?loc=${encodeURIComponent(loc)}&pc=${encodeURIComponent(pc)}`;
   const ctrl = new AbortController();
   const __fetchTimer = setTimeout(() => ctrl.abort(), 7000);
 
