@@ -5057,15 +5057,22 @@ def api_itp_bulk_archive(pid):
     if confirmation != 'ARCHIVE':
         return jsonify({'error': 'Confirmation text must be exactly ARCHIVE.'}), 400
 
-    # Validate all IDs belong to this project (never touch other projects)
+    # Coerce IDs to int so the set comparison is type-safe
+    try:
+        requested_ids = {int(x) for x in template_ids}
+    except (TypeError, ValueError):
+        return jsonify({'error': 'Invalid template ID in request.'}), 400
+
+    # Validate all IDs belong to this project and are currently active
     templates = ProjectITPTemplate.query.filter(
-        ProjectITPTemplate.id.in_(template_ids),
+        ProjectITPTemplate.id.in_(requested_ids),
         ProjectITPTemplate.project_id == pid,
         ProjectITPTemplate.is_active == True,
     ).all()
 
-    if not templates:
-        return jsonify({'error': 'No matching active ITP templates found.'}), 400
+    found_ids = {t.id for t in templates}
+    if found_ids != requested_ids:
+        return jsonify({'error': 'One or more selected ITP templates are invalid for this project.'}), 400
 
     archived_ids = []
     total_records = 0
