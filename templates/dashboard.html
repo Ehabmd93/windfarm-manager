@@ -736,14 +736,17 @@ async function loadWeather() {
 
   const url  = `/api/weather?loc=${encodeURIComponent(loc)}&pc=${encodeURIComponent(pc)}`;
   const ctrl = new AbortController();
-  const t    = setTimeout(() => ctrl.abort(), 3000);
+  const t    = setTimeout(() => ctrl.abort(), 10000);
+
+  console.info('[weather] request', url);
 
   try {
     const r = await fetch(url, { signal: ctrl.signal });
     clearTimeout(t);
+    console.info('[weather] status', r.status);
     if (!r.ok) return; // leave server default
     const d = await r.json();
-    if (d.error) return; // leave server default
+    if (d.error) { console.warn('[weather] api error', d.error); return; }
     // ── Success: update card ──────────────────────────────────────────────
     const dir = WX_DIRS[Math.round(((d.wind_dir || 0) % 360) / 45) % 8];
     setText('wx-icon', d.icon || '🌡️');
@@ -753,6 +756,7 @@ async function loadWeather() {
     setText('wx-loc',  d.city || d.admin || loc || pc);
   } catch(e) {
     clearTimeout(t);
+    console.warn('[weather] failed', e);
     // timeout or network error — leave server default as-is
   }
 }
