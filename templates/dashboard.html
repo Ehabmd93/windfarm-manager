@@ -713,8 +713,8 @@ if (g) g.textContent = hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : '
 // Success-only enhancement. The server HTML already shows "Weather unavailable"
 // as a permanent safe default. JS only updates the card when the fetch succeeds.
 // Any failure (network, timeout, API error) leaves the default untouched.
-const PROJ_LOC = {{ (proj.location or '')|tojson if proj else '""' }};
-const PROJ_PC  = {{ (proj.postcode  or '')|tojson if proj else '""' }};
+const PROJ_LOC = {{ (active_project.location or '')|tojson if active_project else '""' }};
+const PROJ_PC  = {{ (active_project.postcode  or '')|tojson if active_project else '""' }};
 const WX_DIRS  = ['N','NE','E','SE','S','SW','W','NW'];
 
 function setText(id, val) {
