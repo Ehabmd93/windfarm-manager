@@ -217,14 +217,23 @@ login_manager.login_message_category = 'info'
 def load_user(user_id):
     return db.session.get(User, int(user_id))
 
+_LEGACY_ROLE_MAP = {
+    'owner':    ('owner',           True),
+    'admin':    ('admin',           False),
+    'lead':     ('project_manager', False),
+    'engineer': ('engineer',        False),
+    'viewer':   ('viewer',          False),
+    'client':   ('client',          False),
+}
+
+
 @app.before_request
 def load_active_project():
     """Resolve which project is currently active and expose it as flask.g.project.
 
-    Primary path  — reads project membership from ProjectMemberAC (AC model).
-    Fallback path — if the user has no active ProjectMemberAC rows yet, reads
-                    from the legacy ProjectMember table so that existing dev /
-                    demo data stays usable during the transition to AC-3.
+    Always inspects legacy ProjectMember rows for the current user and creates
+    any missing ProjectMemberAC rows (project-by-project repair).  After the
+    repair pass g.user_projects is built exclusively from fresh active AC rows.
 
     No global-role bypass.  Project visibility is always membership-based.
     """
@@ -234,64 +243,48 @@ def load_active_project():
     if not current_user.is_authenticated:
         return
     try:
-        # ── Primary: ProjectMemberAC (new AC model) ──────────────────────
+        # ── Legacy-to-AC repair (runs unconditionally, project-by-project) ──
+        old_members = ProjectMember.query.filter_by(user_id=current_user.id).all()
+        _needs_commit = False
+        for pm in old_members:
+            # Only create when no AC row exists at all (active or inactive)
+            existing = ProjectMemberAC.query.filter_by(
+                project_id=pm.project_id,
+                user_id=current_user.id,
+            ).first()
+            if existing:
+                continue
+            ac_level, is_owner = _LEGACY_ROLE_MAP.get(
+                pm.proj_role, ('engineer', False)
+            )
+            ac_row = ProjectMemberAC(
+                project_id   = pm.project_id,
+                user_id      = current_user.id,
+                is_owner     = is_owner,
+                access_level = ac_level,
+                is_active    = True,
+                name         = current_user.name,
+                email        = current_user.email or '',
+            )
+            db.session.add(ac_row)
+            db.session.flush()
+            seed_member_permissions(ac_row)
+            _needs_commit = True
+        if _needs_commit:
+            db.session.commit()
+
+        # ── Build g.user_projects from fresh AC rows only ────────────────
         ac_members = ProjectMemberAC.query.filter_by(
             user_id=current_user.id,
             is_active=True,
         ).all()
-
-        if ac_members:
-            ac_ids   = [m.project_id for m in ac_members]
-            projects = (Project.query
-                        .filter(Project.id.in_(ac_ids), Project.is_active == True)
-                        .order_by(Project.name)
-                        .all())
-        else:
-            # ── Fallback: legacy ProjectMember table ─────────────────────
-            # Auto-migrate: create ProjectMemberAC rows so the user can pass
-            # AC gates on routes like audit log and access control.
-            _legacy_role_map = {
-                'owner':    ('owner',          True),
-                'admin':    ('admin',          False),
-                'lead':     ('project_manager', False),
-                'engineer': ('engineer',       False),
-                'viewer':   ('viewer',         False),
-                'client':   ('client',         False),
-            }
-            old_members = ProjectMember.query.filter_by(user_id=current_user.id).all()
-            old_ids     = [m.project_id for m in old_members]
-            _needs_commit = False
-            for pm in old_members:
-                # Only create if no AC row exists at all (active or inactive)
-                existing = ProjectMemberAC.query.filter_by(
-                    project_id=pm.project_id,
-                    user_id=current_user.id,
-                ).first()
-                if existing:
-                    continue
-                ac_level, is_owner = _legacy_role_map.get(
-                    pm.proj_role, ('engineer', False)
-                )
-                ac_row = ProjectMemberAC(
-                    project_id   = pm.project_id,
-                    user_id      = current_user.id,
-                    is_owner     = is_owner,
-                    access_level = ac_level,
-                    is_active    = True,
-                    name         = current_user.name,
-                    email        = current_user.email or '',
-                )
-                db.session.add(ac_row)
-                db.session.flush()
-                seed_member_permissions(ac_row)
-                _needs_commit = True
-            if _needs_commit:
-                db.session.commit()
-
-            projects = (Project.query
-                        .filter(Project.id.in_(old_ids), Project.is_active == True)
-                        .order_by(Project.name)
-                        .all())
+        ac_ids = [m.project_id for m in ac_members]
+        projects = (
+            Project.query
+            .filter(Project.id.in_(ac_ids), Project.is_active == True)
+            .order_by(Project.name)
+            .all()
+        ) if ac_ids else []
 
         g.user_projects = projects
         pid = session.get('active_project_id')
@@ -478,7 +471,54 @@ def require_project_permission(permission_key):
     return decorator
 
 
-# ── 6. Safety helpers ────────────────────────────────────────────────────────
+# ── 6. Creator-owner repair helper ──────────────────────────────────────────
+
+def ensure_project_creator_owner_ac(project_id, user_id=None):
+    """Ensure an owner-level ProjectMemberAC row exists for the given user.
+
+    Designed for repair scripts and post-creation hooks.  If an AC row already
+    exists (active or inactive) for this (project_id, user_id) pair, nothing is
+    changed.  Otherwise a new owner row is created, permissions are seeded, and
+    the session is committed.
+
+    Args:
+        project_id: int — the project to repair.
+        user_id:    int or None — defaults to current_user.id when None.
+
+    Returns:
+        The existing or newly-created ProjectMemberAC row, or None if the
+        referenced user cannot be loaded.
+    """
+    from flask_login import current_user as _cu
+    uid = user_id if user_id is not None else _cu.id
+    user = db.session.get(User, uid)
+    if user is None:
+        return None
+
+    existing = ProjectMemberAC.query.filter_by(
+        project_id=project_id,
+        user_id=uid,
+    ).first()
+    if existing:
+        return existing
+
+    ac_row = ProjectMemberAC(
+        project_id   = project_id,
+        user_id      = uid,
+        is_owner     = True,
+        access_level = 'owner',
+        is_active    = True,
+        name         = user.name,
+        email        = user.email or '',
+    )
+    db.session.add(ac_row)
+    db.session.flush()
+    seed_member_permissions(ac_row)
+    db.session.commit()
+    return ac_row
+
+
+# ── 7. Safety helpers ────────────────────────────────────────────────────────
 
 def active_owner_count(project_id):
     """Return the number of active owner rows for *project_id*."""
