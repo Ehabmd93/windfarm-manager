@@ -157,6 +157,7 @@
            the card if the weather fetch succeeds — failures leave it as-is.
       ─────────────────────────────────────────────────────────────────────── -->
       <div id="weather-widget" style="margin-top:11px;">
+        <div id="wx-debug" style="display:none;font-size:9px;color:#64748b;font-family:monospace;margin-bottom:4px;padding:2px 4px;background:rgba(0,0,0,.3);border-radius:4px;word-break:break-all;"></div>
         <div class="wx-card">
           <span id="wx-icon" style="font-size:26px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.3));">{% if _has_loc %}🌡️{% else %}📍{% endif %}</span>
           <div>
@@ -721,6 +722,14 @@ function setText(id, val) {
   if (el) el.textContent = val;
 }
 
+function wxDebug(msg) {
+  const el = document.getElementById('wx-debug');
+  if (!el) return;
+  el.textContent = msg;
+  el.style.display = 'block';
+  console.info('[weather]', msg);
+}
+
 function setWeatherUnavailable() {
   setText('wx-icon', '🌡️');
   setText('wx-temp', '--°');
@@ -732,21 +741,28 @@ function setWeatherUnavailable() {
 async function loadWeather() {
   const loc = (PROJ_LOC||'').trim();
   const pc  = (PROJ_PC ||'').trim();
-  if (!loc && !pc) return; // no location — server default already correct
+
+  wxDebug(`loc="${loc}" pc="${pc}"`);
+
+  if (!loc && !pc) {
+    wxDebug('no location — skipping fetch');
+    return;
+  }
 
   const url  = `/api/weather?loc=${encodeURIComponent(loc)}&pc=${encodeURIComponent(pc)}`;
   const ctrl = new AbortController();
-  const t    = setTimeout(() => ctrl.abort(), 10000);
+  const t    = setTimeout(() => { wxDebug('aborted after 10s timeout'); ctrl.abort(); }, 10000);
 
-  console.info('[weather] request', url);
+  wxDebug(`fetching ${url}`);
 
   try {
     const r = await fetch(url, { signal: ctrl.signal });
     clearTimeout(t);
-    console.info('[weather] status', r.status);
-    if (!r.ok) return; // leave server default
+    wxDebug(`status ${r.status}`);
+    if (!r.ok) { wxDebug(`non-ok status ${r.status} — leaving default`); return; }
     const d = await r.json();
-    if (d.error) { console.warn('[weather] api error', d.error); return; }
+    wxDebug(`data: ${JSON.stringify(d)}`);
+    if (d.error) { wxDebug(`api error: ${d.error}`); return; }
     // ── Success: update card ──────────────────────────────────────────────
     const dir = WX_DIRS[Math.round(((d.wind_dir || 0) % 360) / 45) % 8];
     setText('wx-icon', d.icon || '🌡️');
@@ -754,10 +770,10 @@ async function loadWeather() {
     setText('wx-cond', d.cond || '');
     setText('wx-wind', dir + ' ' + (d.wind_speed || 0) + ' km/h');
     setText('wx-loc',  d.city || d.admin || loc || pc);
+    wxDebug(`✓ ${d.temp}° ${d.cond} — ${d.city || d.admin}`);
   } catch(e) {
     clearTimeout(t);
-    console.warn('[weather] failed', e);
-    // timeout or network error — leave server default as-is
+    wxDebug(`error: ${e.name} ${e.message}`);
   }
 }
 
