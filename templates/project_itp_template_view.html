@@ -268,7 +268,7 @@
        style="position:fixed;bottom:30px;left:50%;transform:translateX(-50%) translateY(20px);
               background:#1e293b;color:#fff;padding:11px 22px;border-radius:12px;
               font-size:13px;font-weight:700;z-index:500;opacity:0;transition:all .3s;
-              pointer-events:none;white-space:nowrap;" id="tvarch-toast"></div>
+              pointer-events:none;white-space:nowrap;"></div>
 
   <script>
   function openSingleArchiveModal() {
@@ -304,20 +304,32 @@
       });
       const data = await resp.json();
       if (data.ok) {
-        const t = document.getElementById('tvarch-toast');
-        t.innerHTML = '<i class="fa-solid fa-box-archive" style="margin-right:6px;color:#86efac;"></i>ITP archived successfully. Redirecting…';
-        t.style.opacity = '1'; t.style.transform = 'translateX(-50%) translateY(0)';
+        showTVToast('<i class="fa-solid fa-box-archive" style="margin-right:6px;color:#86efac;"></i>ITP archived successfully. Redirecting…');
         setTimeout(() => { window.location = '{{ url_for("project_itp_index", pid=proj.id) }}'; }, 1400);
       } else {
         btn.disabled = false;
         btn.innerHTML = '<i class="fa-solid fa-box-archive" style="margin-right:7px;"></i>Archive ITP';
-        alert(data.error || 'Archive failed');
+        showTVToast('<i class="fa-solid fa-circle-xmark" style="margin-right:6px;color:#fca5a5;"></i>' + (data.error || 'Archive failed'), true);
       }
     } catch(e) {
       btn.disabled = false;
       btn.innerHTML = '<i class="fa-solid fa-box-archive" style="margin-right:7px;"></i>Archive ITP';
-      alert('Network error. Please try again.');
+      showTVToast('<i class="fa-solid fa-circle-xmark" style="margin-right:6px;color:#fca5a5;"></i>Network error. Please try again.', true);
     }
+  }
+
+  let _tvToastTimer;
+  function showTVToast(msg, isError) {
+    clearTimeout(_tvToastTimer);
+    const t = document.getElementById('tvarch-toast');
+    t.innerHTML = msg;
+    t.style.background = isError ? '#7f1d1d' : '#1e293b';
+    t.style.opacity = '1';
+    t.style.transform = 'translateX(-50%) translateY(0)';
+    _tvToastTimer = setTimeout(() => {
+      t.style.opacity = '0';
+      t.style.transform = 'translateX(-50%) translateY(20px)';
+    }, isError ? 4500 : 2500);
   }
   </script>
   {% endif %}
