@@ -588,7 +588,7 @@
           {%- endif -%}
 
           {%- set m_perms = perm_map.get(m.id, {}) -%}
-          {%- set modified_keys = modified_map.get(m.id|string, []) -%}
+          {%- set modified_keys = modified_map.get(m.id, []) -%}
           {%- set row_editable = m.is_active and (is_owner or not m.is_owner) -%}
           {%- set status_val = 'disabled' if not m.is_active else ('pending' if m.invite_status == 'pending' else 'active') -%}
           <tr

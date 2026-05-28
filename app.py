@@ -248,10 +248,46 @@ def load_active_project():
                         .all())
         else:
             # ── Fallback: legacy ProjectMember table ─────────────────────
-            # Temporary — will be removed in Phase AC-3 once all memberships
-            # have been migrated to ProjectMemberAC.
-            old_ids  = [m.project_id for m in
-                        ProjectMember.query.filter_by(user_id=current_user.id).all()]
+            # Auto-migrate: create ProjectMemberAC rows so the user can pass
+            # AC gates on routes like audit log and access control.
+            _legacy_role_map = {
+                'owner':    ('owner',          True),
+                'admin':    ('admin',          False),
+                'lead':     ('project_manager', False),
+                'engineer': ('engineer',       False),
+                'viewer':   ('viewer',         False),
+                'client':   ('client',         False),
+            }
+            old_members = ProjectMember.query.filter_by(user_id=current_user.id).all()
+            old_ids     = [m.project_id for m in old_members]
+            _needs_commit = False
+            for pm in old_members:
+                # Only create if no AC row exists at all (active or inactive)
+                existing = ProjectMemberAC.query.filter_by(
+                    project_id=pm.project_id,
+                    user_id=current_user.id,
+                ).first()
+                if existing:
+                    continue
+                ac_level, is_owner = _legacy_role_map.get(
+                    pm.proj_role, ('engineer', False)
+                )
+                ac_row = ProjectMemberAC(
+                    project_id   = pm.project_id,
+                    user_id      = current_user.id,
+                    is_owner     = is_owner,
+                    access_level = ac_level,
+                    is_active    = True,
+                    name         = current_user.name,
+                    email        = current_user.email or '',
+                )
+                db.session.add(ac_row)
+                db.session.flush()
+                seed_member_permissions(ac_row)
+                _needs_commit = True
+            if _needs_commit:
+                db.session.commit()
+
             projects = (Project.query
                         .filter(Project.id.in_(old_ids), Project.is_active == True)
                         .order_by(Project.name)
@@ -2268,7 +2304,7 @@ def project_access_control(pid):
             expected = pkey in defaults
             if bool(prow.value) != expected:
                 modified.add(pkey)
-        modified_map[m.id] = modified
+        modified_map[m.id] = list(modified)
 
     return render_template(
         'project_access_control.html',
