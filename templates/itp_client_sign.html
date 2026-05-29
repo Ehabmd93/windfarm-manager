@@ -332,6 +332,59 @@
     {% endif %}
   </div>
 
+  <!-- ─── SUPPORTING DOCUMENTS (evidence attached by the inspection team) ─── -->
+  {% set docns = namespace(items=[]) %}
+  {% for s in record.item_statuses %}
+    {% for d in s.documents %}
+      {% set docns.items = docns.items + [(s, d)] %}
+    {% endfor %}
+  {% endfor %}
+  {% if docns.items %}
+  <div style="background:white;border-radius:18px;border:1.5px solid #e2e8f0;
+              padding:20px;margin-bottom:14px;">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+      <div style="width:36px;height:36px;border-radius:10px;background:#eff6ff;
+                  display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <i class="fa-solid fa-paperclip" style="color:#2563eb;font-size:15px;"></i>
+      </div>
+      <div style="flex:1;min-width:0;">
+        <h3 style="font-size:14px;font-weight:800;color:#0f172a;margin:0;">Supporting Documents</h3>
+        <p style="font-size:11px;color:#94a3b8;margin:0;">
+          {{ docns.items|length }} file{{ 's' if docns.items|length != 1 else '' }}
+          attached by the inspection team for your review
+        </p>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      {% for s, doc in docns.items %}
+      <a href="{{ doc.url }}" target="_blank"
+         style="display:flex;align-items:center;gap:11px;padding:10px 12px;background:#f8fafc;
+                border:1px solid #e2e8f0;border-radius:12px;text-decoration:none;">
+        <div style="width:38px;height:38px;border-radius:10px;flex-shrink:0;
+                    display:flex;align-items:center;justify-content:center;
+          {% if doc.doc_type=='photo' %}background:#dbeafe;
+          {% elif doc.doc_type=='pdf' %}background:#fee2e2;
+          {% else %}background:#f1f5f9;{% endif %}">
+          <i class="fa-solid {% if doc.doc_type=='photo' %}fa-image" style="color:#3b82f6;
+             {% elif doc.doc_type=='pdf' %}fa-file-pdf" style="color:#ef4444;
+             {% else %}fa-file" style="color:#94a3b8;{% endif %} font-size:15px;"></i>
+        </div>
+        <div style="flex:1;min-width:0;">
+          <p style="font-size:13px;font-weight:600;color:#1e293b;margin:0;
+                    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ doc.original_name }}</p>
+          <p style="font-size:11px;color:#94a3b8;margin:0;
+                    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+            Item {{ s.item_no }}{% if s.activity %} &middot; {{ s.activity }}{% endif %}
+          </p>
+        </div>
+        <i class="fa-solid fa-arrow-up-right-from-square"
+           style="color:#94a3b8;font-size:11px;flex-shrink:0;"></i>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
   <!-- ─── REVIEW PROGRESS ──────────────────────────────────────────────── -->
   {# Compute counts server-side for initial render #}
   {% set ns = namespace(total_signed=0, reviewed=0, accepted=0, concerns=0, pending=0) %}

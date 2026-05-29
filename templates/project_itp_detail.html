@@ -532,7 +532,8 @@
       </div>
     </div>
 
-    <!-- Client Signatories -->
+    <!-- Client Signatories — entire panel hidden unless the viewer can send ITP sign invites -->
+    {% if ac_can_send_invite %}
     <div class="panel" id="invite-panel">
       <div class="panel-hdr blue"><i class="fa-solid fa-users"></i> Client Signatories</div>
       <div class="panel-body">
@@ -611,6 +612,7 @@
 
       </div>
     </div>
+    {% endif %}{# ac_can_send_invite — entire Client Signatories panel #}
 
     <!-- Linked Documents -->
     <div class="panel">
@@ -919,7 +921,8 @@ async function saveMeta() {
 function closeSaveModal(goToInvite) {
   document.getElementById('save-modal').style.display = 'none';
   if (goToInvite) {
-    document.getElementById('invite-panel').scrollIntoView({behavior: 'smooth'});
+    const ip = document.getElementById('invite-panel');
+    if (ip) ip.scrollIntoView({behavior: 'smooth'});
   }
 }
 

@@ -177,30 +177,27 @@ def _fmt_dt(dt, default='Not specified'):
 def _action_button(label, url):
     """Return HTML for a centred primary CTA button.
 
-    Uses a plain table+<a> pattern that works in every email client
-    (Gmail, Outlook, Apple Mail, webmail) without VML or conditional
-    comments that can render as raw text in some clients.
+    Bulletproof table + <a> pattern: renders as a solid, rounded, centred
+    button in every major client (Gmail, Outlook desktop/web, Apple Mail,
+    iOS/Android) and never leaks the raw URL as text. No VML or conditional
+    comments — those rendered as raw "[url]label" text in some clients.
     """
     safe_url   = _html_lib.escape(url, quote=True)
     safe_label = _safe(label)
+    # Keep the <a> content on a single line so no stray whitespace/newlines
+    # are rendered inside the button label by strict clients.
     return f"""
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-             style="margin:32px 0;">
+             style="margin:28px 0;">
         <tr>
           <td align="center">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0"
+                   style="margin:0 auto;">
               <tr>
                 <td align="center" bgcolor="#2563eb"
-                    style="border-radius:8px;background-color:#2563eb;">
-                  <a href="{safe_url}" target="_blank"
-                     style="display:inline-block;background-color:#2563eb;color:#ffffff;
-                            font-family:Arial,Helvetica,sans-serif;
-                            font-size:16px;font-weight:700;line-height:1;
-                            padding:16px 40px;border-radius:8px;
-                            text-decoration:none;border:2px solid #1d4ed8;
-                            letter-spacing:0.02em;">
-                    {safe_label}
-                  </a>
+                    style="border-radius:10px;background-color:#2563eb;
+                           box-shadow:0 4px 14px rgba(37,99,235,0.35);">
+                  <a href="{safe_url}" target="_blank" style="display:inline-block;min-width:200px;background-color:#2563eb;color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:700;line-height:1.2;padding:15px 44px;border-radius:10px;text-decoration:none;text-align:center;letter-spacing:0.02em;">{safe_label}</a>
                 </td>
               </tr>
             </table>
@@ -342,41 +339,12 @@ def email_client_invitation(record, wtg_name, sign_url,
     company    = record.engineer_company or ''
 
     safe_url   = _html_lib.escape(sign_url, quote=True)
-    safe_label = _safe('Review and sign ITP')
 
     subject = f"Action Required: ITP Signature Requested — {wtg_name} · {itp_label}"
 
-    # Bulletproof VML button (identical pattern to _action_button())
-    cta_button = f"""
-      <table role="presentation" cellpadding="0" cellspacing="0" width="100%"
-             style="margin:28px 0;">
-        <tr><td align="center">
-          <!--[if mso]>
-          <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml"
-                       xmlns:w="urn:schemas-microsoft-com:office:word"
-                       href="{safe_url}"
-                       style="height:52px;v-text-anchor:middle;width:260px;"
-                       arcsize="18%"
-                       stroke="f"
-                       fillcolor="#2563eb">
-            <w:anchorlock/>
-            <center style="color:#ffffff;font-family:Arial,sans-serif;
-                           font-size:16px;font-weight:bold;">
-              {safe_label}
-            </center>
-          </v:roundrect>
-          <![endif]-->
-          <!--[if !mso]><!-->
-          <a href="{safe_url}" target="_blank"
-             style="display:inline-block;background:#2563eb;
-                    color:#ffffff;padding:16px 40px;border-radius:10px;
-                    text-decoration:none;font-weight:700;font-size:16px;
-                    box-shadow:0 4px 14px rgba(37,99,235,.4);mso-hide:all;">
-            {safe_label}
-          </a>
-          <!--<![endif]-->
-        </td></tr>
-      </table>"""
+    # Bulletproof button — same clean table+<a> pattern as _action_button().
+    # No VML/conditional comments (those rendered as raw "[url]label" text).
+    cta_button = _action_button('Review and sign ITP', sign_url)
 
     html = f"""<!DOCTYPE html>
 <html>
