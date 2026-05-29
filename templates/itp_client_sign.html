@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>{{ defn.get('name','ITP') }} – Client Review · {{ wtg.name }}</title>
+  <title>{{ defn.get('name','ITP') }} – Client Review · {{ wtg.name if wtg else '' }}</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
   <style>
     *{ box-sizing:border-box; }
@@ -182,7 +182,7 @@
         {{ defn.get('name','ITP') }}
       </h1>
       <p style="color:#93c5fd;font-size:12px;margin:0;">
-        {{ wtg.name }} &middot; Client Review &amp; Sign-off
+        {{ wtg.name if wtg else '' }} &middot; Client Review &amp; Sign-off
       </p>
       {% if invite %}
       <p style="color:#bfdbfe;font-size:11px;margin:4px 0 0;">
@@ -838,7 +838,7 @@ function showToast(msg, type = 'success') {
 
 // ── Constants ──────────────────────────────────────────────────────────────
 const TOKEN     = '{{ token }}';
-const FINALIZED = {{ 'true' if record.status in ('complete', 'client_commented') else 'false' }};
+const FINALIZED = {{ 'true' if record and record.status in ('complete', 'client_commented') else 'false' }};
 
 // ── Activity accordion ─────────────────────────────────────────────────────
 function toggleAct(id) {

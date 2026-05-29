@@ -5659,6 +5659,8 @@ def itp_client_sign(token):
         elif invite.expires_at and invite.expires_at < datetime.now(timezone.utc):
             link_error = 'This signing link has expired. Please contact the project team for a new link.'
         record = invite.record
+        if record is None and not link_error:
+            link_error = 'This ITP record no longer exists. Please contact the project team.'
     else:
         # Legacy fallback — shared record.client_token
         record = ITPRecord.query.filter_by(client_token=token).first()
