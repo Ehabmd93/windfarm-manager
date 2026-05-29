@@ -79,6 +79,24 @@ def _content_disposition(disposition, filename):
 
 # ── Invite token helpers ──────────────────────────────────────────────────────
 
+def _abs_base_url():
+    """Return the application base URL (no trailing slash) with https:// guaranteed.
+
+    Reads APP_URL env var first.  Falls back to request.host_url.
+    Normalises the value so that a misconfigured APP_URL like
+    'myapp.up.railway.app' (missing protocol) is promoted to
+    'https://myapp.up.railway.app' — the most common Railway misconfiguration
+    that causes invite/reset links to render as '[url]label' in email clients.
+    """
+    raw = os.environ.get('APP_URL', '').strip().rstrip('/')
+    if not raw:
+        # Fall back to Flask's request.host_url (includes scheme)
+        raw = request.host_url.rstrip('/')
+    if raw and not raw.startswith(('http://', 'https://')):
+        raw = 'https://' + raw
+    return raw
+
+
 def _make_raw_token():
     """Generate a cryptographically random URL-safe token (43 chars)."""
     return secrets.token_urlsafe(32)
@@ -684,8 +702,7 @@ def forgot_password():
             db.session.add(reset_token)
             db.session.flush()  # get reset_token.id for audit log
 
-            _base = (os.environ.get('APP_URL') or
-                     request.host_url.rstrip('/')).rstrip('/')
+            _base = _abs_base_url()
             reset_url = f"{_base}/reset-password/{raw_token}"
 
             log_audit('password_reset_requested',
@@ -2855,7 +2872,7 @@ def api_add_team_member(pid):
 
         db.session.flush()
 
-        _base      = (os.environ.get('APP_URL') or request.host_url.rstrip('/')).rstrip('/')
+        _base      = _abs_base_url()
         invite_url = f"{_base}/invite/{raw_token}"
 
         log_audit('invite_sent', project_id=pid, actor=current_user,
@@ -3105,7 +3122,7 @@ def api_resend_invite(pid, invite_id):
     _sync_ac_invite(invite, token_hash=token_hash,
                     status='pending', expires_at=invite.expires_at)
 
-    _base      = (os.environ.get('APP_URL') or request.host_url.rstrip('/')).rstrip('/')
+    _base      = _abs_base_url()
     invite_url = f"{_base}/invite/{raw_token}"
 
     log_audit('invite_resent', project_id=pid, actor=current_user,
@@ -3192,7 +3209,7 @@ def api_copy_invite_link(pid, invite_id):
     _sync_ac_invite(invite, token_hash=token_hash,
                     status='pending', expires_at=invite.expires_at)
 
-    _base      = (os.environ.get('APP_URL') or request.host_url.rstrip('/')).rstrip('/')
+    _base      = _abs_base_url()
     invite_url = f"{_base}/invite/{raw_token}"
 
     log_audit('invite_link_generated', project_id=pid, actor=current_user,

@@ -155,8 +155,16 @@ def send_email(to_email, subject, html_content,
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _app_url():
-    """Return APP_URL with no trailing slash, or empty string."""
-    return os.environ.get('APP_URL', '').rstrip('/')
+    """Return APP_URL with no trailing slash, or empty string.
+
+    Normalises the value: adds https:// if APP_URL was set without a protocol
+    (a common Railway misconfiguration, e.g. 'myapp.up.railway.app' instead of
+    'https://myapp.up.railway.app').  Returns empty string when not configured.
+    """
+    url = os.environ.get('APP_URL', '').strip().rstrip('/')
+    if url and not url.startswith(('http://', 'https://')):
+        url = 'https://' + url
+    return url
 
 
 def _safe(text):
