@@ -5439,18 +5439,27 @@ def api_client_review_item(token, item_no, ci):
     })
 
 
-@app.route('/itp/client/<token>/entry', methods=['GET'])
+@app.route('/itp/client/<token>/entry', methods=['GET', 'POST'])
 def itp_client_sign_entry(token):
     """
     Authenticated entry gate for the client ITP review flow.
 
-    1. Resolve and validate token (revoked / expired → friendly error page).
-    2. If authenticated and email matches → redirect straight to the signing room.
-    3. If authenticated but email mis-match → show mismatch error page.
-    4. If not authenticated → store token in session, redirect to login with ?next.
-    5. If invite has email but no SiteGrid account exists for it → show
-       "account required" page prompting them to register.
+    GET flow:
+      1. Resolve and validate token (revoked / expired → friendly error page).
+      2. If authenticated and email matches → redirect straight to the signing room.
+      3. If authenticated but email mis-match → show mismatch error page.
+      4. If not authenticated but matching User exists → redirect to login with ?next.
+      5. If not authenticated and no User exists → show inline password-setup form.
+
+    POST flow (account creation — replaces the removed /register dependency):
+      6. CSRF guard.
+      7. Validate password fields.
+      8. Create User using ITP invite name / email / company.
+      9. Link any pending UserInvite or orphaned ProjectMemberAC for the same
+         email + project (idempotent; skipped if nothing to link).
+      10. Log in the new user and redirect to the signing room.
     """
+    # ── 1. Token resolution + validation (same for GET and POST) ────────────
     invite = ITPClientInvite.query.filter_by(token=token).first()
     link_error = None
 
@@ -5477,12 +5486,139 @@ def itp_client_sign_entry(token):
                                record=record,
                                token=token), 403
 
-    # Invite is valid — now handle auth state
+    # ── 2. Normalise invite e-mail ───────────────────────────────────────────
     invite_email = (invite.email or '').strip().lower() if invite else ''
 
+    # ── Helper: re-render the password-setup form (GET or POST with errors) ──
+    def _needs_account_page(form_error=None):
+        _wtg      = record.wtg if record else None
+        _pname    = _wtg.project.name if _wtg and _wtg.project else 'Project'
+        return render_template('itp_client_entry.html',
+                               state='needs_account',
+                               invite_email=invite.email if invite else '',
+                               invite_name=invite.name  if invite else '',
+                               proj_name=_pname,
+                               record=record,
+                               token=token,
+                               form_error=form_error)
+
+    # ── 3. POST — account creation ───────────────────────────────────────────
+    if request.method == 'POST':
+        # CSRF guard
+        if not _validate_csrf_token():
+            return _needs_account_page(
+                form_error='Your session expired. Please refresh the page and try again.')
+
+        # Password validation
+        password  = (request.form.get('password')  or '').strip()
+        password2 = (request.form.get('password2') or '').strip()
+        if not password:
+            return _needs_account_page(form_error='Password is required.')
+        if len(password) < 8:
+            return _needs_account_page(form_error='Password must be at least 8 characters.')
+        if password != password2:
+            return _needs_account_page(form_error='Passwords do not match.')
+
+        # Race-condition guard: if another tab already created the account,
+        # send them to login instead of trying to create a duplicate.
+        if invite_email:
+            race_user = User.query.filter(
+                db.func.lower(User.email) == invite_email
+            ).first()
+            if race_user:
+                next_url = url_for('itp_client_sign', token=token)
+                return redirect(url_for('login', next=next_url))
+
+        # Create the new User
+        now = datetime.now(timezone.utc)
+        new_user = User(
+            name=invite.name              if invite else 'Client',
+            email=invite_email,
+            password=generate_password_hash(password),
+            role='client',
+            company=invite.company or '' if invite else '',
+            is_active=True,
+            email_verified=True,
+            email_verified_at=now,
+            password_changed_at=now,
+            failed_login_count=0,
+            locked_until=None,
+        )
+        db.session.add(new_user)
+        db.session.flush()  # populate new_user.id before FK references
+
+        # Derive project_id from the ITP record chain (may be None for legacy tokens)
+        project_id = None
+        try:
+            if record and record.wtg and record.wtg.project_id:
+                project_id = record.wtg.project_id
+        except Exception:
+            pass
+
+        # Link any pending UserInvite for the same email + project
+        _ac_linked = False
+        if project_id and invite_email:
+            ui = UserInvite.query.filter(
+                db.func.lower(UserInvite.email) == invite_email,
+                UserInvite.project_id == project_id,
+                UserInvite.status == 'pending',
+            ).first()
+            if ui and ui.is_usable:
+                ui.status      = 'accepted'
+                ui.accepted_at = now
+                if ui.project_member_ac_id is not None:
+                    ac_m = db.session.get(ProjectMemberAC, ui.project_member_ac_id)
+                    if ac_m is not None and ac_m.user_id is None:
+                        ac_m.user_id            = new_user.id
+                        ac_m.invite_status      = 'accepted'
+                        ac_m.invite_accepted_at = now
+                        _ac_linked = True
+
+        # Also link any orphaned ProjectMemberAC row (email match, user_id still NULL)
+        if project_id and invite_email and not _ac_linked:
+            orphan_ac = ProjectMemberAC.query.filter(
+                ProjectMemberAC.project_id == project_id,
+                ProjectMemberAC.user_id.is_(None),
+                db.func.lower(ProjectMemberAC.email) == invite_email,
+            ).first()
+            if orphan_ac:
+                orphan_ac.user_id            = new_user.id
+                orphan_ac.invite_status      = 'accepted'
+                orphan_ac.invite_accepted_at = now
+
+        log_audit('user_created_from_itp_invite',
+                  project_id=project_id,
+                  actor=None,
+                  entity_type='user',
+                  entity_id=new_user.id,
+                  entity_label=new_user.email,
+                  detail={'name':             new_user.name,
+                          'itp_token_prefix': token[:8] + '…'})
+
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            return _needs_account_page(
+                form_error='Account creation failed. Please try again or contact support.')
+
+        # Update last_login_at — best-effort, non-fatal
+        new_user.last_login_at = datetime.now(timezone.utc)
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+
+        login_user(new_user)
+        if project_id is not None:
+            from flask import session as flask_session
+            flask_session['active_project_id'] = project_id
+
+        return redirect(url_for('itp_client_sign', token=token))
+
+    # ── 4. GET — authenticated checks ───────────────────────────────────────
     if current_user.is_authenticated:
         user_email = (current_user.email or '').strip().lower()
-        # If the invite is email-bound, enforce a match
         if invite_email and user_email != invite_email:
             wtg = record.wtg if record else None
             proj_name = wtg.project.name if wtg and wtg.project else 'Project'
@@ -5496,25 +5632,16 @@ def itp_client_sign_entry(token):
         # Correct user (or open invite) — go straight to the signing room
         return redirect(url_for('itp_client_sign', token=token))
 
-    # Not authenticated — check whether a SiteGrid account exists for the invite email
+    # ── 5. GET — not authenticated ───────────────────────────────────────────
     if invite_email:
         existing_user = User.query.filter(
             db.func.lower(User.email) == invite_email
         ).first()
         if not existing_user:
-            # No account yet — show "create an account" prompt
-            wtg = record.wtg if record else None
-            proj_name = wtg.project.name if wtg and wtg.project else 'Project'
-            register_url = url_for('register', _external=False)
-            return render_template('itp_client_entry.html',
-                                   state='needs_account',
-                                   invite_email=invite.email,
-                                   register_url=register_url,
-                                   proj_name=proj_name,
-                                   record=record,
-                                   token=token)
+            # No account yet — show inline password-setup form
+            return _needs_account_page()
 
-    # Unauthenticated — stash the destination and send to login
+    # Unauthenticated with an existing account → send to login
     next_url = url_for('itp_client_sign', token=token)
     return redirect(url_for('login', next=next_url))
 

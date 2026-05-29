@@ -98,6 +98,27 @@
       font-size: 12px;
       color: #94a3b8;
     }
+    /* ── password-setup form fields ── */
+    .field-group { margin-bottom: 16px; }
+    .field-label {
+      display: block;
+      font-size: 13px;
+      color: #334155;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .field-input {
+      width: 100%;
+      padding: 10px 14px;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 14px;
+      color: #1e293b;
+      background: #fff;
+      outline: none;
+      transition: border-color .15s;
+    }
+    .field-input:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,.12); }
     @media (max-width: 520px) {
       .card-header, .card-body { padding: 24px 20px; }
       .btn-wrap { flex-direction: column; }
@@ -162,32 +183,60 @@
 </div>
 
 {% elif state == 'needs_account' %}
-{# ── Invite email has no SiteGrid account yet ────────────────────────────── #}
+{# ── No SiteGrid account yet — inline password-setup form ───────────────── #}
 <div class="card">
   <div class="card-header amber">
-    <div class="icon-wrap"><i class="fa-solid fa-user-plus" style="color:#fff;"></i></div>
-    <h1>Create a SiteGrid Account</h1>
+    <div class="icon-wrap"><i class="fa-solid fa-key" style="color:#fff;"></i></div>
+    <h1>Activate Your Account</h1>
     <p>{{ proj_name or 'SiteGrid' }}</p>
   </div>
   <div class="card-body">
-    <p class="lead">To review and sign this ITP you need a SiteGrid account.</p>
+    <p class="lead">You've been invited to review and sign an ITP. Set a password to activate your SiteGrid account and continue.</p>
     <div class="info-box amber">
+      {% if invite_name %}
       <div class="info-row">
-        <span class="lbl">Invited email</span>
+        <span class="lbl">Name</span>
+        <span class="val">{{ invite_name }}</span>
+      </div>
+      {% endif %}
+      <div class="info-row">
+        <span class="lbl">Email</span>
         <span class="val">{{ invite_email }}</span>
       </div>
     </div>
-    <p class="sub">
-      Register with <strong>{{ invite_email }}</strong> and you'll be taken straight to the
-      ITP signing room after your account is verified.
-    </p>
-    <div class="btn-wrap">
-      <a href="{{ register_url }}?email={{ invite_email | urlencode }}&amp;next={{ url_for('itp_client_sign_entry', token=token) | urlencode }}"
-         class="btn btn-primary">
-        <i class="fa-solid fa-user-plus" style="margin-right:8px;"></i>Create account &amp; continue
-      </a>
+
+    {% if form_error %}
+    <div class="info-box red" style="margin-bottom:20px;">
+      <p><i class="fa-solid fa-circle-xmark" style="margin-right:6px;"></i>{{ form_error }}</p>
+    </div>
+    {% endif %}
+
+    <form method="POST" action="">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field-group">
+        <label class="field-label" for="pw">Password</label>
+        <input id="pw" type="password" name="password" class="field-input"
+               required minlength="8"
+               placeholder="At least 8 characters"
+               autocomplete="new-password">
+      </div>
+      <div class="field-group">
+        <label class="field-label" for="pw2">Confirm Password</label>
+        <input id="pw2" type="password" name="password2" class="field-input"
+               required minlength="8"
+               placeholder="Re-enter your password"
+               autocomplete="new-password">
+      </div>
+      <div class="btn-wrap" style="margin-top:24px;">
+        <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;display:flex;align-items:center;">
+          <i class="fa-solid fa-key" style="margin-right:8px;"></i>Activate &amp; Continue to ITP
+        </button>
+      </div>
+    </form>
+
+    <div style="margin-top:20px;">
       <a href="{{ url_for('login') }}?next={{ url_for('itp_client_sign_entry', token=token) | urlencode }}"
-         class="btn btn-outline">
+         class="btn btn-outline" style="width:100%;justify-content:center;display:flex;align-items:center;">
         <i class="fa-solid fa-right-to-bracket" style="margin-right:8px;"></i>Already have an account? Sign in
       </a>
     </div>
