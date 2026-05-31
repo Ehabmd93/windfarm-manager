@@ -36,6 +36,35 @@
 .color-swatch:hover { transform:scale(1.15); }
 .color-swatch.picked { border-color:#1e293b;transform:scale(1.1); }
 
+/* ── Danger Zone ── */
+.danger-zone { border:2px solid #fca5a5;border-radius:20px;background:#fff;overflow:hidden;margin-top:32px; }
+.danger-zone-header { background:#fef2f2;padding:20px 28px;border-bottom:1px solid #fecaca;
+  display:flex;align-items:center;gap:12px; }
+.danger-action { display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;
+  gap:12px;padding:20px 28px;border-bottom:1px solid #fff0f0; }
+.danger-action:last-child { border-bottom:none; }
+.dz-btn { padding:10px 20px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;
+  border:none;transition:all .15s;display:inline-flex;align-items:center;gap:7px; }
+.dz-btn-amber { background:#fff7ed;color:#b45309;border:1.5px solid #fed7aa; }
+.dz-btn-amber:hover { background:#ffedd5;border-color:#fb923c; }
+.dz-btn-red { background:#fef2f2;color:#dc2626;border:1.5px solid #fecaca; }
+.dz-btn-red:hover { background:#fee2e2;border-color:#f87171; }
+
+/* ── Modal overlay ── */
+.dz-modal-overlay { display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:3000;
+  align-items:center;justify-content:center;padding:16px; }
+.dz-modal-overlay.open { display:flex; }
+.dz-modal { background:#fff;border-radius:20px;width:100%;max-width:480px;overflow:hidden;
+  box-shadow:0 20px 60px rgba(0,0,0,.25); }
+.dz-modal-head { padding:24px 28px 16px;display:flex;align-items:center;gap:12px; }
+.dz-modal-body { padding:0 28px 24px; }
+.dz-modal-foot { padding:16px 28px 24px;display:flex;gap:10px;justify-content:flex-end; }
+.dz-confirm-input { width:100%;padding:11px 14px;border:1.5px solid #e2e8f0;border-radius:10px;
+  font-size:14px;color:#0f172a;transition:border-color .15s;outline:none;margin-top:8px;
+  font-family:inherit; }
+.dz-confirm-input:focus { border-color:#dc2626;box-shadow:0 0 0 3px rgba(220,38,38,.12); }
+.dz-error-banner { background:#fef2f2;border:1px solid #fecaca;border-radius:8px;
+  padding:10px 14px;font-size:13px;color:#dc2626;margin-top:12px;display:none; }
 </style>
 {% endblock %}
 
@@ -242,7 +271,175 @@
     </form>
   </div>
 
+  {% if can_destroy %}
+  <!-- ══ DANGER ZONE ══ -->
+  <div class="danger-zone">
+    <div class="danger-zone-header">
+      <div style="width:36px;height:36px;border-radius:10px;background:#fecaca;
+                  display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <i class="fa-solid fa-triangle-exclamation" style="color:#dc2626;font-size:15px;"></i>
+      </div>
+      <div>
+        <div style="font-size:14px;font-weight:800;color:#7f1d1d;">Danger Zone</div>
+        <div style="font-size:12px;color:#b91c1c;margin-top:1px;">Irreversible actions — read carefully before proceeding</div>
+      </div>
+    </div>
+
+    <!-- Action 1: Archive -->
+    <div class="danger-action">
+      <div style="max-width:380px;">
+        <div style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:3px;">
+          <i class="fa-solid fa-box-archive" style="color:#b45309;margin-right:6px;"></i>Archive Project
+        </div>
+        <div style="font-size:12px;color:#64748b;line-height:1.5;">
+          Hides this project from all active project lists. All data, documents, and
+          ITPs remain stored and can be restored by a global admin. No data is deleted.
+        </div>
+      </div>
+      <button class="dz-btn dz-btn-amber" onclick="openArchiveModal()">
+        <i class="fa-solid fa-box-archive"></i> Archive Project
+      </button>
+    </div>
+
+    <!-- Action 2: Permanent Delete -->
+    <div class="danger-action">
+      <div style="max-width:380px;">
+        <div style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:3px;">
+          <i class="fa-solid fa-trash-can" style="color:#dc2626;margin-right:6px;"></i>Permanently Delete Project
+        </div>
+        <div style="font-size:12px;color:#64748b;line-height:1.5;">
+          Destroys <strong>everything</strong> — all elements, QA tests, ITPs, documents,
+          team members, and uploaded files. <strong>This cannot be undone.</strong>
+        </div>
+      </div>
+      <button class="dz-btn dz-btn-red" onclick="openDeleteModal()">
+        <i class="fa-solid fa-skull-crossbones"></i> Delete Project
+      </button>
+    </div>
+  </div>
+  {% endif %}
+
+</div>{# /max-width container #}
+
+<!-- ══ MODAL: Archive ══ -->
+{% if can_destroy %}
+<div class="dz-modal-overlay" id="archive-modal">
+  <div class="dz-modal">
+    <div class="dz-modal-head" style="background:#fff7ed;border-bottom:1px solid #fed7aa;">
+      <div style="width:40px;height:40px;border-radius:12px;background:#fed7aa;
+                  display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <i class="fa-solid fa-box-archive" style="color:#b45309;font-size:18px;"></i>
+      </div>
+      <div>
+        <div style="font-size:16px;font-weight:800;color:#7c2d12;">Archive Project</div>
+        <div style="font-size:12px;color:#9a3412;">{{ proj.name }}</div>
+      </div>
+      <button onclick="closeModal('archive-modal')"
+              style="margin-left:auto;background:none;border:none;cursor:pointer;
+                     font-size:18px;color:#94a3b8;padding:4px;">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+    <div class="dz-modal-body" style="padding-top:20px;">
+      <p style="font-size:14px;color:#334155;line-height:1.65;margin-bottom:12px;">
+        Archiving <strong>{{ proj.name }}</strong> will:
+      </p>
+      <ul style="font-size:13px;color:#475569;line-height:1.8;padding-left:20px;margin-bottom:12px;">
+        <li>Hide it from your active project list immediately</li>
+        <li>Prevent any new data entry or invitations</li>
+        <li>Preserve all data, documents, and ITPs in storage</li>
+      </ul>
+      <p style="font-size:13px;color:#64748b;">
+        A global admin can restore the project at any time.
+      </p>
+      <div class="dz-error-banner" id="archive-error"></div>
+    </div>
+    <div class="dz-modal-foot" style="background:#f8fafc;border-top:1px solid #f1f5f9;">
+      <button onclick="closeModal('archive-modal')"
+              style="padding:10px 20px;border-radius:10px;background:#f1f5f9;color:#475569;
+                     border:1.5px solid #e2e8f0;font-size:13px;font-weight:700;cursor:pointer;">
+        Cancel
+      </button>
+      <button id="archive-confirm-btn" onclick="submitArchive()"
+              style="padding:10px 24px;border-radius:10px;background:#d97706;color:#fff;
+                     border:none;font-size:13px;font-weight:700;cursor:pointer;
+                     display:inline-flex;align-items:center;gap:7px;">
+        <i class="fa-solid fa-box-archive"></i> Archive Project
+      </button>
+    </div>
+  </div>
 </div>
+
+<!-- ══ MODAL: Permanent Delete ══ -->
+<div class="dz-modal-overlay" id="delete-modal">
+  <div class="dz-modal">
+    <div class="dz-modal-head" style="background:#fef2f2;border-bottom:1px solid #fecaca;">
+      <div style="width:40px;height:40px;border-radius:12px;background:#fecaca;
+                  display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <i class="fa-solid fa-skull-crossbones" style="color:#dc2626;font-size:18px;"></i>
+      </div>
+      <div>
+        <div style="font-size:16px;font-weight:800;color:#7f1d1d;">Permanently Delete Project</div>
+        <div style="font-size:12px;color:#b91c1c;">This action is irreversible</div>
+      </div>
+      <button onclick="closeModal('delete-modal')"
+              style="margin-left:auto;background:none;border:none;cursor:pointer;
+                     font-size:18px;color:#94a3b8;padding:4px;">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+    <div class="dz-modal-body" style="padding-top:20px;">
+      <p style="font-size:14px;color:#334155;line-height:1.65;margin-bottom:16px;">
+        You are about to <strong style="color:#dc2626;">permanently destroy</strong>
+        <strong>{{ proj.name }}</strong> and all associated data including:
+      </p>
+      <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;
+                  padding:14px 16px;font-size:12px;color:#7f1d1d;line-height:1.8;
+                  margin-bottom:20px;">
+        All WTG / element records &bull; QA tests &amp; proof rolls &bull;
+        ITPs &amp; signatures &bull; Documents &amp; uploaded files &bull;
+        Team members &amp; invitations &bull; Foundation tracking
+      </div>
+      <div style="margin-bottom:12px;">
+        <label style="display:block;font-size:12px;font-weight:700;color:#374151;
+                      text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">
+          Type the project name to confirm
+        </label>
+        <input id="del-confirm-name" type="text" class="dz-confirm-input"
+               placeholder="{{ proj.name }}"
+               autocomplete="off" spellcheck="false"/>
+        <div style="font-size:11px;color:#94a3b8;margin-top:4px;">
+          Must exactly match: <code style="background:#f1f5f9;padding:1px 5px;border-radius:4px;">{{ proj.name }}</code>
+        </div>
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;font-weight:700;color:#374151;
+                      text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">
+          Type DELETE to confirm
+        </label>
+        <input id="del-confirm-word" type="text" class="dz-confirm-input"
+               placeholder="DELETE"
+               autocomplete="off" spellcheck="false"/>
+      </div>
+      <div class="dz-error-banner" id="delete-error"></div>
+    </div>
+    <div class="dz-modal-foot" style="background:#f8fafc;border-top:1px solid #f1f5f9;">
+      <button onclick="closeModal('delete-modal')"
+              style="padding:10px 20px;border-radius:10px;background:#f1f5f9;color:#475569;
+                     border:1.5px solid #e2e8f0;font-size:13px;font-weight:700;cursor:pointer;">
+        Cancel
+      </button>
+      <button id="delete-confirm-btn" onclick="submitDelete()" disabled
+              style="padding:10px 24px;border-radius:10px;background:#dc2626;color:#fff;
+                     border:none;font-size:13px;font-weight:700;cursor:not-allowed;
+                     display:inline-flex;align-items:center;gap:7px;opacity:.5;
+                     transition:opacity .15s;">
+        <i class="fa-solid fa-trash-can"></i> Permanently Delete
+      </button>
+    </div>
+  </div>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}
@@ -265,6 +462,117 @@ function toggleFeat(key) {
   const on = track.classList.toggle('on');
   val.value = on ? '1' : '0';
   card.classList.toggle('on', on);
+}
+
+// ── Danger Zone ───────────────────────────────────────────────────────────────
+const CSRF_TOKEN  = '{{ csrf_token() }}';
+const PROJ_NAME   = {{ proj.name | tojson }};
+const ARCHIVE_URL = '{{ url_for("api_archive_project", pid=proj.id) }}';
+const DELETE_URL  = '{{ url_for("api_delete_project",  pid=proj.id) }}';
+
+function openArchiveModal() {
+  document.getElementById('archive-error').style.display = 'none';
+  document.getElementById('archive-modal').classList.add('open');
+}
+function openDeleteModal() {
+  document.getElementById('del-confirm-name').value = '';
+  document.getElementById('del-confirm-word').value = '';
+  document.getElementById('delete-error').style.display = 'none';
+  _updateDeleteBtn();
+  document.getElementById('delete-modal').classList.add('open');
+  setTimeout(() => document.getElementById('del-confirm-name').focus(), 100);
+}
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+}
+// Close on overlay click
+document.querySelectorAll('.dz-modal-overlay').forEach(el => {
+  el.addEventListener('click', e => { if (e.target === el) closeModal(el.id); });
+});
+// Close on Escape
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    document.querySelectorAll('.dz-modal-overlay.open').forEach(m => closeModal(m.id));
+  }
+});
+
+// Live validation — enable delete button only when both fields match
+function _updateDeleteBtn() {
+  const nameOk = document.getElementById('del-confirm-name').value.trim() === PROJ_NAME;
+  const wordOk = document.getElementById('del-confirm-word').value.trim().toUpperCase() === 'DELETE';
+  const btn    = document.getElementById('delete-confirm-btn');
+  if (!btn) return;
+  const ok = nameOk && wordOk;
+  btn.disabled      = !ok;
+  btn.style.opacity = ok ? '1' : '0.5';
+  btn.style.cursor  = ok ? 'pointer' : 'not-allowed';
+}
+document.getElementById('del-confirm-name') &&
+  document.getElementById('del-confirm-name').addEventListener('input', _updateDeleteBtn);
+document.getElementById('del-confirm-word') &&
+  document.getElementById('del-confirm-word').addEventListener('input', _updateDeleteBtn);
+
+function _setBusy(btnId, busy, label) {
+  const btn = document.getElementById(btnId);
+  if (!btn) return;
+  btn.disabled = busy;
+  if (busy) { btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Working…'; }
+  else      { btn.innerHTML = label; }
+}
+
+async function submitArchive() {
+  _setBusy('archive-confirm-btn', true);
+  try {
+    const fd = new FormData();
+    fd.append('csrf_token', CSRF_TOKEN);
+    const r = await fetch(ARCHIVE_URL, { method: 'POST', body: fd });
+    const d = await r.json();
+    if (!r.ok || !d.ok) {
+      const el = document.getElementById('archive-error');
+      el.textContent = d.error || 'An error occurred. Please try again.';
+      el.style.display = 'block';
+      _setBusy('archive-confirm-btn', false,
+               '<i class="fa-solid fa-box-archive"></i> Archive Project');
+      return;
+    }
+    window.location.href = d.redirect || '/projects';
+  } catch (err) {
+    document.getElementById('archive-error').textContent = 'Network error. Please try again.';
+    document.getElementById('archive-error').style.display = 'block';
+    _setBusy('archive-confirm-btn', false,
+             '<i class="fa-solid fa-box-archive"></i> Archive Project');
+  }
+}
+
+async function submitDelete() {
+  const btn = document.getElementById('delete-confirm-btn');
+  if (btn && btn.disabled) return;
+  _setBusy('delete-confirm-btn', true);
+  try {
+    const fd = new FormData();
+    fd.append('csrf_token',   CSRF_TOKEN);
+    fd.append('confirm_name', document.getElementById('del-confirm-name').value.trim());
+    fd.append('confirm_word', document.getElementById('del-confirm-word').value.trim());
+    const r = await fetch(DELETE_URL, { method: 'POST', body: fd });
+    const d = await r.json();
+    if (!r.ok || !d.ok) {
+      const el = document.getElementById('delete-error');
+      el.textContent = d.error || 'An error occurred. Please try again.';
+      el.style.display = 'block';
+      _setBusy('delete-confirm-btn', false,
+               '<i class="fa-solid fa-trash-can"></i> Permanently Delete');
+      _updateDeleteBtn();
+      return;
+    }
+    // Success — navigate away (project no longer exists)
+    window.location.href = d.redirect || '/projects';
+  } catch (err) {
+    document.getElementById('delete-error').textContent = 'Network error. Please try again.';
+    document.getElementById('delete-error').style.display = 'block';
+    _setBusy('delete-confirm-btn', false,
+             '<i class="fa-solid fa-trash-can"></i> Permanently Delete');
+    _updateDeleteBtn();
+  }
 }
 
 // ── Suburb / Postcode autocomplete ────────────────────────────────────────────

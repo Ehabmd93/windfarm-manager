@@ -1540,7 +1540,8 @@ def project_settings(pid):
 
         return redirect(url_for('project_settings', pid=pid))
 
-    return render_template('project_settings.html', proj=proj)
+    can_destroy = _user_can_destroy_project(pid)
+    return render_template('project_settings.html', proj=proj, can_destroy=can_destroy)
 
 
 # ─── Documents ───────────────────────────────────────────────────────────────
@@ -3751,6 +3752,147 @@ def api_deploy_project(pid):
     return jsonify({'ok': True, 'created': created})
 
 
+def _delete_project_cascade(pid):
+    """Delete every project-scoped record bottom-up, cleaning up storage files.
+
+    Does NOT delete the Project row itself — that is left to the caller so it
+    can wrap the whole operation in a single try/except and call db.session.delete(proj).
+
+    Returns a list of non-fatal storage-cleanup error strings.  DB errors are
+    NOT caught here — they propagate to the caller who must roll back.
+
+    Deletion order (FK-safe):
+      1. Null audit_events.project_id  (preserve history)
+      2. Per-WTG: ITPClientInvites → ITPItemDocuments → ITPItemStatuses →
+         ITPRecords → FoundationDocuments (+ local file) → FoundationStages →
+         TestPhotos (+ local file) → ProofRolls → TestRecords → QATests →
+         Activities → Areas → WTG
+      3. WorkPackages, WTGGroups
+      4. ProjectITPTemplates
+      5. Documents (R2 file cleanup + DocumentLinks cascade)
+      6. DocumentFolders root nodes (children cascade)
+      7. UserInvites  (before ProjectMemberAC to avoid FK violation)
+      8. ProjectTeamMembers  (before ProjectCompanies)
+      9. ProjectMemberAC  (cascades ProjectMemberPermissions)
+     10. ProjectCompanies
+     11. ProjectMapFile
+     legacy ProjectMember + ProjectFeature cascade when the Project row is deleted.
+    """
+    storage_errors = []
+
+    def _rm_local(file_path, label):
+        if not file_path:
+            return
+        try:
+            full = os.path.join(BASE_DIR, 'static', file_path)
+            if os.path.exists(full):
+                os.remove(full)
+        except Exception as exc:
+            storage_errors.append(f'{label}: {exc}')
+
+    def _rm_r2(file_key, label):
+        if not file_key:
+            return
+        try:
+            r2_storage.delete(file_key)
+        except Exception as exc:
+            storage_errors.append(f'{label}: {exc}')
+
+    # 1. Preserve audit history — null the FK so rows survive project deletion
+    AuditEvent.query.filter_by(project_id=pid).update(
+        {'project_id': None}, synchronize_session='fetch'
+    )
+
+    # 2. Per-WTG bottom-up sweep
+    for wtg in WTG.query.filter_by(project_id=pid).all():
+
+        # ITP records
+        for rec in ITPRecord.query.filter_by(wtg_id=wtg.id).all():
+            for inv in list(rec.client_invites):
+                db.session.delete(inv)
+            for s in list(rec.item_statuses):
+                for d in list(s.documents):
+                    db.session.delete(d)
+                db.session.delete(s)
+            db.session.delete(rec)
+
+        # Foundation stages + docs
+        for fs in FoundationStage.query.filter_by(wtg_id=wtg.id).all():
+            for fdoc in list(fs.documents):
+                _rm_local(fdoc.file_path, f'foundation_doc:{fdoc.id}')
+                db.session.delete(fdoc)
+            db.session.delete(fs)
+
+        # QA data
+        for area in list(wtg.areas):
+            for test in list(area.required_tests):
+                for ph in list(test.photos):
+                    _rm_local(ph.file_path,  f'test_photo:{ph.id}')
+                    _rm_local(ph.thumb_path, f'test_photo_thumb:{ph.id}')
+                    db.session.delete(ph)
+                for pr in list(test.proof_rolls):
+                    for obj in list(pr.signatories):    db.session.delete(obj)
+                    for obj in list(pr.equipment_rows): db.session.delete(obj)
+                    for obj in list(pr.pr_photos):      db.session.delete(obj)
+                    for obj in list(pr.rect_photos):    db.session.delete(obj)
+                    db.session.delete(pr)
+                for tr in list(test.records):
+                    db.session.delete(tr)
+                db.session.delete(test)
+            for act in list(area.activities):
+                db.session.delete(act)
+            db.session.delete(area)
+
+        db.session.delete(wtg)
+
+    # 3. WorkPackages and WTGGroups
+    for wp in WorkPackage.query.filter_by(project_id=pid).all():
+        db.session.delete(wp)
+    for g in WTGGroup.query.filter_by(project_id=pid).all():
+        db.session.delete(g)
+
+    # 4. Project ITP Templates
+    for tmpl in ProjectITPTemplate.query.filter_by(project_id=pid).all():
+        db.session.delete(tmpl)
+
+    # 5. Documents (R2 cleanup; DocumentLinks cascade via relationship)
+    for doc in Document.query.filter_by(project_id=pid).all():
+        _rm_r2(doc.file_key, f'r2_doc:{doc.id}')
+        db.session.delete(doc)
+
+    # 6. DocumentFolders — delete roots; children cascade via self-referential rel
+    for folder in DocumentFolder.query.filter(
+        DocumentFolder.project_id == pid,
+        DocumentFolder.parent_id  == None
+    ).all():
+        db.session.delete(folder)
+
+    # 7. UserInvites (must precede ProjectMemberAC to satisfy FK)
+    for inv in UserInvite.query.filter_by(project_id=pid).all():
+        db.session.delete(inv)
+
+    # 8. ProjectTeamMembers (must precede ProjectCompanies)
+    for tm in ProjectTeamMember.query.filter_by(project_id=pid).all():
+        db.session.delete(tm)
+
+    # 9. ProjectMemberAC (cascades ProjectMemberPermissions)
+    for m in ProjectMemberAC.query.filter_by(project_id=pid).all():
+        db.session.delete(m)
+
+    # 10. ProjectCompanies
+    for co in ProjectCompany.query.filter_by(project_id=pid).all():
+        db.session.delete(co)
+
+    # 11. ProjectMapFile
+    for pmf in ProjectMapFile.query.filter_by(project_id=pid).all():
+        db.session.delete(pmf)
+
+    # legacy ProjectMember + ProjectFeature rows will cascade when the
+    # caller deletes the Project row itself.
+
+    return storage_errors
+
+
 @app.route('/api/projects/<int:pid>/reset-setup', methods=['DELETE'])
 @login_required
 def api_reset_project_setup(pid):
@@ -3782,6 +3924,93 @@ def api_reset_project_setup(pid):
             db.session.delete(g)
         db.session.commit()
         return jsonify({'ok': True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+# ─── Archive project ──────────────────────────────────────────────────────────
+
+@app.route('/api/projects/<int:pid>/archive', methods=['POST'])
+@login_required
+def api_archive_project(pid):
+    """Set Project.is_active = False.  Owner or global admin only."""
+    if not _validate_csrf_token():
+        return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
+    proj = Project.query.get_or_404(pid)
+    if not _user_can_destroy_project(pid):
+        return jsonify({'error': 'Forbidden. Only the project owner or a global admin can archive a project.'}), 403
+    try:
+        log_audit('project_archived', project_id=pid, actor=current_user,
+                  entity_type='project', entity_id=pid, entity_label=proj.name,
+                  detail={'project_name': proj.name})
+        proj.is_active = False
+        db.session.commit()
+        # Remove stale active-project pointer so the user isn't redirected back
+        if session.get('active_project_id') == pid:
+            session.pop('active_project_id', None)
+        return jsonify({'ok': True, 'redirect': url_for('projects_list')})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+# ─── Permanently delete project ───────────────────────────────────────────────
+
+@app.route('/api/projects/<int:pid>/delete', methods=['POST'])
+@login_required
+def api_delete_project(pid):
+    """Permanently delete an entire project and all its data.
+
+    Requires:
+      • CSRF token
+      • Owner or global admin
+      • confirm_name == exact project name
+      • confirm_word == 'DELETE'  (case-insensitive)
+    """
+    if not _validate_csrf_token():
+        return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
+
+    proj = Project.query.get_or_404(pid)
+
+    if not _user_can_destroy_project(pid):
+        return jsonify({'error': 'Forbidden. Only the project owner or a global admin can delete a project.'}), 403
+
+    # Server-side dual confirmation
+    confirm_name = (request.form.get('confirm_name') or '').strip()
+    confirm_word = (request.form.get('confirm_word') or '').strip().upper()
+
+    if confirm_name != proj.name:
+        return jsonify({'error': f'Project name mismatch. Expected "{proj.name}", got "{confirm_name}".'}), 422
+    if confirm_word != 'DELETE':
+        return jsonify({'error': 'You must type DELETE (in capitals) to confirm permanent deletion.'}), 422
+
+    proj_name = proj.name
+    proj_id   = proj.id
+
+    try:
+        # Cascade-delete all related data and clean up storage
+        storage_errors = _delete_project_cascade(proj_id)
+
+        # Log the event AFTER cascade (project_id=None since project is about to go)
+        log_audit('project_deleted', project_id=None, actor=current_user,
+                  entity_type='project', entity_id=proj_id, entity_label=proj_name,
+                  detail={'project_name': proj_name, 'deleted_by': current_user.email,
+                          'storage_errors': storage_errors[:10] if storage_errors else []})
+
+        # Delete the Project row (cascades legacy ProjectMember + ProjectFeature)
+        db.session.delete(proj)
+        db.session.commit()
+
+        # Clear stale session pointer
+        if session.get('active_project_id') == proj_id:
+            session.pop('active_project_id', None)
+
+        resp = {'ok': True, 'redirect': url_for('projects_list')}
+        if storage_errors:
+            resp['storage_warnings'] = storage_errors
+        return jsonify(resp)
+
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
@@ -6861,6 +7090,15 @@ def _user_can_manage_project(project_id):
     if pm is None:
         return False
     return pm.proj_role in _MANAGE_PROJ_ROLES
+
+
+def _user_can_destroy_project(project_id):
+    """Stricter than _user_can_manage_project — archive/delete requires global
+    admin OR explicit ProjectMemberAC owner status.  Project managers, leads,
+    and admins at the project level are intentionally excluded."""
+    if current_user.role == 'admin':
+        return True
+    return user_is_project_owner(project_id)
 
 
 def _user_can_sign(project_id):
