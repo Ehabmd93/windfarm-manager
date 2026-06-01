@@ -5580,8 +5580,8 @@ def api_client_review_item(token, item_no, ci):
         # Enforce revocation
         if invite.is_revoked:
             return jsonify({'error': 'This signing link has been revoked.'}), 403
-        # Enforce expiry
-        if invite.expires_at and invite.expires_at < datetime.now(timezone.utc):
+        # Enforce expiry — _ensure_utc guards against naive TIMESTAMP from PostgreSQL
+        if invite.expires_at and _ensure_utc(invite.expires_at) < datetime.now(timezone.utc):
             return jsonify({'error': 'This signing link has expired.'}), 403
         record = invite.record
     else:
@@ -5712,9 +5712,11 @@ def itp_client_sign_entry(token):
     if invite:
         if invite.is_revoked:
             link_error = 'This signing link has been revoked by the project team.'
-        elif invite.expires_at and invite.expires_at < datetime.now(timezone.utc):
+        elif invite.expires_at and _ensure_utc(invite.expires_at) < datetime.now(timezone.utc):
             link_error = 'This signing link has expired. Please contact the project team for a new link.'
         record = invite.record
+        if record is None and not link_error:
+            link_error = 'This ITP record no longer exists. Please contact the project team.'
     else:
         # Legacy token fallback
         record = ITPRecord.query.filter_by(client_token=token).first()
@@ -5902,7 +5904,7 @@ def itp_client_sign(token):
     if invite:
         if invite.is_revoked:
             link_error = 'This signing link has been revoked by the project team.'
-        elif invite.expires_at and invite.expires_at < datetime.now(timezone.utc):
+        elif invite.expires_at and _ensure_utc(invite.expires_at) < datetime.now(timezone.utc):
             link_error = 'This signing link has expired. Please contact the project team for a new link.'
         record = invite.record
         if record is None and not link_error:
