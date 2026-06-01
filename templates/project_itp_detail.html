@@ -306,7 +306,7 @@
                    id="sig-img-{{ item['no'] }}-{{ ci }}"
                    class="{% if not (s and s.lucas_signature) %}hidden{% endif %}" alt="sig"/>
               <div class="sig-preview-meta">
-                <p class="name"><i class="fa-solid fa-check-circle mr-1"></i>Signed by {{ record.engineer_name or 'Engineer' }}</p>
+                <p class="name"><i class="fa-solid fa-check-circle mr-1"></i>Signed by {{ (s.signed_by_name or record.engineer_name) or 'Engineer' }}{% if (s.signed_by_company or record.engineer_company) %} &middot; {{ s.signed_by_company or record.engineer_company }}{% endif %}</p>
                 <p class="dt" id="sig-dt-display-{{ item['no'] }}-{{ ci }}">
                   {% if s and s.lucas_signed_at %}
                     <i class="fa-solid fa-clock mr-1"></i>{{ s.lucas_signed_at.strftime('%d %b %Y %H:%M') }}
@@ -362,8 +362,8 @@
           </div>
           {% endif %}
 
-          <!-- Document drawer -->
-          {% if ac_can_attach %}
+          <!-- Document drawer — visible to anyone with project access; upload/delete gated separately -->
+          {% if s and s.documents or ac_can_attach %}
           <div class="item-docs-drawer hidden" id="docs-drawer-{{ item['no'] }}-{{ ci }}">
             <div class="item-doc-list" id="doc-list-{{ item['no'] }}-{{ ci }}">
               {% if s %}
@@ -374,11 +374,14 @@
                 </div>
                 <span class="text-xs font-medium text-slate-700 flex-1 truncate">{{ doc.original_name }}</span>
                 <a href="{{ doc.url }}" target="_blank" class="text-blue-500 hover:text-blue-700 text-xs px-2"><i class="fa-solid fa-eye"></i></a>
+                {% if ac_can_delete_doc %}
                 <button onclick="deleteItemDoc({{ doc.id }},'{{ item['no'] }}',{{ ci }})" class="text-red-400 hover:text-red-600 text-xs px-1"><i class="fa-solid fa-trash"></i></button>
+                {% endif %}
               </div>
               {% endfor %}
               {% endif %}
             </div>
+            {% if ac_can_attach %}
             <div class="item-upload-zone" id="uzone-{{ item['no'] }}-{{ ci }}"
                  onclick="document.getElementById('ifile-{{ item['no'] }}-{{ ci }}').click()"
                  ondragover="event.preventDefault();this.classList.add('drag-over')"
@@ -389,6 +392,7 @@
             </div>
             <input type="file" id="ifile-{{ item['no'] }}-{{ ci }}" multiple class="hidden"
                    onchange="uploadItemDocs('{{ item['no'] }}',{{ ci }},this.files)"/>
+            {% endif %}
           </div>
           {% endif %}
 
@@ -587,9 +591,9 @@
         </div>
 
         {% if ac_can_send_invite %}
-        <!-- Add / notify new person -->
-        <div style="border-top:1px solid #f1f5f9;padding-top:14px;">
-          <p class="form-label" style="margin-bottom:8px;">Add Signatory</p>
+        <!-- Notify new signatory -->
+        <div style="border-top:1px solid #f1f5f9;padding-top:14px;" id="notify-signatory-form">
+          <p class="form-label" style="margin-bottom:8px;">Notify Signatory</p>
           <div class="space-y-2">
             <div style="position:relative;">
               <input type="text" id="inv-name" class="form-input" placeholder="Full name *"
@@ -601,11 +605,11 @@
                           max-height:200px;overflow-y:auto;display:none;"></div>
             </div>
             <input type="text"  id="inv-company" class="form-input" placeholder="Company"/>
-            <input type="email" id="inv-email"   class="form-input" placeholder="Email (optional — sends invite link)"/>
+            <input type="email" id="inv-email"   class="form-input" placeholder="Email (optional — notifies signatory)"/>
           </div>
           <button id="add-invite-btn" onclick="addInvite()"
                   class="mt-3 w-full py-2 bg-gradient-to-r from-blue-700 to-blue-600 text-white rounded-xl text-xs font-bold hover:from-blue-600 hover:to-blue-500 transition">
-            <i class="fa-solid fa-user-plus mr-1"></i>Add &amp; Get Link
+            <i class="fa-solid fa-bell mr-1"></i>Notify Signatory
           </button>
         </div>
         {% endif %}{# ac_can_send_invite #}
@@ -935,7 +939,7 @@ async function addInvite() {
 
   const btn = document.getElementById('add-invite-btn');
   btn.disabled = true;
-  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i>Adding…';
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i>Notifying…';
   try {
     const res = await fetch(`/projects/{{ proj.id }}/itp/{{ template.id }}/element/{{ wtg.id }}/add-invite`, {
       method: 'POST',
@@ -948,30 +952,32 @@ async function addInvite() {
       if (noMsg) noMsg.remove();
       const row = buildInviteRow(data);
       document.getElementById('invites-list').appendChild(row);
-      // Auto-show the link for the new invite
-      toggleInviteLink(data.id);
+      // Do NOT auto-expand the link — the user can click "Copy link" explicitly
       document.getElementById('inv-name').value    = '';
       document.getElementById('inv-company').value = '';
       document.getElementById('inv-email').value   = '';
       const sug = document.getElementById('member-suggest');
       if (sug) sug.style.display = 'none';
-      // Confirmation toast — 3-way based on email_attempted + email_sent
+      // Confirmation feedback — 4-way based on email_attempted + email_sent + notif_sent
       if (data.email_attempted && data.email_sent) {
-        showToast('success', 'Invitation email sent',
-          `Invitation email sent to ${data.email}.`);
+        showToast('success', 'Signatory has been notified',
+          `An invitation email has been sent to ${data.email}.`);
+      } else if (data.notif_sent) {
+        showToast('success', 'Signatory has been notified',
+          'An in-app notification has been sent to the signatory.');
       } else if (data.email_attempted && !data.email_sent) {
-        showToast('warning', 'Invite link created — email not sent',
-          'Email could not be delivered. Copy the link manually and check SendGrid/Railway logs.');
+        showToast('warning', 'Signatory added — email delivery failed',
+          'Email could not be sent. Use the copy-link button to share the signing link manually.');
       } else {
-        showToast('success', 'Invite link created',
-          'No email address was entered. Copy and share the link below.');
+        showToast('success', 'Signatory has been notified to review and sign this ITP.',
+          'No email address was entered. Use the copy-link button to share the link.');
       }
     } else {
       alert(data.error || 'Failed to add signatory.');
     }
   } finally {
     btn.disabled = false;
-    btn.innerHTML = '<i class="fa-solid fa-user-plus mr-1"></i>Add &amp; Get Link';
+    btn.innerHTML = '<i class="fa-solid fa-bell mr-1"></i>Notify Signatory';
   }
 }
 
@@ -983,7 +989,7 @@ function buildInviteRow(inv) {
   d.innerHTML = `
     <div style="flex:1;min-width:0;">
       <p style="font-size:12px;font-weight:700;color:#0f172a;margin:0;">${inv.name}</p>
-      <p style="font-size:11px;color:#94a3b8;margin:0;">${inv.company}${inv.email ? ' · ' + inv.email : ''}</p>
+      <p style="font-size:11px;color:#94a3b8;margin:0;">${inv.company || ''}${inv.email ? ' · ' + inv.email : ''}</p>
       <div id="inv-link-${inv.id}" style="display:none;margin-top:6px;">
         <div style="display:flex;gap:5px;">
           <input type="text" readonly value="${inv.sign_url}"
@@ -997,9 +1003,10 @@ function buildInviteRow(inv) {
         </div>
       </div>
     </div>
-    <button onclick="toggleInviteLink(${inv.id})" title="Show/copy link"
+    <button onclick="toggleInviteLink(${inv.id})" title="Copy signing link"
             style="padding:5px 8px;border-radius:7px;border:1px solid #bae6fd;
-                   background:white;color:#0369a1;font-size:11px;cursor:pointer;">
+                   background:white;color:#0369a1;font-size:11px;cursor:pointer;"
+            title="Copy link">
       <i class="fa-solid fa-link"></i>
     </button>
     <button onclick="removeInvite(${inv.id})" title="Revoke"

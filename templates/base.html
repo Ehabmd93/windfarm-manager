@@ -384,6 +384,16 @@
       <div class="flex items-center gap-2 md:gap-3">
         <span class="text-xs text-slate-400 hidden md:block">{{ now.strftime('%d %b %Y') if now else '' }}</span>
         {% if current_user.is_authenticated %}
+        <!-- My ITP Actions shortcut (visible when user has active invites) -->
+        <a href="{{ url_for('my_itp_actions') }}" id="my-itp-btn"
+           style="position:relative;width:36px;height:36px;border-radius:10px;background:#f8fafc;
+                  border:1.5px solid #e2e8f0;display:flex;align-items:center;justify-content:center;
+                  color:#64748b;text-decoration:none;transition:all .15s;"
+           title="My ITP Actions"
+           onmouseover="this.style.background='#f0fdf4';this.style.borderColor='#86efac';this.style.color='#16a34a'"
+           onmouseout="this.style.background='#f8fafc';this.style.borderColor='#e2e8f0';this.style.color='#64748b'">
+          <i class="fa-solid fa-clipboard-check" style="font-size:14px;"></i>
+        </a>
         <!-- Notification Bell -->
         <a href="{{ url_for('notifications_list') }}" id="notif-bell"
            style="position:relative;width:36px;height:36px;border-radius:10px;background:#f8fafc;

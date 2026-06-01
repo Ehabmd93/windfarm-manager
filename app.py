@@ -5071,6 +5071,8 @@ def project_itp_detail(pid, tid, eid):
     ac_can_send_invite  = user_can(pid, 'can_send_itp_invite')
     ac_can_reopen       = user_can(pid, 'can_reopen_itp')
     ac_can_delete       = user_can(pid, 'can_delete_itp')
+    # Only project owners / can_delete_itp users may delete attached evidence
+    ac_can_delete_doc   = user_is_project_owner(pid) or user_can(pid, 'can_delete_itp')
 
     # ── ITP Details prefill: company for the logged-in user ─────────────────
     member_company = current_user.company or ''
@@ -5112,6 +5114,7 @@ def project_itp_detail(pid, tid, eid):
                            ac_can_send_invite=ac_can_send_invite,
                            ac_can_reopen=ac_can_reopen,
                            ac_can_delete=ac_can_delete,
+                           ac_can_delete_doc=ac_can_delete_doc,
                            member_company=member_company,
                            member_suggestions=member_suggestions)
 
@@ -5189,9 +5192,45 @@ def api_project_itp_add_invite(pid, tid, eid):
     if record.status in ('draft', 'in_progress'):
         record.status = 'client_invited'
 
+    wtg = record.wtg
+
+    # Collect unique engineer signers so far for the "N other inspectors" email line
+    signers_seen = {}
+    for st in record.item_statuses:
+        if st.lucas_complete and st.signed_by_name:
+            key = (st.signed_by_name, st.signed_by_company or '')
+            signers_seen[key] = True
+    # Fall back to the record-level engineer name if per-criterion data is absent
+    if not signers_seen and record.engineer_name:
+        signers_seen[(record.engineer_name, record.engineer_company or '')] = True
+    signer_list  = list(signers_seen.keys())   # [(name, company), ...]
+    if signer_list:
+        primary_name, primary_co = signer_list[0]
+        if len(signer_list) == 1:
+            signers_text = (f"{primary_name} ({primary_co})"
+                            if primary_co else primary_name)
+        else:
+            others = len(signer_list) - 1
+            label  = "inspector" if others == 1 else "inspectors"
+            signers_text = (
+                f"{primary_name} ({primary_co})"
+                if primary_co else primary_name
+            ) + f" and {others} other {label}"
+    else:
+        signers_text = None
+
     # Each person gets their own unique token — the signing URL uses THIS token,
     # not the shared record.client_token (which is kept only for legacy fallback).
     invite_token = uuid.uuid4().hex
+
+    # Check if this email belongs to an existing SiteGrid user
+    invited_user = None
+    if email:
+        from models import User as _User
+        invited_user = _User.query.filter(
+            db.func.lower(_User.email) == email.lower()
+        ).first()
+
     invite = ITPClientInvite(
         record_id  = record.id,
         name       = name,
@@ -5199,12 +5238,41 @@ def api_project_itp_add_invite(pid, tid, eid):
         email      = email,
         token      = invite_token,
         expires_at = datetime.now(timezone.utc) + timedelta(days=14),
+        status     = 'pending',
+        user_id    = invited_user.id if invited_user else None,
     )
     db.session.add(invite)
     db.session.flush()   # get invite.id before commit
 
     # Per-invitee signing URL — routes through the authenticated entry gate
     sign_url = url_for('itp_client_sign_entry', token=invite_token, _external=True)
+
+    # Create in-app notification for existing SiteGrid users
+    notif_sent = False
+    if invited_user:
+        # Prevent duplicate notification for same (user, record)
+        existing = Notification.query.filter_by(
+            user_id=invited_user.id,
+            type='itp_invited',
+        ).filter(Notification.url.contains(f'/itp/client/{invite_token}')).first()
+        if not existing:
+            itp_type_label = record.itp_type
+            if record.itp_type.startswith('PROJ_'):
+                _tmpl = ProjectITPTemplate.query.get(record.project_itp_template_id)
+                if _tmpl:
+                    itp_type_label = _tmpl.name
+            proj_name_notif = wtg.project.name if wtg and wtg.project else 'Project'
+            notif = Notification(
+                user_id=invited_user.id,
+                type='itp_invited',
+                title=f'ITP signature requested — {wtg.name if wtg else ""}',
+                message=(f'You have been invited to review and sign '
+                         f'{itp_type_label} for {proj_name_notif}.'),
+                url=sign_url,
+            )
+            db.session.add(notif)
+            invite.notification_sent_at = datetime.now(timezone.utc)
+            notif_sent = True
 
     log_audit(
         'itp_invite_created',
@@ -5218,7 +5286,6 @@ def api_project_itp_add_invite(pid, tid, eid):
     db.session.commit()
 
     # Send invitation email if email provided
-    wtg = record.wtg
     email_attempted = bool(email)
     email_sent      = False
     if email_attempted:
@@ -5233,6 +5300,7 @@ def api_project_itp_add_invite(pid, tid, eid):
             record=record, wtg_name=wtg.name if wtg else '',
             sign_url=sign_url, client_name=name, client_email=email,
             proj_name=proj_name, itp_name=defn.get('name', ''),
+            signers_text=signers_text,
         ))
 
     return jsonify({
@@ -5245,6 +5313,7 @@ def api_project_itp_add_invite(pid, tid, eid):
         'is_new_link':      is_new_token,
         'email_attempted':  email_attempted,
         'email_sent':       email_sent,
+        'notif_sent':       notif_sent,
     })
 
 
@@ -5877,6 +5946,18 @@ def itp_client_sign_entry(token):
                                    proj_name=proj_name,
                                    record=record,
                                    token=token), 403
+        # Mark invite as viewed (first time only)
+        if invite and not invite.viewed_at:
+            invite.viewed_at = datetime.now(timezone.utc)
+            if invite.status == 'pending' or not invite.status:
+                invite.status = 'viewed'
+            # Also link user_id if not yet set
+            if not invite.user_id and current_user.is_authenticated:
+                invite.user_id = current_user.id
+            try:
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
         # Correct user (or open invite) — go straight to the signing room
         return redirect(url_for('itp_client_sign', token=token))
 
@@ -5966,9 +6047,23 @@ def itp_client_sign(token):
 
                 concerns = [s for s in signed_items if s.client_reviewed and not s.client_accepted]
 
+                _sign_now = datetime.now(timezone.utc)
                 record.client_signature = sig
-                record.client_signed_at = datetime.now(timezone.utc)
+                record.client_signed_at = _sign_now
                 record.status           = 'client_commented' if concerns else 'complete'
+
+                # Mark the invite as signed and lock in signer identity
+                if invite and not invite.signed_at:
+                    invite.status       = 'signed'
+                    invite.signed_at    = _sign_now
+                    invite.signer_name    = (current_user.name
+                                             if current_user.is_authenticated
+                                             else record.client_name or invite.name)
+                    invite.signer_company = (current_user.company
+                                             if current_user.is_authenticated
+                                             else record.client_company or invite.company or '')
+                    if not invite.user_id and current_user.is_authenticated:
+                        invite.user_id = current_user.id
 
                 # Audit: client signed the ITP
                 log_audit(
@@ -6057,6 +6152,66 @@ def itp_client_sign(token):
                            today=date.today().isoformat())
 
 
+# ─── Client ITP Action Inbox ─────────────────────────────────────────────────
+@app.route('/my-itp-actions')
+@login_required
+def my_itp_actions():
+    """Show all ITP records this user has been invited to sign, grouped by status."""
+    # Match by user_id (if linked) or by email
+    invites = ITPClientInvite.query.filter(
+        db.or_(
+            ITPClientInvite.user_id == current_user.id,
+            db.and_(
+                ITPClientInvite.email != None,
+                db.func.lower(ITPClientInvite.email) == current_user.email.lower(),
+            ),
+        ),
+        ITPClientInvite.is_revoked == False,
+    ).order_by(ITPClientInvite.invited_at.desc()).all()
+
+    rows = []
+    for inv in invites:
+        rec = inv.record
+        if not rec:
+            continue
+        wtg_obj = rec.wtg
+        proj    = wtg_obj.project if wtg_obj else None
+        # Resolve ITP name
+        itp_name = rec.itp_type
+        if rec.itp_type.startswith('PROJ_') and rec.project_itp_template_id:
+            _t = ProjectITPTemplate.query.get(rec.project_itp_template_id)
+            if _t:
+                itp_name = _t.name
+        elif rec.itp_type in ITP_DEFINITIONS:
+            itp_name = ITP_DEFINITIONS[rec.itp_type].get('name', rec.itp_type)
+
+        # Evidence count
+        evidence_count = sum(len(s.documents) for s in rec.item_statuses)
+
+        # Determine effective invite status (expired if past due)
+        eff_status = inv.status or 'pending'
+        if eff_status not in ('signed', 'revoked') and inv.expires_at:
+            if _ensure_utc(inv.expires_at) < datetime.now(timezone.utc):
+                eff_status = 'expired'
+
+        rows.append({
+            'invite':         inv,
+            'record':         rec,
+            'wtg':            wtg_obj,
+            'project':        proj,
+            'itp_name':       itp_name,
+            'evidence_count': evidence_count,
+            'status':         eff_status,
+            'sign_url':       url_for('itp_client_sign_entry', token=inv.token),
+        })
+
+    # Group: pending/viewed first, then signed, then expired
+    _order = {'pending': 0, 'viewed': 1, 'signed': 2, 'expired': 3, 'revoked': 4}
+    rows.sort(key=lambda r: _order.get(r['status'], 9))
+
+    return render_template('my_itp_actions.html', rows=rows)
+
+
 @app.route('/api/itp/<int:record_id>/sign/<item_no>/<int:crit_idx>', methods=['POST'])
 @login_required
 def api_itp_sign_criterion(record_id, item_no, crit_idx):
@@ -6082,9 +6237,12 @@ def api_itp_sign_criterion(record_id, item_no, crit_idx):
     if not sig:
         return jsonify({'error': 'No signature data'}), 400
 
-    s.lucas_complete  = True
-    s.lucas_signature = sig
-    s.lucas_comments  = comments
+    s.lucas_complete     = True
+    s.lucas_signature    = sig
+    s.lucas_comments     = comments
+    s.signed_by_user_id  = current_user.id
+    s.signed_by_name     = current_user.name
+    s.signed_by_company  = (current_user.company or '')
     try:
         s.lucas_signed_at = datetime.strptime(dt_str[:16], '%Y-%m-%dT%H:%M')
     except (ValueError, TypeError):
@@ -6218,8 +6376,9 @@ def api_itp_item_doc_delete(doc_id):
     doc = ITPItemDocument.query.get_or_404(doc_id)
     record = ITPRecord.query.get(doc.itp_record_id)
     project_id = _itp_project_id(record) if record else None
-    if record and not user_can(project_id, 'can_attach_itp_docs'):
-        return jsonify({'error': 'You do not have permission to delete ITP documents.'}), 403
+    # Delete is restricted to project owners and users with the can_delete_itp permission
+    if record and not (user_is_project_owner(project_id) or user_can(project_id, 'can_delete_itp')):
+        return jsonify({'error': 'Only project owners or administrators can delete ITP evidence.'}), 403
     if record and record.status == 'complete':
         return jsonify({'error': 'This ITP is complete and locked. Reopen it before deleting documents.'}), 400
     original_name = doc.original_name
@@ -7171,11 +7330,21 @@ def run_migrations():
                 ("users", "failed_login_count",  "INTEGER"),   # backfilled → 0 below
                 ("users", "locked_until",        "TIMESTAMP"),
                 # ── itp_item_statuses ────────────────────────────────────────────
-                ("itp_item_statuses",  "client_action", "VARCHAR(50)"),
+                ("itp_item_statuses",  "client_action",      "VARCHAR(50)"),
+                ("itp_item_statuses",  "signed_by_user_id",  "INTEGER"),
+                ("itp_item_statuses",  "signed_by_name",     "VARCHAR(100)"),
+                ("itp_item_statuses",  "signed_by_company",  "VARCHAR(100)"),
                 # ── itp_client_invites ────────────────────────────────────────────
-                ("itp_client_invites", "expires_at",  "TIMESTAMP"),
-                ("itp_client_invites", "is_revoked",  "BOOLEAN"),
-                ("itp_client_invites", "revoked_at",  "TIMESTAMP"),
+                ("itp_client_invites", "expires_at",             "TIMESTAMP"),
+                ("itp_client_invites", "is_revoked",             "BOOLEAN"),
+                ("itp_client_invites", "revoked_at",             "TIMESTAMP"),
+                ("itp_client_invites", "user_id",                "INTEGER"),
+                ("itp_client_invites", "status",                 "VARCHAR(20)"),
+                ("itp_client_invites", "viewed_at",              "TIMESTAMP"),
+                ("itp_client_invites", "signed_at",              "TIMESTAMP"),
+                ("itp_client_invites", "signer_name",            "VARCHAR(100)"),
+                ("itp_client_invites", "signer_company",         "VARCHAR(100)"),
+                ("itp_client_invites", "notification_sent_at",   "TIMESTAMP"),
                 # ── itp_records ──────────────────────────────────────────────────
                 ("itp_records", "revision",         "INTEGER"),
                 ("itp_records", "reopened_at",      "TIMESTAMP"),

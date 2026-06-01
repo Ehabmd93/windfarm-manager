@@ -335,16 +335,25 @@ def _email_shell(title, body_html, preheader=''):
 
 def email_client_invitation(record, wtg_name, sign_url,
                              client_name, client_email,
-                             proj_name='', itp_name=''):
+                             proj_name='', itp_name='',
+                             signers_text=None):
     """
     Send client an authenticated-entry email to review and sign the ITP.
     sign_url should point to /itp/client/<token>/entry which handles
     auth checks before forwarding to the signing room.
+
+    signers_text — optional pre-formatted string such as
+        "Ehab (Lucas TCS) and 2 other inspectors"
+    that replaces the default "EngineerName (Company)" line in the email body.
     """
     proj_label = proj_name or 'Project'
     itp_label  = itp_name  or record.itp_type.upper().replace('_', ' ')
     engineer   = record.engineer_name or 'Engineer'
     company    = record.engineer_company or ''
+
+    # Use provided signers_text or derive from record fields
+    if not signers_text:
+        signers_text = f"{engineer} ({company})" if company else engineer
 
     safe_url   = _html_lib.escape(sign_url, quote=True)
 
@@ -375,7 +384,7 @@ def email_client_invitation(record, wtg_name, sign_url,
   <div style="padding:32px;">
     <p style="font-size:16px;color:#1e293b;font-weight:600;margin:0 0 8px;">Dear {client_name},</p>
     <p style="color:#64748b;font-size:14px;line-height:1.6;margin:0 0 24px;">
-      <strong>{engineer}</strong>{(' (' + company + ')') if company else ''} has completed their
+      <strong>{_html_lib.escape(signers_text)}</strong> has completed their
       inspection and is requesting your sign-off on the following
       Inspection &amp; Test Plan (ITP).
     </p>
@@ -402,7 +411,7 @@ def email_client_invitation(record, wtg_name, sign_url,
         </tr>
         <tr>
           <td style="color:#64748b;padding:5px 0;">Inspected by</td>
-          <td style="font-weight:700;color:#1e3a5f;">{engineer}{(' &middot; ' + company) if company else ''}</td>
+          <td style="font-weight:700;color:#1e3a5f;">{_html_lib.escape(signers_text)}</td>
         </tr>
       </table>
     </div>
@@ -437,7 +446,7 @@ def email_client_invitation(record, wtg_name, sign_url,
 
     plain = (
         f"Dear {client_name},\n\n"
-        f"{engineer}{(' (' + company + ')') if company else ''} has requested your signature "
+        f"{signers_text} has requested your signature "
         f"on an ITP for {proj_label}.\n\n"
         f"Project: {proj_label}\n"
         f"Location: {wtg_name}\n"

@@ -693,6 +693,11 @@ class ITPItemStatus(db.Model):
     lucas_comments   = db.Column(db.Text)
     lucas_signature  = db.Column(db.Text)   # base64 PNG
 
+    # Engineer identity at signing time (populated when criterion is signed)
+    signed_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    signed_by_name    = db.Column(db.String(100), nullable=True)
+    signed_by_company = db.Column(db.String(100), nullable=True)
+
     # Client sign-off (per criterion)
     client_complete  = db.Column(db.Boolean, default=False)
     client_signed_at = db.Column(db.DateTime, nullable=True)   # date + time
@@ -1016,7 +1021,19 @@ class ITPClientInvite(db.Model):
     expires_at  = db.Column(db.DateTime, nullable=True)
     is_revoked  = db.Column(db.Boolean, default=False)
     revoked_at  = db.Column(db.DateTime, nullable=True)
-    record      = db.relationship('ITPRecord', backref='client_invites', lazy=True)
+
+    # Multi-signatory tracking fields
+    user_id              = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    # status: pending | viewed | signed | revoked | expired
+    status               = db.Column(db.String(20), default='pending')
+    viewed_at            = db.Column(db.DateTime, nullable=True)
+    signed_at            = db.Column(db.DateTime, nullable=True)
+    signer_name          = db.Column(db.String(100), nullable=True)  # locked name at sign time
+    signer_company       = db.Column(db.String(100), nullable=True)
+    notification_sent_at = db.Column(db.DateTime, nullable=True)
+
+    record = db.relationship('ITPRecord', backref='client_invites', lazy=True)
+    user   = db.relationship('User', foreign_keys=[user_id], lazy=True)
 
 
 # ═══════════════════════════════════════════════

@@ -332,7 +332,7 @@
     {% endif %}
   </div>
 
-  <!-- ─── SUPPORTING DOCUMENTS (evidence attached by the inspection team) ─── -->
+  <!-- ─── EVIDENCE INDEX (compact collapsed panel — per-criterion evidence is primary) ─── -->
   {% set docns = namespace(items=[]) %}
   {% for s in record.item_statuses %}
     {% for d in s.documents %}
@@ -340,47 +340,56 @@
     {% endfor %}
   {% endfor %}
   {% if docns.items %}
-  <div style="background:white;border-radius:18px;border:1.5px solid #e2e8f0;
-              padding:20px;margin-bottom:14px;">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
-      <div style="width:36px;height:36px;border-radius:10px;background:#eff6ff;
+  <div style="background:white;border-radius:14px;border:1.5px solid #bfdbfe;
+              margin-bottom:14px;overflow:hidden;">
+    <!-- Collapsed header — click to expand -->
+    <button onclick="toggleEvidenceIndex()" type="button"
+            style="width:100%;display:flex;align-items:center;gap:10px;padding:13px 18px;
+                   background:transparent;border:none;cursor:pointer;text-align:left;">
+      <div style="width:30px;height:30px;border-radius:8px;background:#eff6ff;
                   display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-        <i class="fa-solid fa-paperclip" style="color:#2563eb;font-size:15px;"></i>
+        <i class="fa-solid fa-paperclip" style="color:#2563eb;font-size:12px;"></i>
       </div>
       <div style="flex:1;min-width:0;">
-        <h3 style="font-size:14px;font-weight:800;color:#0f172a;margin:0;">Supporting Documents</h3>
-        <p style="font-size:11px;color:#94a3b8;margin:0;">
+        <span style="font-size:13px;font-weight:700;color:#1e40af;">
+          Evidence Index
+        </span>
+        <span style="font-size:11px;color:#94a3b8;margin-left:8px;">
           {{ docns.items|length }} file{{ 's' if docns.items|length != 1 else '' }}
-          attached by the inspection team for your review
-        </p>
+          attached by the inspection team
+        </span>
       </div>
-    </div>
-    <div style="display:flex;flex-direction:column;gap:8px;">
-      {% for s, doc in docns.items %}
-      <a href="{{ doc.url }}" target="_blank"
-         style="display:flex;align-items:center;gap:11px;padding:10px 12px;background:#f8fafc;
-                border:1px solid #e2e8f0;border-radius:12px;text-decoration:none;">
-        <div style="width:38px;height:38px;border-radius:10px;flex-shrink:0;
-                    display:flex;align-items:center;justify-content:center;
-          {% if doc.doc_type=='photo' %}background:#dbeafe;
-          {% elif doc.doc_type=='pdf' %}background:#fee2e2;
-          {% else %}background:#f1f5f9;{% endif %}">
-          <i class="fa-solid {% if doc.doc_type=='photo' %}fa-image" style="color:#3b82f6;
-             {% elif doc.doc_type=='pdf' %}fa-file-pdf" style="color:#ef4444;
-             {% else %}fa-file" style="color:#94a3b8;{% endif %} font-size:15px;"></i>
-        </div>
-        <div style="flex:1;min-width:0;">
-          <p style="font-size:13px;font-weight:600;color:#1e293b;margin:0;
-                    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ doc.original_name }}</p>
-          <p style="font-size:11px;color:#94a3b8;margin:0;
-                    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-            Item {{ s.item_no }}{% if s.activity %} &middot; {{ s.activity }}{% endif %}
-          </p>
-        </div>
-        <i class="fa-solid fa-arrow-up-right-from-square"
-           style="color:#94a3b8;font-size:11px;flex-shrink:0;"></i>
-      </a>
-      {% endfor %}
+      <i class="fa-solid fa-chevron-down" id="evidence-index-chevron"
+         style="color:#94a3b8;font-size:11px;transition:transform .2s;"></i>
+    </button>
+    <!-- Expandable body -->
+    <div id="evidence-index-body" style="display:none;padding:0 18px 14px;">
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        {% for s, doc in docns.items %}
+        <a href="{{ doc.url }}" target="_blank"
+           style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:#f8fafc;
+                  border:1px solid #e2e8f0;border-radius:10px;text-decoration:none;">
+          <div style="width:30px;height:30px;border-radius:8px;flex-shrink:0;
+                      display:flex;align-items:center;justify-content:center;
+            {% if doc.doc_type=='photo' %}background:#dbeafe;
+            {% elif doc.doc_type=='pdf' %}background:#fee2e2;
+            {% else %}background:#f1f5f9;{% endif %}">
+            <i class="fa-solid {% if doc.doc_type=='photo' %}fa-image" style="color:#3b82f6;
+               {% elif doc.doc_type=='pdf' %}fa-file-pdf" style="color:#ef4444;
+               {% else %}fa-file" style="color:#94a3b8;{% endif %} font-size:12px;"></i>
+          </div>
+          <div style="flex:1;min-width:0;">
+            <p style="font-size:12px;font-weight:600;color:#1e293b;margin:0;
+                      white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ doc.original_name }}</p>
+            <p style="font-size:10px;color:#94a3b8;margin:0;">
+              Item {{ s.item_no }}{% if s.activity %} &middot; {{ s.activity }}{% endif %}
+            </p>
+          </div>
+          <i class="fa-solid fa-arrow-up-right-from-square"
+             style="color:#94a3b8;font-size:10px;flex-shrink:0;"></i>
+        </a>
+        {% endfor %}
+      </div>
     </div>
   </div>
   {% endif %}
@@ -601,7 +610,7 @@
                 <div style="min-width:0;">
                   <p style="font-size:11px;font-weight:700;color:#166534;margin:0 0 2px;">
                     <i class="fa-solid fa-check-circle" style="margin-right:4px;"></i>
-                    {{ record.engineer_name or 'Engineer' }}{% if record.engineer_company %} &middot; {{ record.engineer_company }}{% endif %}
+                    Signed by {{ (s.signed_by_name or record.engineer_name) or 'Engineer' }}{% if (s.signed_by_company or record.engineer_company) %} &middot; {{ s.signed_by_company or record.engineer_company }}{% endif %}
                   </p>
                   <p style="font-size:11px;color:#4ade80;margin:0;">
                     {% if s.lucas_signed_at %}
@@ -834,6 +843,16 @@ function showToast(msg, type = 'success') {
   toast.classList.add('show');
   clearTimeout(_toastTimer);
   _toastTimer = setTimeout(() => toast.classList.remove('show'), 3000);
+}
+
+// ── Evidence Index toggle ─────────────────────────────────────────────────
+function toggleEvidenceIndex() {
+  const body    = document.getElementById('evidence-index-body');
+  const chevron = document.getElementById('evidence-index-chevron');
+  if (!body) return;
+  const open = body.style.display !== 'none';
+  body.style.display    = open ? 'none' : 'block';
+  if (chevron) chevron.style.transform = open ? '' : 'rotate(180deg)';
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────
