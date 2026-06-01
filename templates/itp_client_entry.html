@@ -244,6 +244,63 @@
   <div class="footer">SiteGrid &mdash; Construction QA, ITPs &amp; Project Handover</div>
 </div>
 
+{% elif state == 'needs_project_access' %}
+{# ── Member needs to accept project invite before accessing ITP ──────────── #}
+<div class="card">
+  <div class="card-header amber">
+    <div class="icon-wrap"><i class="fa-solid fa-shield-halved" style="color:#fff;"></i></div>
+    <h1>Accept Project Invitation</h1>
+    <p>{{ proj_name or 'SiteGrid' }}</p>
+  </div>
+  <div class="card-body">
+    <p class="lead">You're almost there. Before you can review this ITP, please accept your invitation to join <strong>{{ proj_name }}</strong>.</p>
+    <div class="info-box amber">
+      <p><i class="fa-solid fa-envelope" style="margin-right:6px;"></i>Check your email for the project access invitation from SiteGrid and click the Accept button in that email.</p>
+    </div>
+    <p class="sub">If you can't find the email, ask the project team to resend your invitation. Once you've accepted, return to this link to sign the ITP.</p>
+    <div class="btn-wrap">
+      <a href="{{ url_for('itp_client_sign_entry', token=token) }}" class="btn btn-outline" style="width:100%;justify-content:center;display:flex;align-items:center;">
+        <i class="fa-solid fa-rotate-right" style="margin-right:8px;"></i>I've accepted &mdash; try again
+      </a>
+    </div>
+  </div>
+  <div class="footer">SiteGrid &mdash; Construction QA, ITPs &amp; Project Handover</div>
+</div>
+
+{% elif state == 'no_project_access' %}
+{# ── User has no active membership for this project ───────────────────────── #}
+<div class="card">
+  <div class="card-header red">
+    <div class="icon-wrap"><i class="fa-solid fa-user-slash" style="color:#fff;"></i></div>
+    <h1>Project Access Required</h1>
+    <p>{{ proj_name or 'SiteGrid' }}</p>
+  </div>
+  <div class="card-body">
+    <p class="lead">You don't have an active membership for this project.</p>
+    <div class="info-box red">
+      <p>Your account is not listed as a member of <strong>{{ proj_name }}</strong>. Contact the project team to request access.</p>
+    </div>
+  </div>
+  <div class="footer">SiteGrid &mdash; Construction QA, ITPs &amp; Project Handover</div>
+</div>
+
+{% elif state == 'no_sign_permission' %}
+{# ── User is a member but lacks ITP signing permission ───────────────────── #}
+<div class="card">
+  <div class="card-header amber">
+    <div class="icon-wrap"><i class="fa-solid fa-lock" style="color:#fff;"></i></div>
+    <h1>Signing Permission Required</h1>
+    <p>{{ proj_name or 'SiteGrid' }}</p>
+  </div>
+  <div class="card-body">
+    <p class="lead">Your account doesn't have ITP signing permission for this project.</p>
+    <div class="info-box amber">
+      <p>Contact your project administrator to enable the "Sign ITP as Client" permission for your account.</p>
+    </div>
+  </div>
+  <div class="footer">SiteGrid &mdash; Construction QA, ITPs &amp; Project Handover</div>
+</div>
+
 {% else %}
 {# ── Generic fallback (should not normally be reached) ───────────────────── #}
 <div class="card">

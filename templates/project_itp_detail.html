@@ -536,24 +536,44 @@
       </div>
     </div>
 
-    <!-- Client Signatories — entire panel hidden unless the viewer can send ITP sign invites -->
-    {% if ac_can_send_invite %}
+    <!-- Client Signatories — visible to all project viewers; actions gated by ac_can_send_invite -->
+    {% if ac_can_view_panel %}
     <div class="panel" id="invite-panel">
       <div class="panel-hdr blue"><i class="fa-solid fa-users"></i> Client Signatories</div>
       <div class="panel-body">
 
-            <!-- Signatories list — each invitee has their own signing link -->
+        <!-- Signatories list — each invitee has their own signing link -->
         <div id="invites-list" style="display:flex;flex-direction:column;gap:6px;{% if record.client_invites %}margin-bottom:14px;{% endif %}">
           {% set active_invites = record.client_invites | selectattr('is_revoked', 'equalto', false) | list %}
           {% for inv in active_invites %}
-          {% set inv_sign_url = url_for('itp_client_sign', token=inv.token, _external=True) %}
+          {% set inv_sign_url = url_for('itp_client_sign_entry', token=inv.token, _external=True) %}
+          {% set inv_status = inv.status or 'pending_review' %}
+          {% if inv_status == 'pending' %}{% set inv_status = 'pending_review' %}{% endif %}
+          {% if inv_status == 'pending_project_access' %}
+            {% set sc_bg = '#fef9c3' %}{% set sc_color = '#854d0e' %}{% set sc_label = 'Waiting for project access' %}
+          {% elif inv_status == 'pending_review' %}
+            {% set sc_bg = '#eff6ff' %}{% set sc_color = '#1d4ed8' %}{% set sc_label = 'Awaiting review' %}
+          {% elif inv_status == 'viewed' %}
+            {% set sc_bg = '#eef2ff' %}{% set sc_color = '#4338ca' %}{% set sc_label = 'Viewed' %}
+          {% elif inv_status == 'signed' %}
+            {% set sc_bg = '#dcfce7' %}{% set sc_color = '#166534' %}{% set sc_label = 'Signed' %}
+          {% elif inv_status == 'revoked' %}
+            {% set sc_bg = '#fef2f2' %}{% set sc_color = '#dc2626' %}{% set sc_label = 'Revoked' %}
+          {% else %}
+            {% set sc_bg = '#f1f5f9' %}{% set sc_color = '#64748b' %}{% set sc_label = 'Expired' %}
+          {% endif %}
           <div id="inv-row-{{ inv.id }}"
-               style="display:flex;align-items:center;gap:8px;padding:9px 12px;
+               style="display:flex;align-items:flex-start;gap:8px;padding:10px 12px;
                       background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
             <div style="flex:1;min-width:0;">
-              <p style="font-size:12px;font-weight:700;color:#0f172a;margin:0;">{{ inv.name }}</p>
+              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px;">
+                <p style="font-size:12px;font-weight:700;color:#0f172a;margin:0;">{{ inv.name }}</p>
+                <span style="font-size:10px;padding:1px 7px;border-radius:99px;
+                             background:{{ sc_bg }};color:{{ sc_color }};font-weight:700;">{{ sc_label }}</span>
+              </div>
               <p style="font-size:11px;color:#94a3b8;margin:0;">
                 {{ inv.company }}{% if inv.email %} · {{ inv.email }}{% endif %}
+                {% if inv.invited_by_name %} · Invited by {{ inv.invited_by_name }}{% endif %}
                 {% if inv.invited_at %} · {{ inv.invited_at.strftime('%d %b') }}{% endif %}
               </p>
               <!-- Per-invitee link (collapsed by default) -->
@@ -570,12 +590,17 @@
                 </div>
               </div>
             </div>
-            <button onclick="toggleInviteLink({{ inv.id }})" title="Show/copy link"
+            <button onclick="toggleInviteLink({{ inv.id }})" title="Copy signing link"
                     style="padding:5px 8px;border-radius:7px;border:1px solid #bae6fd;
                            background:white;color:#0369a1;font-size:11px;cursor:pointer;">
               <i class="fa-solid fa-link"></i>
             </button>
             {% if ac_can_send_invite %}
+            <button onclick="resendInvite({{ inv.id }})" title="Resend invitation"
+                    style="padding:5px 8px;border-radius:7px;border:1px solid #d1fae5;
+                           background:white;color:#059669;font-size:11px;cursor:pointer;">
+              <i class="fa-solid fa-paper-plane"></i>
+            </button>
             <button onclick="removeInvite({{ inv.id }})" title="Revoke"
                     style="padding:5px 8px;border-radius:7px;border:1px solid #fecaca;
                            background:white;color:#ef4444;font-size:11px;cursor:pointer;">
@@ -591,32 +616,79 @@
         </div>
 
         {% if ac_can_send_invite %}
-        <!-- Notify new signatory -->
+        <!-- Notify new signatory — searchable combobox -->
         <div style="border-top:1px solid #f1f5f9;padding-top:14px;" id="notify-signatory-form">
           <p class="form-label" style="margin-bottom:8px;">Notify Signatory</p>
-          <div class="space-y-2">
-            <div style="position:relative;">
-              <input type="text" id="inv-name" class="form-input" placeholder="Full name *"
-                     oninput="filterMembers(this.value)" autocomplete="off"/>
-              <div id="member-suggest"
-                   style="position:absolute;left:0;right:0;top:100%;z-index:50;
-                          background:white;border:1.5px solid #e2e8f0;border-radius:10px;
-                          box-shadow:0 8px 24px rgba(0,0,0,.12);margin-top:2px;
-                          max-height:200px;overflow-y:auto;display:none;"></div>
-            </div>
-            <input type="text"  id="inv-company" class="form-input" placeholder="Company"/>
-            <input type="email" id="inv-email"   class="form-input" placeholder="Email (optional — notifies signatory)"/>
+
+          <!-- Searchable combobox -->
+          <div id="signatory-combobox" style="position:relative;">
+            <input type="text" id="sig-search" class="form-input"
+                   placeholder="Search by name, company or email…"
+                   autocomplete="off"
+                   oninput="sigSearch(this.value)"
+                   onfocus="sigSearch(this.value)"/>
+            <input type="hidden" id="sig-member-id" value=""/>
+            <div id="sig-dropdown" style="display:none;position:absolute;left:0;right:0;top:100%;
+                 z-index:100;background:white;border:1.5px solid #e2e8f0;border-radius:12px;
+                 box-shadow:0 8px 32px rgba(0,0,0,.15);margin-top:4px;
+                 max-height:280px;overflow-y:auto;"></div>
           </div>
-          <button id="add-invite-btn" onclick="addInvite()"
-                  class="mt-3 w-full py-2 bg-gradient-to-r from-blue-700 to-blue-600 text-white rounded-xl text-xs font-bold hover:from-blue-600 hover:to-blue-500 transition">
+
+          <!-- Read-only preview of selected person -->
+          <div id="sig-preview-bar" style="display:none;margin-top:8px;padding:8px 12px;
+               background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;
+               align-items:center;gap:8px;">
+            <i class="fa-solid fa-user-check" style="color:#16a34a;font-size:13px;"></i>
+            <span id="sig-preview-text" style="font-size:12px;font-weight:700;color:#166534;flex:1;"></span>
+            <button type="button" onclick="clearSigSelection()"
+                    style="border:none;background:none;color:#94a3b8;cursor:pointer;font-size:13px;">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          </div>
+
+          <button id="add-invite-btn" onclick="addInvite()" disabled
+                  class="mt-3 w-full py-2 bg-gradient-to-r from-blue-700 to-blue-600 text-white
+                         rounded-xl text-xs font-bold hover:from-blue-600 hover:to-blue-500
+                         transition disabled:opacity-50 disabled:cursor-not-allowed">
             <i class="fa-solid fa-bell mr-1"></i>Notify Signatory
           </button>
+
+          <!-- Inline new-person form -->
+          <div id="new-person-form" style="display:none;margin-top:12px;border-top:1px solid #f1f5f9;padding-top:12px;">
+            <p style="font-size:11px;font-weight:700;color:#7c3aed;margin-bottom:8px;">
+              <i class="fa-solid fa-user-plus mr-1"></i>New Project Signatory
+            </p>
+            <div class="space-y-2">
+              <input type="text"  id="np-name"    class="form-input" placeholder="Full name *"/>
+              <input type="text"  id="np-company" class="form-input" placeholder="Company"/>
+              <input type="email" id="np-email"   class="form-input" placeholder="Email (required for invite)"/>
+              <select id="np-role" class="form-input">
+                <option value="client">Client</option>
+                <option value="client_approver" selected>Client Approver</option>
+                <option value="client_reviewer">Client Reviewer</option>
+                <option value="consultant">Consultant</option>
+              </select>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:10px;">
+              <button onclick="cancelNewPerson()"
+                      style="flex:1;padding:8px;background:#f1f5f9;color:#64748b;border:none;
+                             border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;">
+                Cancel
+              </button>
+              <button onclick="submitNewPerson()"
+                      style="flex:1;padding:8px;background:linear-gradient(135deg,#7c3aed,#6d28d9);
+                             color:white;border:none;border-radius:8px;font-size:12px;
+                             font-weight:700;cursor:pointer;">
+                <i class="fa-solid fa-user-plus mr-1"></i>Add &amp; Notify
+              </button>
+            </div>
+          </div>
         </div>
         {% endif %}{# ac_can_send_invite #}
 
       </div>
     </div>
-    {% endif %}{# ac_can_send_invite — entire Client Signatories panel #}
+    {% endif %}{# ac_can_view_panel — entire Client Signatories panel #}
 
     <!-- Linked Documents -->
     <div class="panel">
@@ -930,12 +1002,167 @@ function closeSaveModal(goToInvite) {
   }
 }
 
-// ── Multi-signatory invite ─────────────────────────────────────────────────
+// ── Member data from server ────────────────────────────────────────────────
+const MEMBER_SUGGESTIONS = {{ member_suggestions | tojson }};
+let _selectedMember = null;
+
+function sigSearch(query) {
+  const dd = document.getElementById('sig-dropdown');
+  const q  = query.toLowerCase().trim();
+  const form = document.getElementById('new-person-form');
+  if (form) form.style.display = 'none';
+  clearSigSelectionSilent();
+
+  const matches = q
+    ? MEMBER_SUGGESTIONS.filter(m =>
+        m.name.toLowerCase().includes(q) ||
+        (m.email || '').toLowerCase().includes(q) ||
+        (m.company || '').toLowerCase().includes(q))
+    : MEMBER_SUGGESTIONS;
+
+  if (!matches.length && !q) { dd.style.display = 'none'; return; }
+
+  // Group by company
+  const byCompany = {};
+  matches.forEach(m => {
+    const co = m.company || 'No Company';
+    if (!byCompany[co]) byCompany[co] = [];
+    byCompany[co].push(m);
+  });
+
+  const eligLabels = {
+    eligible:               {text:'Eligible to sign', color:'#16a34a', bg:'#f0fdf4'},
+    project_access_pending: {text:'Project access pending', color:'#d97706', bg:'#fffbeb'},
+    no_sign_permission:     {text:'Signing permission required', color:'#6d28d9', bg:'#f5f3ff'},
+    disabled:               {text:'Disabled', color:'#94a3b8', bg:'#f1f5f9'},
+  };
+
+  let html = '';
+  Object.entries(byCompany).forEach(([co, members]) => {
+    html += `<div style="padding:6px 12px 2px;font-size:10px;font-weight:800;
+              color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;">${co}</div>`;
+    members.forEach(m => {
+      const el = eligLabels[m.eligibility] || eligLabels.disabled;
+      html += `
+        <div class="sig-opt" onclick="selectMember(${m.id})"
+             style="padding:10px 12px;cursor:pointer;display:flex;align-items:flex-start;gap:10px;
+                    border-bottom:1px solid #f8fafc;transition:background .1s;"
+             onmouseover="this.style.background='#f0f9ff'"
+             onmouseout="this.style.background=''">
+          <div style="flex:1;min-width:0;">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              <span style="font-size:12px;font-weight:700;color:#0f172a;">${m.name}</span>
+              <span style="font-size:10px;padding:1px 7px;border-radius:99px;
+                           background:${el.bg};color:${el.color};font-weight:700;">
+                ${el.text}
+              </span>
+            </div>
+            <div style="font-size:11px;color:#64748b;margin-top:1px;">
+              ${m.role}${m.email ? ' · ' + m.email : ''}
+            </div>
+          </div>
+        </div>`;
+    });
+  });
+
+  // "Invite new project signatory" footer item
+  html += `
+    <div onclick="openNewPersonForm()"
+         style="padding:10px 12px;cursor:pointer;display:flex;align-items:center;gap:8px;
+                background:#f5f3ff;border-top:1px solid #e2e8f0;"
+         onmouseover="this.style.background='#ede9fe'"
+         onmouseout="this.style.background='#f5f3ff'">
+      <i class="fa-solid fa-user-plus" style="color:#7c3aed;font-size:12px;"></i>
+      <span style="font-size:12px;font-weight:700;color:#7c3aed;">Invite a new project signatory</span>
+    </div>`;
+
+  dd.innerHTML = html;
+  dd.style.display = 'block';
+}
+
+function selectMember(memberId) {
+  const m = MEMBER_SUGGESTIONS.find(x => x.id === memberId);
+  if (!m) return;
+  _selectedMember = m;
+  document.getElementById('sig-member-id').value = m.id;
+  document.getElementById('sig-search').value    = m.name;
+  document.getElementById('sig-dropdown').style.display = 'none';
+  const preview  = document.getElementById('sig-preview-bar');
+  const ptext    = document.getElementById('sig-preview-text');
+  const btn      = document.getElementById('add-invite-btn');
+  if (preview) {
+    ptext.textContent = `${m.name}${m.company ? ' · ' + m.company : ''}${m.email ? ' · ' + m.email : ''}`;
+    preview.style.display = 'flex';
+  }
+  if (btn) btn.disabled = false;
+}
+
+function clearSigSelectionSilent() {
+  _selectedMember = null;
+  document.getElementById('sig-member-id').value = '';
+  const preview = document.getElementById('sig-preview-bar');
+  if (preview) preview.style.display = 'none';
+  const btn = document.getElementById('add-invite-btn');
+  if (btn) btn.disabled = true;
+}
+
+function clearSigSelection() {
+  clearSigSelectionSilent();
+  document.getElementById('sig-search').value = '';
+}
+
+function openNewPersonForm() {
+  document.getElementById('sig-dropdown').style.display = 'none';
+  const form = document.getElementById('new-person-form');
+  if (form) form.style.display = 'block';
+  // Pre-fill name from search
+  const q = document.getElementById('sig-search').value.trim();
+  const nameInput = document.getElementById('np-name');
+  if (nameInput && q && !nameInput.value) nameInput.value = q;
+}
+
+function cancelNewPerson() {
+  const form = document.getElementById('new-person-form');
+  if (form) form.style.display = 'none';
+  ['np-name','np-company','np-email'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+}
+
+async function submitNewPerson() {
+  const name    = (document.getElementById('np-name')?.value || '').trim();
+  const company = (document.getElementById('np-company')?.value || '').trim();
+  const email   = (document.getElementById('np-email')?.value || '').trim();
+  const role    = document.getElementById('np-role')?.value || 'client';
+  if (!name) { alert('Name is required.'); return; }
+  if (!email) { alert('Email is required to send the invitation.'); return; }
+
+  const btn = document.querySelector('#new-person-form button[onclick="submitNewPerson()"]');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i>Adding…'; }
+  try {
+    const res = await fetch(`/projects/{{ proj.id }}/itp/{{ template.id }}/element/{{ wtg.id }}/add-invite`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN},
+      body: JSON.stringify({is_new_person: true, name, company, email, access_level: role}),
+    });
+    const data = await res.json();
+    if (res.status === 409) {
+      showToast('warning', 'Already invited', data.error); return;
+    }
+    if (!data.ok) { alert(data.error || 'Failed to add signatory.'); return; }
+    cancelNewPerson();
+    _appendInviteRow(data);
+    showToast('success', 'New signatory added',
+      data.email_sent ? `Project access and ITP invitation sent to ${data.email}.`
+                      : 'Signatory added. Copy and share the link manually.');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-user-plus mr-1"></i>Add & Notify'; }
+  }
+}
+
 async function addInvite() {
-  const name    = document.getElementById('inv-name').value.trim();
-  const company = document.getElementById('inv-company').value.trim();
-  const email   = document.getElementById('inv-email').value.trim();
-  if (!name) { alert('Please enter the client representative name.'); return; }
+  const memberId = parseInt(document.getElementById('sig-member-id').value || '0');
+  if (!memberId) { alert('Please select a signatory from the list.'); return; }
 
   const btn = document.getElementById('add-invite-btn');
   btn.disabled = true;
@@ -944,52 +1171,60 @@ async function addInvite() {
     const res = await fetch(`/projects/{{ proj.id }}/itp/{{ template.id }}/element/{{ wtg.id }}/add-invite`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN},
-      body: JSON.stringify({name, company, email}),
+      body: JSON.stringify({selected_member_ac_id: memberId}),
     });
     const data = await res.json();
-    if (data.ok) {
-      const noMsg = document.getElementById('no-invites-msg');
-      if (noMsg) noMsg.remove();
-      const row = buildInviteRow(data);
-      document.getElementById('invites-list').appendChild(row);
-      // Do NOT auto-expand the link — the user can click "Copy link" explicitly
-      document.getElementById('inv-name').value    = '';
-      document.getElementById('inv-company').value = '';
-      document.getElementById('inv-email').value   = '';
-      const sug = document.getElementById('member-suggest');
-      if (sug) sug.style.display = 'none';
-      // Confirmation feedback — 4-way based on email_attempted + email_sent + notif_sent
-      if (data.email_attempted && data.email_sent) {
-        showToast('success', 'Signatory has been notified',
-          `An invitation email has been sent to ${data.email}.`);
-      } else if (data.notif_sent) {
-        showToast('success', 'Signatory has been notified',
-          'An in-app notification has been sent to the signatory.');
-      } else if (data.email_attempted && !data.email_sent) {
-        showToast('warning', 'Signatory added — email delivery failed',
-          'Email could not be sent. Use the copy-link button to share the signing link manually.');
-      } else {
-        showToast('success', 'Signatory has been notified to review and sign this ITP.',
-          'No email address was entered. Use the copy-link button to share the link.');
-      }
+    if (res.status === 409) {
+      showToast('warning', 'Already notified', data.error + (data.invited_by ? ` (by ${data.invited_by})` : '')); return;
+    }
+    if (!data.ok) { alert(data.error || 'Failed to notify signatory.'); return; }
+    const noMsg = document.getElementById('no-invites-msg');
+    if (noMsg) noMsg.remove();
+    _appendInviteRow(data);
+    clearSigSelection();
+    if (data.email_sent) {
+      showToast('success', 'Signatory has been notified', `Invitation email sent to ${data.email}.`);
+    } else if (data.notif_sent) {
+      showToast('success', 'Signatory has been notified', 'In-app notification sent.');
     } else {
-      alert(data.error || 'Failed to add signatory.');
+      showToast('success', 'Signatory added', 'Use the copy-link button to share the signing link.');
     }
   } finally {
-    btn.disabled = false;
+    btn.disabled = !!_selectedMember ? false : true;
     btn.innerHTML = '<i class="fa-solid fa-bell mr-1"></i>Notify Signatory';
   }
+}
+
+function _appendInviteRow(data) {
+  const noMsg = document.getElementById('no-invites-msg');
+  if (noMsg) noMsg.remove();
+  const row = buildInviteRow(data);
+  document.getElementById('invites-list').appendChild(row);
 }
 
 function buildInviteRow(inv) {
   const d = document.createElement('div');
   d.id = `inv-row-${inv.id}`;
-  d.style.cssText = 'display:flex;align-items:center;gap:8px;padding:9px 12px;' +
+  d.style.cssText = 'display:flex;align-items:flex-start;gap:8px;padding:10px 12px;' +
                     'background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;';
+  const statusColors = {
+    pending_project_access: {bg:'#fef9c3',color:'#854d0e',label:'Waiting for project access'},
+    pending_review:         {bg:'#eff6ff',color:'#1d4ed8',label:'Awaiting review'},
+    pending:                {bg:'#eff6ff',color:'#1d4ed8',label:'Awaiting review'},
+    viewed:                 {bg:'#eef2ff',color:'#4338ca',label:'Viewed'},
+    signed:                 {bg:'#dcfce7',color:'#166534',label:'Signed'},
+  };
+  const sc = statusColors[inv.status] || {bg:'#f1f5f9',color:'#64748b',label:inv.status||'Pending'};
   d.innerHTML = `
     <div style="flex:1;min-width:0;">
-      <p style="font-size:12px;font-weight:700;color:#0f172a;margin:0;">${inv.name}</p>
-      <p style="font-size:11px;color:#94a3b8;margin:0;">${inv.company || ''}${inv.email ? ' · ' + inv.email : ''}</p>
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px;">
+        <p style="font-size:12px;font-weight:700;color:#0f172a;margin:0;">${inv.name}</p>
+        <span style="font-size:10px;padding:1px 7px;border-radius:99px;
+                     background:${sc.bg};color:${sc.color};font-weight:700;">${sc.label}</span>
+      </div>
+      <p style="font-size:11px;color:#94a3b8;margin:0;">
+        ${inv.company || ''}${inv.email ? ' · ' + inv.email : ''}
+      </p>
       <div id="inv-link-${inv.id}" style="display:none;margin-top:6px;">
         <div style="display:flex;gap:5px;">
           <input type="text" readonly value="${inv.sign_url}"
@@ -997,7 +1232,7 @@ function buildInviteRow(inv) {
                         border-radius:7px;background:white;color:#0369a1;min-width:0;"/>
           <button onclick="copyInviteLink('${inv.sign_url}')"
                   style="padding:5px 8px;border-radius:7px;border:1px solid #bae6fd;
-                         background:white;color:#0369a1;font-size:11px;cursor:pointer;white-space:nowrap;">
+                         background:white;color:#0369a1;font-size:11px;cursor:pointer;">
             <i class="fa-solid fa-copy"></i>
           </button>
         </div>
@@ -1005,9 +1240,13 @@ function buildInviteRow(inv) {
     </div>
     <button onclick="toggleInviteLink(${inv.id})" title="Copy signing link"
             style="padding:5px 8px;border-radius:7px;border:1px solid #bae6fd;
-                   background:white;color:#0369a1;font-size:11px;cursor:pointer;"
-            title="Copy link">
+                   background:white;color:#0369a1;font-size:11px;cursor:pointer;">
       <i class="fa-solid fa-link"></i>
+    </button>
+    <button onclick="resendInvite(${inv.id})" title="Resend invitation"
+            style="padding:5px 8px;border-radius:7px;border:1px solid #d1fae5;
+                   background:white;color:#059669;font-size:11px;cursor:pointer;">
+      <i class="fa-solid fa-paper-plane"></i>
     </button>
     <button onclick="removeInvite(${inv.id})" title="Revoke"
             style="padding:5px 8px;border-radius:7px;border:1px solid #fecaca;
@@ -1015,6 +1254,17 @@ function buildInviteRow(inv) {
       <i class="fa-solid fa-xmark"></i>
     </button>`;
   return d;
+}
+
+async function resendInvite(invId) {
+  const res = await fetch(`/projects/{{ proj.id }}/itp/{{ template.id }}/element/{{ wtg.id }}/resend-invite/${invId}`,
+    {method: 'POST', headers: {'X-CSRF-Token': CSRF_TOKEN}});
+  const data = await res.json();
+  if (data.ok) {
+    showToast('success', 'Invitation resent', data.email_sent ? 'Email resent successfully.' : 'Link refreshed.');
+  } else {
+    alert(data.error || 'Failed to resend invitation.');
+  }
 }
 
 function toggleInviteLink(invId) {
@@ -1069,49 +1319,11 @@ function showToast(type, title, msg) {
   }, 2600);
 }
 
-// ── Member autocomplete ───────────────────────────────────────────────────
-function _esc(s) {
-  return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-
-function filterMembers(query) {
-  const box = document.getElementById('member-suggest');
-  if (!box) return;
-  if (!query) { box.style.display='none'; return; }
-  const q = query.toLowerCase();
-  const hits = PROJECT_MEMBERS.filter(m =>
-    m.name.toLowerCase().includes(q) ||
-    m.email.toLowerCase().includes(q) ||
-    m.company.toLowerCase().includes(q)
-  ).slice(0, 6);
-  if (!hits.length) { box.style.display='none'; return; }
-  box.innerHTML = hits.map((m, i) => `
-    <div onclick="selectMember(${m.id})"
-         style="padding:9px 12px;cursor:pointer;${i < hits.length-1 ? 'border-bottom:1px solid #f1f5f9;' : ''}
-                transition:background .1s;"
-         onmouseover="this.style.background='#f0f9ff'"
-         onmouseout="this.style.background=''">
-      <div style="font-size:12px;font-weight:700;color:#0f172a;">${_esc(m.name)}</div>
-      <div style="font-size:11px;color:#94a3b8;">${_esc(m.company)}${m.email?' · '+_esc(m.email):''}</div>
-      <div style="font-size:10px;color:#7c3aed;font-weight:600;margin-top:1px;">${_esc(m.role)}</div>
-    </div>`).join('');
-  box.style.display = 'block';
-}
-
-function selectMember(memberId) {
-  const m = PROJECT_MEMBERS.find(x => x.id === memberId);
-  if (!m) return;
-  document.getElementById('inv-name').value    = m.name;
-  document.getElementById('inv-email').value   = m.email;
-  document.getElementById('inv-company').value = m.company;
-  const box = document.getElementById('member-suggest');
-  if (box) box.style.display = 'none';
-}
-
+// ── Close dropdowns on outside click ─────────────────────────────────────
 document.addEventListener('click', e => {
-  if (!e.target.closest('#member-suggest') && e.target.id !== 'inv-name') {
-    const box = document.getElementById('member-suggest');
-    if (box) box.style.display = 'none';
+  if (!e.target.closest('#signatory-combobox')) {
+    const dd = document.getElementById('sig-dropdown');
+    if (dd) dd.style.display = 'none';
   }
 });
 </script>

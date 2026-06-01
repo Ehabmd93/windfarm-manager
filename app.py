@@ -41,7 +41,8 @@ from project_config import (PROJECT_TYPE_PROFILES, get_profile,
 from kml_parser import get_geojson
 from email_utils import (email_client_invitation, email_client_signed,
                          email_project_invitation, email_password_reset,
-                         email_password_changed, log_email_config)
+                         email_password_changed, log_email_config,
+                         email_itp_invitation_with_project_access)
 import r2_storage
 
 # ─── App setup ──────────────────────────────────────────────────────────────
@@ -616,6 +617,28 @@ def _itp_record_project_id(record):
     """Return the project_id for an ITPRecord, or None for legacy records."""
     if record and record.wtg and record.wtg.project_id:
         return record.wtg.project_id
+    return None
+
+
+def _find_invite_member(invite, project_id):
+    """Return the active ProjectMemberAC row linked to an ITPClientInvite.
+
+    Tries project_member_ac_id first (new invites), then falls back to
+    normalized email lookup (legacy invites created before this field existed).
+    Returns None if no active member is found.
+    """
+    if invite.project_member_ac_id:
+        return ProjectMemberAC.query.filter_by(
+            id=invite.project_member_ac_id,
+            project_id=project_id,
+            is_active=True,
+        ).first()
+    if invite.email:
+        return ProjectMemberAC.query.filter(
+            ProjectMemberAC.project_id == project_id,
+            ProjectMemberAC.is_active == True,
+            db.func.lower(ProjectMemberAC.email) == invite.email.strip().lower(),
+        ).first()
     return None
 
 
@@ -5084,23 +5107,36 @@ def project_itp_detail(pid, tid, eid):
                 member_company = _pc.name
 
     # ── Signatory autocomplete: active members for this project ─────────────
-    _company_lkp = {
-        c.id: c.name
-        for c in ProjectCompany.query.filter_by(project_id=pid).all()
-    }
-    member_suggestions = [
-        {
-            'id':      m.id,
-            'name':    m.name,
-            'email':   m.email or '',
-            'company': _company_lkp.get(m.company_id, '')
-                       or (m.user.company if m.user else ''),
-            'role':    m.access_level_label,
-        }
-        for m in ProjectMemberAC.query.filter_by(
-            project_id=pid, is_active=True).all()
-        if m.name
-    ]
+    _company_lkp_detail = {c.id: c.name for c in ProjectCompany.query.filter_by(project_id=pid).all()}
+    member_suggestions = []
+    for m in ProjectMemberAC.query.filter_by(project_id=pid, is_active=True).all():
+        if not m.name:
+            continue
+        co = _company_lkp_detail.get(m.company_id, '') or (m.user.company if m.user else '')
+        is_accepted   = (m.invite_status == 'accepted')
+        has_sign_perm = m.has_permission('can_sign_client_itp') if m.user_id else False
+        user_ok       = (m.user.is_active if m.user else False)
+        if is_accepted and has_sign_perm and user_ok:
+            eligibility = 'eligible'
+        elif not is_accepted:
+            eligibility = 'project_access_pending'
+        elif is_accepted and not has_sign_perm:
+            eligibility = 'no_sign_permission'
+        else:
+            eligibility = 'disabled'
+        member_suggestions.append({
+            'id':            m.id,
+            'name':          m.name,
+            'email':         (m.email or ''),
+            'company':       co,
+            'role':          m.access_level_label,
+            'role_key':      m.access_level,
+            'invite_status': (m.invite_status or 'not_invited'),
+            'eligibility':   eligibility,
+            'user_id':       m.user_id,
+        })
+
+    ac_can_view_panel = user_can_view_project_ac(pid)
 
     return render_template('project_itp_detail.html',
                            proj=proj, template=template,
@@ -5115,6 +5151,7 @@ def project_itp_detail(pid, tid, eid):
                            ac_can_reopen=ac_can_reopen,
                            ac_can_delete=ac_can_delete,
                            ac_can_delete_doc=ac_can_delete_doc,
+                           ac_can_view_panel=ac_can_view_panel,
                            member_company=member_company,
                            member_suggestions=member_suggestions)
 
@@ -5172,14 +5209,93 @@ def api_project_itp_add_invite(pid, tid, eid):
         ITPRecord.project_itp_template_id == tid).first_or_404()
     if record.status == 'complete':
         return jsonify({'error': 'This ITP is complete and locked. Reopen it before adding invites.'}), 400
-    data    = request.get_json(silent=True) or {}
-    name    = (data.get('name') or '').strip()
-    company = (data.get('company') or '').strip()
-    email   = (data.get('email') or '').strip()
-    if not name:
-        return jsonify({'error': 'Name is required.'}), 400
 
-    # Ensure ONE canonical token exists for this ITP record
+    data         = request.get_json(silent=True) or {}
+    is_new_person = data.get('is_new_person', False)
+    wtg          = record.wtg
+
+    # ── Company lookup for member resolution ────────────────────────────────
+    _company_lkp = {c.id: c.name for c in ProjectCompany.query.filter_by(project_id=pid).all()}
+
+    project_invite_url = None  # set in Path B if UserInvite is created
+
+    if not is_new_person:
+        # ── Path A: existing / pending member ─────────────────────────────
+        selected_member_ac_id = data.get('selected_member_ac_id')
+        if not selected_member_ac_id:
+            return jsonify({'error': 'selected_member_ac_id is required.'}), 400
+        member = ProjectMemberAC.query.filter_by(
+            id=selected_member_ac_id, project_id=pid, is_active=True
+        ).first_or_404()
+        name    = member.name
+        email   = (member.email or '').strip().lower()
+        company = (
+            _company_lkp.get(member.company_id, '')
+            or (member.user.company if member.user else '')
+            or ''
+        )
+    else:
+        # ── Path B: new person ────────────────────────────────────────────
+        name    = (data.get('name') or '').strip()
+        email   = (data.get('email') or '').strip().lower()
+        access_level = (data.get('access_level') or 'client').strip()
+        company = (data.get('company') or '').strip()
+        if not name:
+            return jsonify({'error': 'Name is required.'}), 400
+
+        # Check for existing member with same email
+        if email:
+            existing_m = ProjectMemberAC.query.filter(
+                ProjectMemberAC.project_id == pid,
+                ProjectMemberAC.is_active == True,
+                db.func.lower(ProjectMemberAC.email) == email,
+            ).first()
+            if existing_m:
+                return jsonify({'error': 'A member with this email already exists in this project.'}), 409
+
+        now = datetime.now(timezone.utc)
+        member = ProjectMemberAC(
+            project_id   = pid,
+            user_id      = None,
+            is_owner     = False,
+            access_level = access_level,
+            is_active    = True,
+            name         = name,
+            email        = email,
+            invite_status= 'pending' if email else 'not_invited',
+            added_by_id  = current_user.id,
+            added_at     = now,
+        )
+        db.session.add(member)
+        db.session.flush()
+        seed_member_permissions(member)
+
+        if email:
+            raw_token  = _make_raw_token()
+            token_hash = _hash_token(raw_token)
+            invite_obj = UserInvite(
+                project_id           = pid,
+                project_member_ac_id = member.id,
+                email                = email,
+                name                 = name,
+                company              = company,
+                role                 = access_level,
+                can_sign             = False,
+                token_hash           = token_hash,
+                invited_by_id        = current_user.id,
+                invited_at           = now,
+                expires_at           = now + timedelta(days=14),
+                status               = 'pending',
+            )
+            db.session.add(invite_obj)
+            member.invite_token_hash = token_hash
+            member.invite_sent_at    = now
+            member.invite_expires_at = now + timedelta(days=14)
+            db.session.flush()
+            _base = _abs_base_url()
+            project_invite_url = f"{_base}/invite/{raw_token}"
+
+    # ── Ensure canonical token for ITP record ───────────────────────────────
     is_new_token = False
     if not record.client_token:
         record.client_token      = uuid.uuid4().hex
@@ -5192,128 +5308,167 @@ def api_project_itp_add_invite(pid, tid, eid):
     if record.status in ('draft', 'in_progress'):
         record.status = 'client_invited'
 
-    wtg = record.wtg
-
-    # Collect unique engineer signers so far for the "N other inspectors" email line
+    # ── Collect engineer signers for email ──────────────────────────────────
     signers_seen = {}
     for st in record.item_statuses:
         if st.lucas_complete and st.signed_by_name:
             key = (st.signed_by_name, st.signed_by_company or '')
             signers_seen[key] = True
-    # Fall back to the record-level engineer name if per-criterion data is absent
     if not signers_seen and record.engineer_name:
         signers_seen[(record.engineer_name, record.engineer_company or '')] = True
-    signer_list  = list(signers_seen.keys())   # [(name, company), ...]
+    signer_list = list(signers_seen.keys())
     if signer_list:
         primary_name, primary_co = signer_list[0]
         if len(signer_list) == 1:
-            signers_text = (f"{primary_name} ({primary_co})"
-                            if primary_co else primary_name)
+            signers_text = (f"{primary_name} ({primary_co})" if primary_co else primary_name)
         else:
             others = len(signer_list) - 1
             label  = "inspector" if others == 1 else "inspectors"
             signers_text = (
-                f"{primary_name} ({primary_co})"
-                if primary_co else primary_name
+                f"{primary_name} ({primary_co})" if primary_co else primary_name
             ) + f" and {others} other {label}"
     else:
         signers_text = None
 
-    # Each person gets their own unique token — the signing URL uses THIS token,
-    # not the shared record.client_token (which is kept only for legacy fallback).
+    # ── Duplicate assignment prevention ─────────────────────────────────────
+    ACTIVE_STATUSES = {'pending', 'pending_project_access', 'pending_review', 'viewed', 'signed'}
+    if email:
+        dup = ITPClientInvite.query.filter(
+            ITPClientInvite.record_id == record.id,
+            ITPClientInvite.is_revoked == False,
+            ITPClientInvite.status.in_(ACTIVE_STATUSES),
+            db.func.lower(ITPClientInvite.email) == email,
+        ).first()
+        if dup:
+            return jsonify({
+                'error': 'This signatory has already been notified for this ITP.',
+                'duplicate': True,
+                'existing_invite_id': dup.id,
+                'invited_by': dup.invited_by_name or 'a team member',
+            }), 409
+
+    # ── Determine invite status based on member state ────────────────────────
+    if member.invite_status == 'accepted':
+        invite_status_val = 'pending_review'
+    else:
+        invite_status_val = 'pending_project_access'
+
+    # ── Create per-invitee token ─────────────────────────────────────────────
     invite_token = uuid.uuid4().hex
 
-    # Check if this email belongs to an existing SiteGrid user
-    invited_user = None
-    if email:
-        from models import User as _User
-        invited_user = _User.query.filter(
-            db.func.lower(_User.email) == email.lower()
-        ).first()
-
     invite = ITPClientInvite(
-        record_id  = record.id,
-        name       = name,
-        company    = company,
-        email      = email,
-        token      = invite_token,
-        expires_at = datetime.now(timezone.utc) + timedelta(days=14),
-        status     = 'pending',
-        user_id    = invited_user.id if invited_user else None,
+        record_id            = record.id,
+        name                 = name,
+        company              = company,
+        email                = email,
+        token                = invite_token,
+        expires_at           = datetime.now(timezone.utc) + timedelta(days=14),
+        status               = invite_status_val,
+        user_id              = member.user_id,
+        project_member_ac_id = member.id,
+        invited_by_id        = current_user.id,
+        invited_by_name      = current_user.name,
+        invited_by_company   = (current_user.company or ''),
     )
     db.session.add(invite)
-    db.session.flush()   # get invite.id before commit
+    db.session.flush()   # get invite.id
 
-    # Per-invitee signing URL — routes through the authenticated entry gate
     sign_url = url_for('itp_client_sign_entry', token=invite_token, _external=True)
 
-    # Create in-app notification for existing SiteGrid users
+    # ── In-app notification for existing users ───────────────────────────────
     notif_sent = False
-    if invited_user:
-        # Prevent duplicate notification for same (user, record)
-        existing = Notification.query.filter_by(
-            user_id=invited_user.id,
+    if member.user_id:
+        notif_url = url_for('my_itp_action_open', invite_id=invite.id)
+        itp_type_label = record.itp_type
+        if record.itp_type.startswith('PROJ_'):
+            _tmpl = ProjectITPTemplate.query.get(record.project_itp_template_id)
+            if _tmpl:
+                itp_type_label = _tmpl.name
+        proj_name_notif = wtg.project.name if wtg and wtg.project else 'Project'
+        notif = Notification(
+            user_id=member.user_id,
             type='itp_invited',
-        ).filter(Notification.url.contains(f'/itp/client/{invite_token}')).first()
-        if not existing:
-            itp_type_label = record.itp_type
-            if record.itp_type.startswith('PROJ_'):
-                _tmpl = ProjectITPTemplate.query.get(record.project_itp_template_id)
-                if _tmpl:
-                    itp_type_label = _tmpl.name
-            proj_name_notif = wtg.project.name if wtg and wtg.project else 'Project'
-            notif = Notification(
-                user_id=invited_user.id,
-                type='itp_invited',
-                title=f'ITP signature requested — {wtg.name if wtg else ""}',
-                message=(f'You have been invited to review and sign '
-                         f'{itp_type_label} for {proj_name_notif}.'),
-                url=sign_url,
-            )
-            db.session.add(notif)
-            invite.notification_sent_at = datetime.now(timezone.utc)
-            notif_sent = True
+            title=f'ITP signature requested — {wtg.name if wtg else ""}',
+            message=(f'You have been invited to review and sign '
+                     f'{itp_type_label} for {proj_name_notif}.'),
+            url=notif_url,
+        )
+        db.session.add(notif)
+        invite.notification_sent_at = datetime.now(timezone.utc)
+        notif_sent = True
 
     log_audit(
-        'itp_invite_created',
+        'itp_signatory_invited',
         project_id  = record.wtg.project_id if record.wtg else None,
         actor       = current_user,
         entity_type = 'itp_invite',
         entity_id   = invite.id,
         entity_label= f'{name} ({email or "no email"})',
-        detail      = {'record_id': record.id, 'tid': tid, 'eid': eid},
+        detail      = {
+            'record_id':     record.id,
+            'member_ac_id':  member.id,
+            'invite_status': invite_status_val,
+            'is_new_person': bool(is_new_person),
+        },
     )
     db.session.commit()
 
-    # Send invitation email if email provided
+    # ── Email sending ────────────────────────────────────────────────────────
+    itp_type = record.itp_type
+    if itp_type.startswith('PROJ_'):
+        tmpl = ProjectITPTemplate.query.get(record.project_itp_template_id)
+        defn = tmpl.to_dict() if tmpl else {}
+    else:
+        defn = ITP_DEFINITIONS.get(itp_type, {})
+    proj_name = wtg.project.name if wtg and wtg.project else 'Project'
+
     email_attempted = bool(email)
     email_sent      = False
     if email_attempted:
-        itp_type = record.itp_type
-        if itp_type.startswith('PROJ_'):
-            tmpl = ProjectITPTemplate.query.get(record.project_itp_template_id)
-            defn = tmpl.to_dict() if tmpl else {}
+        if invite_status_val == 'pending_review':
+            email_sent = bool(email_client_invitation(
+                record=record, wtg_name=wtg.name if wtg else '',
+                sign_url=sign_url, client_name=name, client_email=email,
+                proj_name=proj_name, itp_name=defn.get('name', ''),
+                signers_text=signers_text,
+            ))
         else:
-            defn = ITP_DEFINITIONS.get(itp_type, {})
-        proj_name = wtg.project.name if wtg and wtg.project else 'Project'
-        email_sent = bool(email_client_invitation(
-            record=record, wtg_name=wtg.name if wtg else '',
-            sign_url=sign_url, client_name=name, client_email=email,
-            proj_name=proj_name, itp_name=defn.get('name', ''),
-            signers_text=signers_text,
-        ))
+            # pending_project_access — send combined project + ITP invite
+            try:
+                email_sent = bool(email_itp_invitation_with_project_access(
+                    to_email          = email,
+                    client_name       = name,
+                    project_name      = proj_name,
+                    itp_name          = defn.get('name', ''),
+                    wtg_name          = wtg.name if wtg else '',
+                    project_invite_url= project_invite_url or sign_url,
+                    itp_sign_url      = sign_url,
+                    inviter_name      = current_user.name,
+                    inviter_company   = current_user.company or '',
+                    expires_at        = invite.expires_at,
+                ))
+            except Exception:
+                email_sent = bool(email_client_invitation(
+                    record=record, wtg_name=wtg.name if wtg else '',
+                    sign_url=sign_url, client_name=name, client_email=email,
+                    proj_name=proj_name, itp_name=defn.get('name', ''),
+                    signers_text=signers_text,
+                ))
 
     return jsonify({
-        'ok':               True,
-        'id':               invite.id,
-        'name':             name,
-        'company':          company,
-        'email':            email,
-        'sign_url':         sign_url,
-        'is_new_link':      is_new_token,
-        'email_attempted':  email_attempted,
-        'email_sent':       email_sent,
-        'notif_sent':       notif_sent,
+        'ok':                   True,
+        'id':                   invite.id,
+        'name':                 name,
+        'company':              company,
+        'email':                email,
+        'sign_url':             sign_url,
+        'invite_status':        invite_status_val,
+        'is_new_link':          is_new_token,
+        'email_attempted':      email_attempted,
+        'email_sent':           email_sent,
+        'notif_sent':           notif_sent,
+        'is_new_person_created': bool(is_new_person),
+        'status':               invite_status_val,
     })
 
 
@@ -5345,6 +5500,45 @@ def api_project_itp_remove_invite(pid, tid, eid, inv_id):
     )
     db.session.commit()
     return jsonify({'ok': True})
+
+
+@app.route('/projects/<int:pid>/itp/<int:tid>/element/<int:eid>/resend-invite/<int:inv_id>', methods=['POST'])
+@login_required
+def api_project_itp_resend_invite(pid, tid, eid, inv_id):
+    """AJAX — resend a client invite (extends expiry + re-sends email)."""
+    if not _validate_csrf_token():
+        return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
+    if not user_can(pid, 'can_send_itp_invite'):
+        return jsonify({'error': 'Permission denied.'}), 403
+    invite = ITPClientInvite.query.get_or_404(inv_id)
+    if not invite.record or (invite.record.wtg and invite.record.wtg.project_id != pid):
+        return jsonify({'error': 'Access denied.'}), 403
+    if invite.is_revoked:
+        return jsonify({'error': 'Cannot resend a revoked invitation.'}), 400
+    # Extend expiry
+    invite.expires_at = datetime.now(timezone.utc) + timedelta(days=14)
+    sign_url  = url_for('itp_client_sign_entry', token=invite.token, _external=True)
+    record    = invite.record
+    wtg       = record.wtg
+    itp_type  = record.itp_type
+    if itp_type.startswith('PROJ_'):
+        tmpl = ProjectITPTemplate.query.get(record.project_itp_template_id)
+        defn = tmpl.to_dict() if tmpl else {}
+    else:
+        defn = ITP_DEFINITIONS.get(itp_type, {})
+    proj_name = wtg.project.name if wtg and wtg.project else 'Project'
+    log_audit('itp_invite_resent', project_id=pid, actor=current_user,
+              entity_type='itp_invite', entity_id=invite.id,
+              entity_label=invite.name, detail={'email': invite.email})
+    db.session.commit()
+    email_sent = False
+    if invite.email:
+        email_sent = bool(email_client_invitation(
+            record=record, wtg_name=wtg.name if wtg else '',
+            sign_url=sign_url, client_name=invite.name, client_email=invite.email,
+            proj_name=proj_name, itp_name=defn.get('name', ''),
+        ))
+    return jsonify({'ok': True, 'email_sent': email_sent, 'sign_url': sign_url})
 
 
 @app.route('/projects/<int:pid>/itp/<int:tid>', methods=['GET', 'POST'])
@@ -5661,6 +5855,17 @@ def api_client_review_item(token, item_no, ci):
     if record.status not in ('client_invited', 'client_reviewing', 'in_progress'):
         return jsonify({'error': 'This ITP is not in a reviewable state.'}), 400
 
+    # Require authenticated user with can_review_itp permission
+    if not current_user.is_authenticated:
+        return jsonify({'error': 'Authentication required to review ITP items.'}), 401
+    _rev_proj_id = record.wtg.project_id if record and record.wtg else None
+    if _rev_proj_id and invite:
+        _rev_member = _find_invite_member(invite, _rev_proj_id)
+        if not _rev_member or _rev_member.invite_status != 'accepted':
+            return jsonify({'error': 'Project membership required to review ITP items.'}), 403
+        if not user_can(_rev_proj_id, 'can_review_itp'):
+            return jsonify({'error': 'You do not have permission to review ITP items.'}), 403
+
     s = ITPItemStatus.query.filter_by(
         itp_record_id   = record.id,
         item_no         = str(item_no),
@@ -5725,7 +5930,7 @@ def api_client_review_item(token, item_no, ci):
     log_audit(
         'itp_item_client_reviewed',
         project_id   = record.wtg.project_id if record.wtg else None,
-        actor        = None,  # public — no logged-in user
+        actor        = current_user if current_user.is_authenticated else None,
         entity_type  = 'itp_item',
         entity_id    = s.id,
         entity_label = f'{wtg_name} · {s.item_no}.{s.criterion_index + 1}',
@@ -5931,6 +6136,24 @@ def itp_client_sign_entry(token):
             from flask import session as flask_session
             flask_session['active_project_id'] = project_id
 
+        # Post-creation membership check — if the UserInvite→ProjectMemberAC link wasn't made
+        if invite and project_id:
+            _m_post = _find_invite_member(invite, project_id)
+            if _m_post is None:
+                _wtg_p = record.wtg if record else None
+                _pname_p = _wtg_p.project.name if _wtg_p and _wtg_p.project else 'Project'
+                return render_template('itp_client_entry.html',
+                                       state='no_project_access',
+                                       proj_name=_pname_p,
+                                       record=record, token=token), 403
+            if _m_post.invite_status != 'accepted':
+                _wtg_p = record.wtg if record else None
+                _pname_p = _wtg_p.project.name if _wtg_p and _wtg_p.project else 'Project'
+                return render_template('itp_client_entry.html',
+                                       state='needs_project_access',
+                                       proj_name=_pname_p,
+                                       member=_m_post, record=record, token=token)
+
         return redirect(url_for('itp_client_sign', token=token))
 
     # ── 4. GET — authenticated checks ───────────────────────────────────────
@@ -5946,10 +6169,26 @@ def itp_client_sign_entry(token):
                                    proj_name=proj_name,
                                    record=record,
                                    token=token), 403
+        # Project membership enforcement — check BEFORE redirecting to signing room
+        if invite:
+            _proj_id_entry = record.wtg.project_id if record and record.wtg else None
+            if _proj_id_entry:
+                _m_entry = _find_invite_member(invite, _proj_id_entry)
+                if _m_entry is None:
+                    return render_template('itp_client_entry.html',
+                                           state='no_project_access',
+                                           proj_name=record.wtg.project.name if record.wtg and record.wtg.project else 'Project',
+                                           record=record, token=token), 403
+                if _m_entry.invite_status != 'accepted':
+                    return render_template('itp_client_entry.html',
+                                           state='needs_project_access',
+                                           proj_name=record.wtg.project.name if record.wtg and record.wtg.project else 'Project',
+                                           member=_m_entry, record=record, token=token)
+
         # Mark invite as viewed (first time only)
         if invite and not invite.viewed_at:
             invite.viewed_at = datetime.now(timezone.utc)
-            if invite.status == 'pending' or not invite.status:
+            if invite.status in ('pending', 'pending_review') or not invite.status:
                 invite.status = 'viewed'
             # Also link user_id if not yet set
             if not invite.user_id and current_user.is_authenticated:
@@ -6031,9 +6270,31 @@ def itp_client_sign(token):
     statuses  = {(s.item_no, s.criterion_index): s for s in record.item_statuses}
     proj_name = wtg.project.name if wtg and wtg.project else 'Project'
 
+    # ── Project membership check ──────────────────────────────────────────────
+    _itp_proj_id  = record.wtg.project_id if record and record.wtg else None
+    _signing_member = None
+    if invite and _itp_proj_id and current_user.is_authenticated:
+        _signing_member = _find_invite_member(invite, _itp_proj_id)
+        if _signing_member is None:
+            return render_template('itp_client_entry.html',
+                                   state='no_project_access',
+                                   proj_name=proj_name, record=record, token=token), 403
+        if _signing_member.invite_status != 'accepted':
+            return render_template('itp_client_entry.html',
+                                   state='needs_project_access',
+                                   proj_name=proj_name, member=_signing_member,
+                                   record=record, token=token)
+        if not user_can(_itp_proj_id, 'can_view_itp'):
+            return render_template('itp_client_entry.html',
+                                   state='no_sign_permission',
+                                   proj_name=proj_name, record=record, token=token), 403
+
     if request.method == 'POST':
         action = request.form.get('action')
         if action == 'client_sign':
+            if _itp_proj_id and not user_can(_itp_proj_id, 'can_sign_client_itp'):
+                flash('You do not have permission to sign this ITP.', 'danger')
+                return redirect(url_for('itp_client_sign', token=token))
             sig = request.form.get('client_signature', '').strip()
             if not sig:
                 flash('Please draw your signature.', 'danger')
@@ -6189,7 +6450,9 @@ def my_itp_actions():
         evidence_count = sum(len(s.documents) for s in rec.item_statuses)
 
         # Determine effective invite status (expired if past due)
-        eff_status = inv.status or 'pending'
+        eff_status = inv.status or 'pending_review'
+        if eff_status == 'pending':
+            eff_status = 'pending_review'   # backward-compat
         if eff_status not in ('signed', 'revoked') and inv.expires_at:
             if _ensure_utc(inv.expires_at) < datetime.now(timezone.utc):
                 eff_status = 'expired'
@@ -6202,14 +6465,34 @@ def my_itp_actions():
             'itp_name':       itp_name,
             'evidence_count': evidence_count,
             'status':         eff_status,
-            'sign_url':       url_for('itp_client_sign_entry', token=inv.token),
+            'sign_url':       url_for('my_itp_action_open', invite_id=inv.id),
         })
 
-    # Group: pending/viewed first, then signed, then expired
-    _order = {'pending': 0, 'viewed': 1, 'signed': 2, 'expired': 3, 'revoked': 4}
+    # Group: pending_project_access(0), pending_review(1), viewed(2), signed(3), expired(4), revoked(5)
+    _order = {
+        'pending_project_access': 0,
+        'pending_review': 1,
+        'pending': 1,   # backward-compat
+        'viewed': 2,
+        'signed': 3,
+        'expired': 4,
+        'revoked': 5,
+    }
     rows.sort(key=lambda r: _order.get(r['status'], 9))
 
     return render_template('my_itp_actions.html', rows=rows)
+
+
+@app.route('/my-itp-actions/<int:invite_id>/open')
+@login_required
+def my_itp_action_open(invite_id):
+    """Authenticated resolver — validates invite ownership then redirects to entry gate."""
+    invite = ITPClientInvite.query.get_or_404(invite_id)
+    user_email = (current_user.email or '').strip().lower()
+    inv_email  = (invite.email or '').strip().lower()
+    if invite.user_id != current_user.id and user_email != inv_email:
+        abort(403)
+    return redirect(url_for('itp_client_sign_entry', token=invite.token))
 
 
 @app.route('/api/itp/<int:record_id>/sign/<item_no>/<int:crit_idx>', methods=['POST'])
@@ -7339,12 +7622,16 @@ def run_migrations():
                 ("itp_client_invites", "is_revoked",             "BOOLEAN"),
                 ("itp_client_invites", "revoked_at",             "TIMESTAMP"),
                 ("itp_client_invites", "user_id",                "INTEGER"),
-                ("itp_client_invites", "status",                 "VARCHAR(20)"),
+                ("itp_client_invites", "status",                 "VARCHAR(30)"),
                 ("itp_client_invites", "viewed_at",              "TIMESTAMP"),
                 ("itp_client_invites", "signed_at",              "TIMESTAMP"),
                 ("itp_client_invites", "signer_name",            "VARCHAR(100)"),
                 ("itp_client_invites", "signer_company",         "VARCHAR(100)"),
                 ("itp_client_invites", "notification_sent_at",   "TIMESTAMP"),
+                ("itp_client_invites", "project_member_ac_id",   "INTEGER"),
+                ("itp_client_invites", "invited_by_id",          "INTEGER"),
+                ("itp_client_invites", "invited_by_name",        "VARCHAR(100)"),
+                ("itp_client_invites", "invited_by_company",     "VARCHAR(100)"),
                 # ── itp_records ──────────────────────────────────────────────────
                 ("itp_records", "revision",         "INTEGER"),
                 ("itp_records", "reopened_at",      "TIMESTAMP"),
@@ -7392,6 +7679,18 @@ def run_migrations():
                     except Exception:
                         try: conn.rollback()
                         except Exception: pass
+
+            # Seed missing permission rows for existing active members
+            # (idempotent — safe on every startup)
+            try:
+                _members_to_seed = ProjectMemberAC.query.filter_by(is_active=True).all()
+                for _m in _members_to_seed:
+                    seed_member_permissions(_m)
+                if _members_to_seed:
+                    db.session.commit()
+            except Exception:
+                try: db.session.rollback()
+                except Exception: pass
 
     except Exception:
         pass  # migration errors must never crash startup

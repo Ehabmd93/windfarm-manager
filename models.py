@@ -89,6 +89,9 @@ PERMISSION_GROUPS = [
         ('can_send_itp_invite', 'Send Client Invite'),
         ('can_reopen_itp',      'Reopen ITP'),
         ('can_delete_itp',      'Delete ITP'),
+        ('can_view_itp',        'View ITP'),
+        ('can_review_itp',      'Review ITP Items'),
+        ('can_sign_client_itp', 'Sign ITP as Client'),
     ]),
     ('field_data', 'Field Data', 'fa-pen-to-square', '#22c55e', [
         ('can_record_tests',           'Record Tests'),
@@ -119,6 +122,7 @@ DEFAULT_PERMISSIONS = {
         'can_manage_hierarchy', 'can_manage_companies', 'can_manage_map',
         'can_create_itp', 'can_sign_itp', 'can_attach_itp_docs',
         'can_send_itp_invite', 'can_reopen_itp', 'can_delete_itp',
+        'can_view_itp',
         'can_record_tests', 'can_upload_test_photos', 'can_record_proof_rolls',
         'can_update_foundation', 'can_upload_foundation_docs',
         'can_upload_documents', 'can_delete_documents', 'can_manage_folders',
@@ -128,6 +132,7 @@ DEFAULT_PERMISSIONS = {
         'can_view_audit_log', 'can_manage_hierarchy',
         'can_create_itp', 'can_sign_itp', 'can_attach_itp_docs',
         'can_send_itp_invite', 'can_reopen_itp',
+        'can_view_itp',
         'can_record_tests', 'can_upload_test_photos', 'can_record_proof_rolls',
         'can_update_foundation', 'can_upload_foundation_docs',
         'can_upload_documents', 'can_delete_documents', 'can_manage_folders',
@@ -135,18 +140,20 @@ DEFAULT_PERMISSIONS = {
     }),
     'engineer': frozenset({
         'can_sign_itp', 'can_attach_itp_docs',
+        'can_view_itp',
         'can_record_tests', 'can_upload_test_photos', 'can_record_proof_rolls',
         'can_update_foundation', 'can_upload_foundation_docs',
         'can_upload_documents', 'can_manage_widgets',
     }),
-    'supervisor':    frozenset({'can_upload_documents'}),
+    'supervisor':    frozenset({'can_upload_documents', 'can_view_itp'}),
     'subcontractor': frozenset({
         'can_attach_itp_docs',
+        'can_view_itp',
         'can_record_tests', 'can_upload_test_photos', 'can_record_proof_rolls',
         'can_upload_documents',
     }),
-    'client': frozenset(),
-    'viewer': frozenset(),
+    'client': frozenset({'can_view_itp', 'can_review_itp', 'can_sign_client_itp'}),
+    'viewer': frozenset({'can_view_itp'}),
 }
 
 LOCKED_PERMISSIONS = {
@@ -1024,16 +1031,24 @@ class ITPClientInvite(db.Model):
 
     # Multi-signatory tracking fields
     user_id              = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
-    # status: pending | viewed | signed | revoked | expired
-    status               = db.Column(db.String(20), default='pending')
+    # status: pending_project_access | pending_review | viewed | signed | revoked | expired
+    # (backward-compat: treat old 'pending' as 'pending_review' in code)
+    status               = db.Column(db.String(30), default='pending_review')
     viewed_at            = db.Column(db.DateTime, nullable=True)
     signed_at            = db.Column(db.DateTime, nullable=True)
     signer_name          = db.Column(db.String(100), nullable=True)  # locked name at sign time
     signer_company       = db.Column(db.String(100), nullable=True)
     notification_sent_at = db.Column(db.DateTime, nullable=True)
 
-    record = db.relationship('ITPRecord', backref='client_invites', lazy=True)
-    user   = db.relationship('User', foreign_keys=[user_id], lazy=True)
+    project_member_ac_id = db.Column(db.Integer, db.ForeignKey('project_members_ac.id'), nullable=True)
+    invited_by_id        = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    invited_by_name      = db.Column(db.String(100), nullable=True)
+    invited_by_company   = db.Column(db.String(100), nullable=True)
+
+    record             = db.relationship('ITPRecord', backref='client_invites', lazy=True)
+    user               = db.relationship('User', foreign_keys=[user_id], lazy=True)
+    project_member_ac  = db.relationship('ProjectMemberAC', foreign_keys=[project_member_ac_id], lazy=True)
+    invited_by_user    = db.relationship('User', foreign_keys=[invited_by_id], lazy=True)
 
 
 # ═══════════════════════════════════════════════

@@ -458,6 +458,85 @@ def email_client_invitation(record, wtg_name, sign_url,
     return send_email(client_email, subject, html, plain_text_content=plain)
 
 
+def email_itp_invitation_with_project_access(
+    to_email, client_name, project_name, itp_name, wtg_name,
+    project_invite_url, itp_sign_url, inviter_name, inviter_company='', expires_at=None
+):
+    """Email for a NEW project member who needs to accept project access AND sign an ITP.
+
+    Explains both steps. The project_invite_url must be the full project acceptance URL.
+    """
+    subject = f"Action Required: Project access & ITP signature — {_safe(wtg_name)}"
+
+    expiry_note = ''
+    if expires_at:
+        try:
+            expiry_note = f"This invitation expires on {expires_at.strftime('%d %b %Y')}."
+        except Exception:
+            pass
+
+    inviter_line = _safe(inviter_name)
+    if inviter_company:
+        inviter_line += f" ({_safe(inviter_company)})"
+
+    cta_button      = _action_button('Accept Project Access', project_invite_url)
+    fallback_block  = _fallback_link(project_invite_url)
+    detail_rows = _detail_card([
+        ('Project',           project_name),
+        ('Element/Location',  wtg_name),
+        ('ITP',               itp_name or 'Inspection & Test Plan'),
+        ('Invited by',        f"{inviter_name} ({inviter_company})" if inviter_company else inviter_name),
+    ])
+
+    safe_sign_url  = _html_lib.escape(itp_sign_url, quote=True)
+    safe_proj_url  = _html_lib.escape(project_invite_url, quote=True)
+
+    body = f"""
+      <h2 style="font-size:20px;font-weight:800;color:#1e2d3d;margin:0 0 8px;">
+        You've been invited to sign an ITP
+      </h2>
+      <p style="font-size:14px;color:#475569;line-height:1.65;margin:0 0 20px;">
+        Dear {_safe(client_name)},<br/><br/>
+        {inviter_line} has requested your signature on an Inspection &amp; Test Plan (ITP)
+        for <strong>{_safe(project_name)}</strong>.
+      </p>
+
+      {detail_rows}
+
+      <p style="font-size:14px;color:#475569;line-height:1.65;margin:16px 0 8px;">
+        <strong>Step 1 &mdash; Accept your project invitation</strong><br/>
+        Click below to create or link your SiteGrid account and accept access to
+        <strong>{_safe(project_name)}</strong>.
+      </p>
+
+      {cta_button}
+
+      <p style="font-size:14px;color:#475569;line-height:1.65;margin:16px 0 8px;">
+        <strong>Step 2 &mdash; Sign the ITP</strong><br/>
+        After accepting your project access, return here to review and sign the ITP:<br/>
+        <a href="{safe_sign_url}" style="color:#2563eb;word-break:break-all;">{_html_lib.escape(itp_sign_url)}</a>
+      </p>
+
+      {_security_note(expiry_note + ' If you were not expecting this invitation, you can safely ignore it.')}
+      {fallback_block}
+    """
+
+    html  = _email_shell(f"ITP Signature Requested — {project_name}", body,
+                         preheader=f"Step 1: Accept project access for {project_name}. Step 2: Sign the ITP.")
+    plain = (
+        f"Dear {client_name},\n\n"
+        f"{inviter_name} ({inviter_company}) has requested your signature on an ITP for {project_name}.\n\n"
+        f"Project: {project_name}\n"
+        f"Location: {wtg_name}\n"
+        f"ITP: {itp_name or 'Inspection & Test Plan'}\n\n"
+        f"Step 1 — Accept project access:\n{project_invite_url}\n\n"
+        f"Step 2 — After accepting, sign the ITP:\n{itp_sign_url}\n\n"
+        f"{expiry_note}\n\n"
+        f"SiteGrid — Construction QA, ITPs & Project Handover"
+    )
+    return send_email(to_email, subject, html, plain_text_content=plain)
+
+
 def email_client_signed(record, wtg_name, client_name, notify_users,
                         proj_name='', itp_name=''):
     """
