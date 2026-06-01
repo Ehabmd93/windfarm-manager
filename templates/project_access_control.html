@@ -503,7 +503,7 @@
     <div class="filter-divider"></div>
     <select id="filter-level" class="filter-select" onchange="applyFilters()">
       <option value="">All access levels</option>
-      {% for lvl_key, lvl_label, *_ in ac_access_levels %}
+      {% for lvl_key, lvl_label, lvl_icon, lvl_color, lvl_desc in ac_access_levels %}
       <option value="{{ lvl_key }}">{{ lvl_label }}</option>
       {% endfor %}
     </select>
