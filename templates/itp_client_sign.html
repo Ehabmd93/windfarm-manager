@@ -43,8 +43,6 @@
     .btn-issue.request_changes:hover{ background:#fef3c7; }
     .btn-issue.request_clarification      { background:#eff6ff;color:#2563eb;border-color:#bfdbfe; }
     .btn-issue.request_clarification:hover{ background:#dbeafe; }
-    .btn-issue.not_accepted      { background:#fff1f2;color:#9f1239;border-color:#fecdd3; }
-    .btn-issue.not_accepted:hover{ background:#ffe4e6; }
 
     .btn-undo{
       display:inline-flex;align-items:center;gap:5px;
@@ -717,7 +715,7 @@
                     {% elif _action == 'request_clarification' %}
                     <span class="badge-clarif"><i class="fa-solid fa-question-circle"></i> Clarification Requested</span>
                     {% elif _action == 'not_accepted' %}
-                    <span class="badge-na"><i class="fa-solid fa-ban"></i> Not Accepted</span>
+                    <span class="badge-na"><i class="fa-solid fa-ban"></i> Not Accepted (Legacy)</span>
                     {% else %}
                     <span class="badge-changes"><i class="fa-solid fa-pencil"></i> Changes Requested</span>
                     {% endif %}
@@ -755,9 +753,6 @@
                     </button>
                     <button class="btn-issue request_clarification" onclick="showCommentBox('{{ act_no }}', {{ ci }}, 'request_clarification')">
                       <i class="fa-solid fa-question-circle"></i> Request Clarification
-                    </button>
-                    <button class="btn-issue not_accepted" onclick="showCommentBox('{{ act_no }}', {{ ci }}, 'not_accepted')">
-                      <i class="fa-solid fa-ban"></i> Not Accepted
                     </button>
                   </div>
 
@@ -822,6 +817,15 @@
                 {% endif %}
 
               </div>{# /crit-state #}
+
+              <!-- ── Criterion notes display (read-only for client) ──────── -->
+              <div id="client-notes-{{ act_no }}-{{ ci }}"
+                   style="margin-top:10px;"
+                   data-record="{{ record.id }}"
+                   data-itemno="{{ act_no }}"
+                   data-ci="{{ ci }}"
+                   data-token="{{ invite.token if invite else '' }}">
+              </div>
 
               {% else %}
               <!-- Engineer has not signed this item yet -->
@@ -1114,13 +1118,11 @@ const ACTION_META = {
   rejected:              { label:'Rejected',                icon:'fa-times-circle',     badge:'badge-rejected', toast:'✕ Rejection saved' },
   request_changes:       { label:'Changes Requested',       icon:'fa-pencil',           badge:'badge-changes',  toast:'⚑ Changes requested saved' },
   request_clarification: { label:'Clarification Requested', icon:'fa-question-circle',  badge:'badge-clarif',   toast:'? Clarification request saved' },
-  not_accepted:          { label:'Not Accepted',            icon:'fa-ban',              badge:'badge-na',       toast:'✕ Not Accepted saved' },
 };
 const COMMENT_PLACEHOLDERS = {
   rejected:              'Explain why this item is rejected and what must be corrected…',
   request_changes:       'Describe what changes are required before this can be accepted…',
   request_clarification: 'Describe what clarification or additional information you need…',
-  not_accepted:          'Explain why this item is not accepted…',
 };
 
 function showCommentBox(actNo, ci, actionType) {
@@ -1236,7 +1238,7 @@ function setCritState(actNo, ci, state, comment, signature) {
     }
 
   } else if (ACTION_META[state] || state === 'concern') {
-    // Issue action (rejected / request_changes / request_clarification / not_accepted / concern)
+    // Issue action (rejected / request_changes / request_clarification / concern)
     const meta = ACTION_META[state] || { label:'Issue Raised', icon:'fa-triangle-exclamation', badge:'badge-concern' };
     stateDiv.innerHTML = `
       <div>
@@ -1274,9 +1276,6 @@ function setCritState(actNo, ci, state, comment, signature) {
           </button>
           <button class="btn-issue request_clarification" onclick="showCommentBox('${actNo}', ${ci}, 'request_clarification')">
             <i class="fa-solid fa-question-circle"></i> Request Clarification
-          </button>
-          <button class="btn-issue not_accepted" onclick="showCommentBox('${actNo}', ${ci}, 'not_accepted')">
-            <i class="fa-solid fa-ban"></i> Not Accepted
           </button>
         </div>
 
@@ -1482,7 +1481,70 @@ document.addEventListener('DOMContentLoaded', () => {
       if (e.target === overlay) closeCompletionModal();
     });
   }
+  // Load notes for all criterion note containers
+  document.querySelectorAll('[id^="client-notes-"]').forEach(container => {
+    const recordId = container.dataset.record;
+    const itemNo   = container.dataset.itemno;
+    const ci       = container.dataset.ci;
+    const token    = container.dataset.token;
+    if (recordId && itemNo !== undefined && ci !== undefined) {
+      loadClientCriterionNotes(container, recordId, itemNo, ci, token);
+    }
+  });
 });
+
+function escHtml(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+async function loadClientCriterionNotes(container, recordId, itemNo, ci, token) {
+  try {
+    const qs  = token ? `?token=${encodeURIComponent(token)}` : '';
+    const res = await fetch(`/api/itp/${recordId}/criterion/${itemNo}/${ci}/notes${qs}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data.notes || data.notes.length === 0) return;
+    container.innerHTML = renderClientNotesList(data.notes);
+  } catch (e) { /* silently ignore */ }
+}
+
+function renderClientNotesList(notes) {
+  if (!notes || notes.length === 0) return '';
+  const ACTION_COLORS = {
+    approved:              { bg:'#f0fdf4', color:'#16a34a', label:'Approved' },
+    rejected:              { bg:'#fef2f2', color:'#dc2626', label:'Rejected' },
+    request_changes:       { bg:'#fffbeb', color:'#d97706', label:'Changes Requested' },
+    request_clarification: { bg:'#eff6ff', color:'#0891b2', label:'Clarification Requested' },
+    engineer_signed:       { bg:'#f5f3ff', color:'#7c3aed', label:'Engineer Signed' },
+  };
+  function renderNote(n, isReply) {
+    const partyColor  = n.party === 'client' ? '#0891b2' : '#7c3aed';
+    const partyLabel  = n.party === 'client' ? 'Client' : 'Internal';
+    const partyBg     = n.party === 'client' ? '#e0f2fe' : '#ede9fe';
+    const actionMeta  = n.related_action ? (ACTION_COLORS[n.related_action] || { bg:'#f1f5f9', color:'#64748b', label: n.related_action }) : null;
+    const indent      = isReply ? 'margin-left:20px;border-left:3px solid #e2e8f0;padding-left:10px;' : '';
+    const replies     = (n.replies || []).map(r => renderNote(r, true)).join('');
+    return `<div style="margin-top:8px;${indent}">
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;font-size:12px;">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap;">
+          <span style="background:${partyBg};color:${partyColor};padding:2px 8px;border-radius:9999px;font-size:10px;font-weight:700;">${partyLabel}</span>
+          <span style="font-weight:600;color:#1e293b;">${escHtml(n.author_name)}</span>
+          ${n.author_company ? `<span style="color:#94a3b8;">&middot; ${escHtml(n.author_company)}</span>` : ''}
+          <span style="color:#94a3b8;margin-left:auto;font-size:10px;">${escHtml(n.created_at)}</span>
+          ${actionMeta ? `<span style="background:${actionMeta.bg};color:${actionMeta.color};padding:2px 8px;border-radius:9999px;font-size:10px;font-weight:700;">${escHtml(actionMeta.label)}</span>` : ''}
+        </div>
+        <p style="color:#334155;line-height:1.5;margin:0;">${escHtml(n.note_text)}</p>
+      </div>
+      ${replies}
+    </div>`;
+  }
+  return `<div style="margin-top:10px;">
+    <p style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">
+      <i class="fa-solid fa-comments" style="margin-right:4px;"></i>Discussion (${notes.length} note${notes.length !== 1 ? 's' : ''})
+    </p>
+    ${notes.map(n => renderNote(n, false)).join('')}
+  </div>`;
+}
 </script>
 </body>
 </html>

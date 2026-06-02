@@ -350,7 +350,7 @@
                   {% if s.client_accepted %}Client Approved
                   {% elif _ca == 'rejected' %}Rejected
                   {% elif _ca == 'request_clarification' %}Clarification Requested
-                  {% elif _ca == 'not_accepted' %}Not Accepted
+                  {% elif _ca == 'not_accepted' %}Not Accepted (Legacy)
                   {% else %}Changes Requested{% endif %}
                 </p>
                 <p class="dt">
@@ -360,6 +360,67 @@
               </div>
             </div>
           </div>
+          {% endif %}
+
+          <!-- Action Required banner for unresolved client concerns -->
+          {% if s and s.client_reviewed and not s.client_accepted %}
+          <div style="margin-top:8px;padding:8px 12px;background:#fffbeb;border:2px solid #fde68a;
+                      border-radius:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span style="background:#fef3c7;color:#d97706;padding:3px 10px;border-radius:9999px;
+                         font-size:11px;font-weight:800;white-space:nowrap;">
+              <i class="fa-solid fa-triangle-exclamation" style="margin-right:4px;"></i>Action Required
+            </span>
+            <span style="font-size:12px;color:#92400e;flex:1;">
+              Client raised a concern — reply below or attach evidence to address it.
+            </span>
+            <button onclick="showAddNoteForm('{{ item['no'] }}', {{ ci }})"
+                    style="padding:4px 12px;border-radius:8px;font-size:11px;font-weight:700;
+                           background:#d97706;color:white;border:none;cursor:pointer;">
+              <i class="fa-solid fa-comment-dots" style="margin-right:4px;"></i>Reply
+            </button>
+          </div>
+          {% endif %}
+
+          <!-- Criterion notes display -->
+          <div id="notes-{{ item['no'] }}-{{ ci }}"
+               style="margin-top:8px;"
+               data-record="{{ record.id }}"
+               data-itemno="{{ item['no'] }}"
+               data-ci="{{ ci }}">
+          </div>
+          <!-- Add Note form (hidden by default) -->
+          <div id="add-note-form-{{ item['no'] }}-{{ ci }}"
+               style="display:none;margin-top:8px;background:#f8fafc;border:1.5px solid #e2e8f0;
+                      border-radius:10px;padding:12px;">
+            <p style="font-size:11px;font-weight:700;color:#475569;margin:0 0 6px;">
+              <i class="fa-solid fa-comment" style="margin-right:5px;color:#7c3aed;"></i>Add Note
+            </p>
+            <textarea id="note-{{ item['no'] }}-{{ ci }}"
+                      placeholder="Add a note or reply to this criterion…"
+                      style="width:100%;min-height:70px;border:1.5px solid #e2e8f0;border-radius:8px;
+                             padding:8px;font-size:12px;color:#0f172a;background:white;
+                             font-family:inherit;resize:vertical;line-height:1.5;"></textarea>
+            <div style="display:flex;gap:8px;margin-top:8px;">
+              <button onclick="cancelAddNote('{{ item['no'] }}', {{ ci }})"
+                      style="padding:6px 14px;border-radius:8px;font-size:12px;font-weight:600;
+                             background:white;color:#64748b;border:1.5px solid #e2e8f0;cursor:pointer;">
+                Cancel
+              </button>
+              <button onclick="submitAddNote('{{ item['no'] }}', {{ ci }})"
+                      style="flex:1;padding:6px 14px;border-radius:8px;font-size:12px;font-weight:700;
+                             background:linear-gradient(135deg,#6d28d9,#7c3aed);color:white;
+                             border:none;cursor:pointer;">
+                <i class="fa-solid fa-paper-plane" style="margin-right:4px;"></i>Save Note
+              </button>
+            </div>
+          </div>
+          {% if ac_can_view_panel %}
+          <button onclick="showAddNoteForm('{{ item['no'] }}', {{ ci }})"
+                  id="add-note-btn-{{ item['no'] }}-{{ ci }}"
+                  style="margin-top:6px;padding:4px 12px;border-radius:8px;font-size:11px;font-weight:600;
+                         background:#f5f3ff;color:#7c3aed;border:1.5px solid #ddd6fe;cursor:pointer;">
+            <i class="fa-solid fa-comment" style="margin-right:4px;"></i>Add Note
+          </button>
           {% endif %}
 
           <!-- Document drawer — visible to anyone with project access; upload/delete gated separately -->
@@ -840,11 +901,13 @@ async function saveCriterion(itemNo, ci) {
       return;
     }
   }
-  const sig = canvas.toDataURL('image/png');
+  const sig       = canvas.toDataURL('image/png');
+  const noteEl    = document.getElementById(`note-${itemNo}-${ci}`);
+  const note_text = noteEl ? noteEl.value.trim() : '';
 
   const resp = await fetch(`/api/itp/${RECORD_ID}/sign/${itemNo}/${ci}`, {
     method: 'POST', headers: {'Content-Type':'application/json', 'X-CSRF-Token': CSRF_TOKEN},
-    body: JSON.stringify({signature: sig, comments, datetime: dtVal})
+    body: JSON.stringify({signature: sig, comments, datetime: dtVal, note_text})
   });
   if (!resp.ok) {
     let errMsg = 'Error saving signature.';
@@ -1330,6 +1393,173 @@ document.addEventListener('click', e => {
     const dd = document.getElementById('sig-dropdown');
     if (dd) dd.style.display = 'none';
   }
+});
+
+// ── Criterion Notes ───────────────────────────────────────────────────────
+function escN(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+const NOTE_ACTION_COLORS = {
+  approved:              { bg:'#f0fdf4', color:'#16a34a', label:'Approved' },
+  rejected:              { bg:'#fef2f2', color:'#dc2626', label:'Rejected' },
+  request_changes:       { bg:'#fffbeb', color:'#d97706', label:'Changes Requested' },
+  request_clarification: { bg:'#eff6ff', color:'#0891b2', label:'Clarification Requested' },
+  engineer_signed:       { bg:'#f5f3ff', color:'#7c3aed', label:'Engineer Signed' },
+};
+
+function renderNoteHtml(n, isReply) {
+  const partyColor = n.party === 'client' ? '#0891b2' : '#7c3aed';
+  const partyLabel = n.party === 'client' ? 'Client' : 'Internal';
+  const partyBg    = n.party === 'client' ? '#e0f2fe' : '#ede9fe';
+  const actionMeta = n.related_action ? (NOTE_ACTION_COLORS[n.related_action] || { bg:'#f1f5f9', color:'#64748b', label: n.related_action }) : null;
+  const indent     = isReply ? 'margin-left:20px;border-left:3px solid #e2e8f0;padding-left:10px;' : '';
+  const replies    = (n.replies || []).map(r => renderNoteHtml(r, true)).join('');
+  const replyBtn   = !isReply
+    ? `<button onclick="showReplyForm('${n.id}')"
+               style="margin-top:4px;padding:2px 10px;border-radius:6px;font-size:10px;font-weight:600;
+                      background:#f8fafc;color:#7c3aed;border:1.5px solid #ddd6fe;cursor:pointer;">
+         <i class="fa-solid fa-reply" style="margin-right:3px;"></i>Reply
+       </button>
+       <div id="reply-form-${n.id}" style="display:none;margin-top:8px;">
+         <textarea id="reply-text-${n.id}" placeholder="Write a reply…"
+                   style="width:100%;min-height:55px;border:1.5px solid #e2e8f0;border-radius:8px;
+                          padding:6px;font-size:11px;color:#0f172a;background:white;
+                          font-family:inherit;resize:vertical;"></textarea>
+         <div style="display:flex;gap:6px;margin-top:6px;">
+           <button onclick="cancelReply('${n.id}')"
+                   style="padding:4px 12px;border-radius:6px;font-size:11px;
+                          background:white;color:#64748b;border:1.5px solid #e2e8f0;cursor:pointer;">
+             Cancel
+           </button>
+           <button onclick="submitReply('${n.item_no}', ${n.criterion_index}, ${n.id})"
+                   style="flex:1;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;
+                          background:linear-gradient(135deg,#6d28d9,#7c3aed);color:white;
+                          border:none;cursor:pointer;">
+             <i class="fa-solid fa-paper-plane" style="margin-right:3px;"></i>Reply
+           </button>
+         </div>
+       </div>`
+    : '';
+  return `<div style="margin-top:8px;${indent}">
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;font-size:12px;">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap;">
+        <span style="background:${partyBg};color:${partyColor};padding:2px 8px;border-radius:9999px;font-size:10px;font-weight:700;">${partyLabel}</span>
+        <span style="font-weight:600;color:#1e293b;">${escN(n.author_name)}</span>
+        ${n.author_company ? `<span style="color:#94a3b8;">&middot; ${escN(n.author_company)}</span>` : ''}
+        <span style="color:#94a3b8;margin-left:auto;font-size:10px;">${escN(n.created_at)}</span>
+        ${actionMeta ? `<span style="background:${actionMeta.bg};color:${actionMeta.color};padding:2px 8px;border-radius:9999px;font-size:10px;font-weight:700;">${escN(actionMeta.label)}</span>` : ''}
+      </div>
+      <p style="color:#334155;line-height:1.5;margin:0;">${escN(n.note_text)}</p>
+      ${replyBtn}
+    </div>
+    ${replies}
+  </div>`;
+}
+
+async function loadCriterionNotes(container, recordId, itemNo, ci) {
+  try {
+    const res = await fetch(`/api/itp/${recordId}/criterion/${itemNo}/${ci}/notes`, {
+      headers: { 'X-CSRF-Token': CSRF_TOKEN }
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data.notes || data.notes.length === 0) return;
+    // Store item_no / criterion_index on notes for reply function
+    data.notes.forEach(n => { n.item_no = itemNo; n.criterion_index = ci; });
+    container.innerHTML = `<div style="margin-top:10px;">
+      <p style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">
+        <i class="fa-solid fa-comments" style="margin-right:4px;"></i>Discussion (${data.notes.length} note${data.notes.length!==1?'s':''})
+      </p>
+      ${data.notes.map(n => renderNoteHtml(n, false)).join('')}
+    </div>`;
+  } catch(e) { /* silently ignore */ }
+}
+
+function showAddNoteForm(itemNo, ci) {
+  const form = document.getElementById(`add-note-form-${itemNo}-${ci}`);
+  const btn  = document.getElementById(`add-note-btn-${itemNo}-${ci}`);
+  if (form) { form.style.display = 'block'; }
+  if (btn)  { btn.style.display = 'none'; }
+  const ta = document.getElementById(`note-${itemNo}-${ci}`);
+  if (ta) ta.focus();
+}
+
+function cancelAddNote(itemNo, ci) {
+  const form = document.getElementById(`add-note-form-${itemNo}-${ci}`);
+  const btn  = document.getElementById(`add-note-btn-${itemNo}-${ci}`);
+  if (form) { form.style.display = 'none'; }
+  if (btn)  { btn.style.display = ''; }
+  const ta = document.getElementById(`note-${itemNo}-${ci}`);
+  if (ta) ta.value = '';
+}
+
+async function submitAddNote(itemNo, ci) {
+  const ta = document.getElementById(`note-${itemNo}-${ci}`);
+  const note_text = ta ? ta.value.trim() : '';
+  if (!note_text) { alert('Please enter a note.'); return; }
+  try {
+    const res = await fetch(`/api/itp/${RECORD_ID}/criterion/${itemNo}/${ci}/notes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
+      body: JSON.stringify({ note_text, party: 'internal' }),
+    });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      cancelAddNote(itemNo, ci);
+      const container = document.getElementById(`notes-${itemNo}-${ci}`);
+      if (container) loadCriterionNotes(container, RECORD_ID, itemNo, ci);
+      showToast('success', 'Note added', 'Your note has been saved.');
+    } else {
+      alert(data.error || 'Could not save note.');
+    }
+  } catch(e) { alert('Network error. Please try again.'); }
+}
+
+function showReplyForm(noteId) {
+  const form = document.getElementById(`reply-form-${noteId}`);
+  if (form) form.style.display = 'block';
+}
+
+function cancelReply(noteId) {
+  const form = document.getElementById(`reply-form-${noteId}`);
+  if (form) form.style.display = 'none';
+  const ta = document.getElementById(`reply-text-${noteId}`);
+  if (ta) ta.value = '';
+}
+
+async function submitReply(itemNo, ci, parentNoteId) {
+  const ta = document.getElementById(`reply-text-${parentNoteId}`);
+  const note_text = ta ? ta.value.trim() : '';
+  if (!note_text) { alert('Please enter a reply.'); return; }
+  try {
+    const res = await fetch(`/api/itp/${RECORD_ID}/criterion/${itemNo}/${ci}/notes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
+      body: JSON.stringify({ note_text, party: 'internal', parent_note_id: parentNoteId }),
+    });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      const container = document.getElementById(`notes-${itemNo}-${ci}`);
+      if (container) loadCriterionNotes(container, RECORD_ID, itemNo, ci);
+      showToast('success', 'Reply added', 'Your reply has been saved.');
+    } else {
+      alert(data.error || 'Could not save reply.');
+    }
+  } catch(e) { alert('Network error. Please try again.'); }
+}
+
+// Load notes for all criterion containers on page load
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('[id^="notes-"]').forEach(container => {
+    const id = container.id.replace('notes-', '');
+    // id format is itemNo-ci where itemNo may contain digits
+    const lastDash = id.lastIndexOf('-');
+    if (lastDash === -1) return;
+    const itemNo = id.substring(0, lastDash);
+    const ci     = id.substring(lastDash + 1);
+    loadCriterionNotes(container, RECORD_ID, itemNo, parseInt(ci));
+  });
 });
 </script>
 

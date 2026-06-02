@@ -575,6 +575,21 @@ td.sig-cell { padding:2pt; }
       </td>
       <td style="font-size:6.5pt;color:#475569;">
         {% if s %}{{ s.lucas_comments or '' }}{% endif %}
+        {% set _notes0 = notes_by_key.get((item['no'], 0), []) %}
+        {% if _notes0 %}
+        <div style="margin-top:2pt;border-top:0.5pt solid #e2e8f0;padding-top:2pt;">
+          {% for _n in _notes0 %}
+          <div style="margin-bottom:1pt;{% if _n.parent_note_id %}margin-left:6pt;border-left:1pt solid #e2e8f0;padding-left:3pt;{% endif %}">
+            <span style="font-size:5pt;font-weight:700;color:{% if _n.party=='client' %}#0891b2{% else %}#7c3aed{% endif %};">
+              [{{ 'Client' if _n.party=='client' else 'Internal' }}] {{ _n.author_name }}{% if _n.author_company %} · {{ _n.author_company }}{% endif %}
+              {% if _n.related_action %} ({{ _n.related_action.replace('_',' ') }}){% endif %}
+              · {{ _n.created_at.strftime('%d/%m/%Y %H:%M') if _n.created_at else '' }}
+            </span>
+            <span style="font-size:5.5pt;color:#334155;"> — {{ _n.note_text }}</span>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
       </td>
     </tr>
 
@@ -631,7 +646,24 @@ td.sig-cell { padding:2pt; }
       <td style="font-size:6.5pt;color:#475569;text-align:center;">
         {% if s and s.lucas_signed_at %}{{ s.lucas_signed_at.strftime('%d/%m/%Y') }}{% endif %}
       </td>
-      <td style="font-size:6.5pt;color:#475569;">{% if s %}{{ s.lucas_comments or '' }}{% endif %}</td>
+      <td style="font-size:6.5pt;color:#475569;">
+        {% if s %}{{ s.lucas_comments or '' }}{% endif %}
+        {% set _notes_ci = notes_by_key.get((item['no'], ci), []) %}
+        {% if _notes_ci %}
+        <div style="margin-top:2pt;border-top:0.5pt solid #e2e8f0;padding-top:2pt;">
+          {% for _n in _notes_ci %}
+          <div style="margin-bottom:1pt;{% if _n.parent_note_id %}margin-left:6pt;border-left:1pt solid #e2e8f0;padding-left:3pt;{% endif %}">
+            <span style="font-size:5pt;font-weight:700;color:{% if _n.party=='client' %}#0891b2{% else %}#7c3aed{% endif %};">
+              [{{ 'Client' if _n.party=='client' else 'Internal' }}] {{ _n.author_name }}{% if _n.author_company %} · {{ _n.author_company }}{% endif %}
+              {% if _n.related_action %} ({{ _n.related_action.replace('_',' ') }}){% endif %}
+              · {{ _n.created_at.strftime('%d/%m/%Y %H:%M') if _n.created_at else '' }}
+            </span>
+            <span style="font-size:5.5pt;color:#334155;"> — {{ _n.note_text }}</span>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </td>
     </tr>
     {% endfor %}
     {% endfor %}

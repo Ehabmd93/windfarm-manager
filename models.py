@@ -663,6 +663,8 @@ class ITPRecord(db.Model):
 
     wtg          = db.relationship('WTG',         backref='itp_records', lazy=True)
     item_statuses = db.relationship('ITPItemStatus', backref='itp_record', lazy=True, cascade='all,delete')
+    criterion_notes = db.relationship('ITPCriterionNote', backref='itp_record_obj',
+                                      foreign_keys='ITPCriterionNote.itp_record_id', lazy=True)
 
     @property
     def engineer_signed(self):
@@ -714,11 +716,16 @@ class ITPItemStatus(db.Model):
     # Per-item client review (new — per-item Accept / Raise Concern)
     client_reviewed  = db.Column(db.Boolean, default=False)  # has client ticked this item
     client_accepted  = db.Column(db.Boolean, nullable=True)  # True=accepted, False=concern raised, None=not reviewed
-    # Expanded action: approved|rejected|request_changes|request_clarification|not_accepted
+    # Active actions: approved|rejected|request_changes|request_clarification
+    # Legacy value: not_accepted (display as "Not Accepted (Legacy)" in read-only views)
     client_action    = db.Column(db.String(50), nullable=True)
 
     # Attached documents / photos per criterion
     documents        = db.relationship('ITPItemDocument', backref='item_status',
+                                       cascade='all, delete-orphan', lazy='select')
+
+    # Discussion notes (append-only)
+    notes            = db.relationship('ITPCriterionNote', backref='item_status',
                                        cascade='all, delete-orphan', lazy='select')
 
     @property
@@ -743,6 +750,40 @@ class ITPItemDocument(db.Model):
     doc_type        = db.Column(db.String(20), default='file')   # photo | pdf | file
     uploaded_by     = db.Column(db.Integer, db.ForeignKey('users.id'))
     uploaded_at     = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class ITPCriterionNote(db.Model):
+    """Append-only discussion note on a single ITP criterion.
+
+    Notes are permanent records — never deleted or modified after creation.
+    Use parent_note_id for threaded replies.
+    party: 'internal' (project member) | 'client' (client reviewer)
+    """
+    __tablename__ = 'itp_criterion_notes'
+    id              = db.Column(db.Integer, primary_key=True)
+    itp_record_id   = db.Column(db.Integer, db.ForeignKey('itp_records.id'), nullable=False)
+    item_status_id  = db.Column(db.Integer, db.ForeignKey('itp_item_statuses.id'), nullable=True)
+    item_no         = db.Column(db.String(10), nullable=False)   # denormalised for easy lookup
+    criterion_index = db.Column(db.Integer,    nullable=False, default=0)
+    # Author
+    author_user_id  = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    author_name     = db.Column(db.String(100), nullable=False)
+    author_company  = db.Column(db.String(100), default='')
+    party           = db.Column(db.String(20),  nullable=False, default='internal')  # internal | client
+    # Content
+    note_text       = db.Column(db.Text, nullable=False)
+    created_at      = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    # Context
+    review_cycle_id = db.Column(db.Integer, db.ForeignKey('itp_review_cycles.id'), nullable=True)
+    related_action  = db.Column(db.String(50), nullable=True)   # approved|rejected|request_changes|…
+    parent_note_id  = db.Column(db.Integer, db.ForeignKey('itp_criterion_notes.id'), nullable=True)
+
+    author       = db.relationship('User', foreign_keys=[author_user_id], lazy=True)
+    review_cycle = db.relationship('ITPReviewCycle', foreign_keys=[review_cycle_id], lazy=True)
+    replies      = db.relationship('ITPCriterionNote',
+                                   foreign_keys=[parent_note_id],
+                                   backref=db.backref('parent', remote_side='ITPCriterionNote.id'),
+                                   lazy=True)
 
 
 # ═══════════════════════════════════════════════
@@ -1116,13 +1157,12 @@ PROJECT_ROLES = [
     ('auditor',                'Auditor',             'fa-magnifying-glass',   '#94a3b8'),
 ]
 
-# ITP review actions (expanded from 2 to 5)
+# ITP review actions (4 active actions — not_accepted removed as available action)
 ITP_REVIEW_ACTIONS = [
     ('approved',              'Approved',             'fa-check-circle',       '#16a34a', '#dcfce7'),
     ('rejected',              'Rejected',             'fa-times-circle',       '#dc2626', '#fee2e2'),
     ('request_changes',       'Request Changes',      'fa-pencil',             '#d97706', '#fef3c7'),
     ('request_clarification', 'Request Clarification','fa-question-circle',    '#0891b2', '#e0f2fe'),
-    ('not_accepted',          'Not Accepted',         'fa-ban',                '#9f1239', '#ffe4e6'),
 ]
 
 

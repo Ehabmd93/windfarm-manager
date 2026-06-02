@@ -20,7 +20,7 @@ from models import (db, User, WTG, Area, QATest, TestRecord,
                     TempPhotoUpload,
                     TestPhoto,
                     ProjectITPTemplate,
-                    ITPRecord, ITPItemStatus, ITPItemDocument,
+                    ITPRecord, ITPItemStatus, ITPItemDocument, ITPCriterionNote,
                     ITPReviewCycle,
                     FoundationStage, FoundationStageTemplate, FoundationDocument, FOUNDATION_STAGES,
                     CustomTrackingField, ProgressWidget,
@@ -6104,8 +6104,7 @@ def api_client_review_item(token, item_no, ci):
         s.client_signed_at = datetime.now(timezone.utc)
 
     # --- Actions requiring a comment (no signature) ---
-    elif action in ('concern', 'rejected', 'request_changes',
-                    'request_clarification', 'not_accepted'):
+    elif action in ('concern', 'rejected', 'request_changes', 'request_clarification'):
         comment = (data.get('comment') or '').strip()
         if not comment:
             action_labels = {
@@ -6113,7 +6112,6 @@ def api_client_review_item(token, item_no, ci):
                 'rejected':              'the reason for rejection',
                 'request_changes':       'what changes are required',
                 'request_clarification': 'what clarification you need',
-                'not_accepted':          'why this is not accepted',
             }
             return jsonify({'error': f'Please describe {action_labels.get(action, "the issue")} before submitting.'}), 400
         s.client_reviewed  = True
@@ -6139,9 +6137,10 @@ def api_client_review_item(token, item_no, ci):
 
     # Log the audit event
     wtg_name = record.wtg.name if record.wtg else f'ITP #{record.id}'
+    _rev_proj_id_log = record.wtg.project_id if record.wtg else None
     log_audit(
         'itp_item_client_reviewed',
-        project_id   = record.wtg.project_id if record.wtg else None,
+        project_id   = _rev_proj_id_log,
         actor        = current_user if current_user.is_authenticated else None,
         entity_type  = 'itp_item',
         entity_id    = s.id,
@@ -6149,6 +6148,54 @@ def api_client_review_item(token, item_no, ci):
         detail       = {'action': action, 'record_id': record.id,
                         'item_no': item_no, 'ci': ci},
     )
+
+    # Attach note: for concern actions the comment IS the note_text; for approve use optional note_text
+    _note_text = (data.get('note_text') or data.get('comment') or '').strip()
+    if _note_text and action != 'reset':
+        _author_name    = (current_user.name if current_user.is_authenticated else (invite.name if invite else 'Client'))
+        _author_company = (current_user.company if current_user.is_authenticated else (invite.company if invite else '')) or ''
+        _cycle_id       = invite.review_cycle_id if invite and invite.review_cycle_id else None
+        _cn = ITPCriterionNote(
+            itp_record_id   = record.id,
+            item_status_id  = s.id,
+            item_no         = str(item_no),
+            criterion_index = ci,
+            author_user_id  = current_user.id if current_user.is_authenticated else None,
+            author_name     = _author_name,
+            author_company  = _author_company,
+            party           = 'client',
+            note_text       = _note_text,
+            review_cycle_id = _cycle_id,
+            related_action  = s.client_action,
+        )
+        db.session.add(_cn)
+        log_audit(
+            'itp_criterion_note_added',
+            project_id   = _rev_proj_id_log,
+            actor        = current_user if current_user.is_authenticated else None,
+            entity_type  = 'itp_criterion_note',
+            entity_id    = None,
+            entity_label = f'{wtg_name} · {item_no}.{ci + 1}',
+            detail       = {'item_no': item_no, 'ci': ci, 'party': 'client',
+                            'author_name': _author_name},
+        )
+        # Notify invite sender and same-company can_view_itp members about concern
+        if s.client_action in ('rejected', 'request_changes', 'request_clarification') and invite and invite.invited_by_id:
+            _notified_ids = set()
+            try:
+                _sender = invite.invited_by_user
+                if _sender and _sender.id not in _notified_ids:
+                    _notif = Notification(
+                        user_id  = _sender.id,
+                        title    = f'Client raised a concern on ITP',
+                        message  = f'{_author_name} ({_author_company}) raised a {s.client_action.replace("_"," ")} on {wtg_name} item {item_no}.{ci + 1}: {_note_text[:120]}',
+                        link     = f'/itp/{record.id}',
+                        category = 'itp_concern',
+                    )
+                    db.session.add(_notif)
+                    _notified_ids.add(_sender.id)
+            except Exception:
+                pass
 
     db.session.commit()
 
@@ -6921,6 +6968,33 @@ def api_itp_sign_criterion(record_id, item_no, crit_idx):
         detail      = {'record_id': record_id, 'item_no': item_no, 'ci': crit_idx},
     )
 
+    # Attach optional engineer note
+    _eng_note_text = (data.get('note_text') or '').strip()
+    if _eng_note_text:
+        _eng_note = ITPCriterionNote(
+            itp_record_id   = record_id,
+            item_status_id  = s.id,
+            item_no         = str(item_no),
+            criterion_index = crit_idx,
+            author_user_id  = current_user.id,
+            author_name     = current_user.name,
+            author_company  = (current_user.company or ''),
+            party           = 'internal',
+            note_text       = _eng_note_text,
+            related_action  = 'engineer_signed',
+        )
+        db.session.add(_eng_note)
+        log_audit(
+            'itp_criterion_note_added',
+            project_id  = project_id,
+            actor       = current_user,
+            entity_type = 'itp_criterion_note',
+            entity_id   = None,
+            entity_label= f'{record.wtg.name if record.wtg else ""} · {item_no}.{crit_idx + 1}',
+            detail      = {'item_no': item_no, 'ci': crit_idx, 'party': 'internal',
+                           'author_name': current_user.name},
+        )
+
     db.session.commit()
     return jsonify({
         'ok':        True,
@@ -7061,6 +7135,170 @@ def api_itp_item_doc_delete(doc_id):
     return jsonify({'ok': True})
 
 
+# ── ITP Criterion Notes API ───────────────────────────────────────────────────
+
+def _format_note(note):
+    """Serialise an ITPCriterionNote to a JSON-safe dict."""
+    return {
+        'id':             note.id,
+        'author_name':    note.author_name,
+        'author_company': note.author_company,
+        'party':          note.party,
+        'note_text':      note.note_text,
+        'created_at':     note.created_at.strftime('%d %b %Y %H:%M') if note.created_at else '',
+        'created_iso':    note.created_at.isoformat() if note.created_at else '',
+        'related_action': note.related_action,
+        'parent_note_id': note.parent_note_id,
+        'replies':        [_format_note(r) for r in sorted(
+                              note.replies, key=lambda x: x.created_at or datetime.min)],
+    }
+
+
+@app.route('/api/itp/<int:record_id>/criterion/<item_no>/<int:ci>/notes', methods=['GET'])
+def api_itp_criterion_notes_get(record_id, item_no, ci):
+    """Return all top-level notes (with nested replies) for a criterion."""
+    record     = ITPRecord.query.get_or_404(record_id)
+    project_id = _itp_project_id(record)
+
+    # Access: internal user with project view, OR client via invite token
+    token = request.args.get('token') or request.headers.get('X-Invite-Token')
+    if token:
+        invite = ITPClientInvite.query.filter_by(token=token).first()
+        if not invite or invite.record_id != record_id:
+            return jsonify({'error': 'Invalid token.'}), 403
+        if invite.is_revoked:
+            return jsonify({'error': 'Invite revoked.'}), 403
+    elif not (current_user.is_authenticated and user_can_view_project_ac(project_id)):
+        return jsonify({'error': 'Authentication required.'}), 401
+
+    notes = (ITPCriterionNote.query
+             .filter_by(itp_record_id=record_id, item_no=str(item_no),
+                        criterion_index=ci, parent_note_id=None)
+             .order_by(ITPCriterionNote.created_at)
+             .all())
+    return jsonify({'notes': [_format_note(n) for n in notes]})
+
+
+@app.route('/api/itp/<int:record_id>/criterion/<item_no>/<int:ci>/notes', methods=['POST'])
+def api_itp_criterion_notes_post(record_id, item_no, ci):
+    """Add a note or reply to a criterion."""
+    if not _validate_csrf_token():
+        return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
+
+    record     = ITPRecord.query.get_or_404(record_id)
+    project_id = _itp_project_id(record)
+
+    data           = request.get_json(silent=True) or {}
+    note_text      = (data.get('note_text') or '').strip()
+    party          = (data.get('party') or 'internal').strip()
+    related_action = (data.get('related_action') or None)
+    parent_note_id = data.get('parent_note_id') or None
+    invite_token   = (data.get('invite_token') or request.args.get('token') or
+                      request.headers.get('X-Invite-Token'))
+
+    if not note_text:
+        return jsonify({'error': 'note_text is required.'}), 400
+
+    invite = None
+    if party == 'client':
+        if not invite_token:
+            return jsonify({'error': 'invite_token required for client notes.'}), 400
+        invite = ITPClientInvite.query.filter_by(token=invite_token).first()
+        if not invite or invite.record_id != record_id:
+            return jsonify({'error': 'Invalid invite token.'}), 403
+        if invite.is_revoked:
+            return jsonify({'error': 'Invite revoked.'}), 403
+        _inv_member = _find_invite_member(invite, project_id)
+        if not _inv_member or _inv_member.invite_status != 'accepted':
+            return jsonify({'error': 'Project membership required.'}), 403
+        if not user_can(project_id, 'can_review_itp'):
+            return jsonify({'error': 'No permission to review ITP items.'}), 403
+        author_name    = current_user.name if current_user.is_authenticated else invite.name
+        author_company = (current_user.company if current_user.is_authenticated else invite.company) or ''
+        author_user_id = current_user.id if current_user.is_authenticated else None
+        cycle_id       = invite.review_cycle_id if invite.review_cycle_id else None
+    else:
+        # Internal note
+        if not current_user.is_authenticated:
+            return jsonify({'error': 'Authentication required.'}), 401
+        if not user_can(project_id, 'can_view_itp'):
+            return jsonify({'error': 'No permission to view ITP.'}), 403
+        author_name    = current_user.name
+        author_company = (current_user.company or '')
+        author_user_id = current_user.id
+        cycle_id       = None
+
+    # Find item_status for item_status_id linkage
+    s = ITPItemStatus.query.filter_by(
+        itp_record_id=record_id, item_no=str(item_no), criterion_index=ci
+    ).first()
+
+    note = ITPCriterionNote(
+        itp_record_id   = record_id,
+        item_status_id  = s.id if s else None,
+        item_no         = str(item_no),
+        criterion_index = ci,
+        author_user_id  = author_user_id,
+        author_name     = author_name,
+        author_company  = author_company,
+        party           = party,
+        note_text       = note_text,
+        review_cycle_id = cycle_id,
+        related_action  = related_action,
+        parent_note_id  = int(parent_note_id) if parent_note_id else None,
+    )
+    db.session.add(note)
+
+    wtg_name = record.wtg.name if record.wtg else f'ITP #{record.id}'
+    log_audit(
+        'itp_criterion_note_added',
+        project_id   = project_id,
+        actor        = current_user if current_user.is_authenticated else None,
+        entity_type  = 'itp_criterion_note',
+        entity_id    = None,
+        entity_label = f'{wtg_name} · {item_no}.{ci + 1}',
+        detail       = {'item_no': item_no, 'ci': ci, 'party': party,
+                        'author_name': author_name},
+    )
+
+    # Notification: internal reply → notify the client who wrote the parent note
+    if parent_note_id and party == 'internal':
+        try:
+            parent_note = ITPCriterionNote.query.get(int(parent_note_id))
+            if parent_note and parent_note.party == 'client' and parent_note.author_user_id:
+                _notif = Notification(
+                    user_id  = parent_note.author_user_id,
+                    title    = f'Reply to your concern on ITP',
+                    message  = (f'{author_name} replied to your note on {wtg_name} '
+                                f'item {item_no}.{ci + 1}: {note_text[:120]}'),
+                    link     = f'/itp/{record_id}',
+                    category = 'itp_note_reply',
+                )
+                db.session.add(_notif)
+        except Exception:
+            pass
+
+    # Notification: client raises concern → notify invite sender
+    if party == 'client' and related_action in ('rejected', 'request_changes', 'request_clarification'):
+        if invite and invite.invited_by_id:
+            try:
+                _notif = Notification(
+                    user_id  = invite.invited_by_id,
+                    title    = f'Client raised a concern on ITP',
+                    message  = (f'{author_name} ({author_company}) raised a '
+                                f'{(related_action or "concern").replace("_"," ")} on {wtg_name} '
+                                f'item {item_no}.{ci + 1}: {note_text[:120]}'),
+                    link     = f'/itp/{record_id}',
+                    category = 'itp_concern',
+                )
+                db.session.add(_notif)
+            except Exception:
+                pass
+
+    db.session.commit()
+    return jsonify({'ok': True, 'note': _format_note(note)})
+
+
 # ITP Print/PDF route
 @app.route('/itp/<int:record_id>/print')
 @login_required
@@ -7078,8 +7316,17 @@ def itp_print(record_id):
         return 'ITP type not found', 404
     statuses  = {(s.item_no, s.criterion_index): s for s in record.item_statuses}
     proj_name = record.wtg.project.name if record.wtg and record.wtg.project else 'Project'
+    # Build notes lookup by (item_no, criterion_index)
+    notes_by_key = {}
+    for n in record.criterion_notes:
+        key = (n.item_no, n.criterion_index)
+        notes_by_key.setdefault(key, []).append(n)
+    # Sort each list by created_at
+    for key in notes_by_key:
+        notes_by_key[key].sort(key=lambda x: x.created_at or datetime.min)
     return render_template('itp_print.html', record=record, defn=defn,
-                           statuses=statuses, wtg=record.wtg, proj_name=proj_name)
+                           statuses=statuses, wtg=record.wtg, proj_name=proj_name,
+                           notes_by_key=notes_by_key)
 
 
 # ITP bulk export page
