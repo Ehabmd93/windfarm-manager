@@ -305,7 +305,7 @@
                 transition:all .12s;"
          onmouseover="this.style.background='#f3e8ff'"
          onmouseout="this.style.background='#faf5ff'">
-        <i class="fa-solid fa-sliders" style="color:#7c3aed;"></i> Control Center
+        <i class="fa-solid fa-sliders" style="color:#7c3aed;"></i> Access Control Center
       </a>
       {% endif %}
       <a href="{{ url_for('project_audit', pid=proj.id) }}"
@@ -333,7 +333,7 @@
       <div style="font-size:15px;font-weight:800;color:#1e40af;margin-bottom:3px;">Invite your team</div>
       <div style="font-size:13px;color:#3b82f6;line-height:1.55;">
         You're the only member so far. Add companies and team members to get started.
-        Access levels set default permissions — fine-tune them in the Control Center.
+        Access levels set default permissions — fine-tune them in the Access Control Center.
       </div>
     </div>
     <button onclick="openAddMember()"
@@ -603,7 +603,7 @@
             Access level sets default permissions. Fine-tune exact permissions in the
             <a href="{{ url_for('project_access_control', pid=proj.id) }}"
                style="color:#6366f1;font-weight:700;text-decoration:underline;"
-               target="_blank">Control Center</a>.
+               target="_blank">Access Control Center</a>.
           </p>
         </div>
         <div>

@@ -21,6 +21,7 @@ from models import (db, User, WTG, Area, QATest, TestRecord,
                     TestPhoto,
                     ProjectITPTemplate,
                     ITPRecord, ITPItemStatus, ITPItemDocument,
+                    ITPReviewCycle,
                     FoundationStage, FoundationStageTemplate, FoundationDocument, FOUNDATION_STAGES,
                     CustomTrackingField, ProgressWidget,
                     Document, DocumentLink, DocumentFolder,
@@ -640,6 +641,44 @@ def _find_invite_member(invite, project_id):
             db.func.lower(ProjectMemberAC.email) == invite.email.strip().lower(),
         ).first()
     return None
+
+
+def _get_or_create_active_cycle(record, opened_by_id=None):
+    """Return the latest non-superseded, non-completed ITPReviewCycle for record.
+
+    If none exists, create a new one (cycle_number = max+1).
+    Does NOT commit — caller is responsible.
+    """
+    existing = (
+        ITPReviewCycle.query
+        .filter_by(record_id=record.id)
+        .filter(ITPReviewCycle.status.notin_(['completed', 'superseded']))
+        .order_by(ITPReviewCycle.cycle_number.desc())
+        .first()
+    )
+    if existing:
+        return existing
+    # Determine next cycle number
+    max_row = (
+        ITPReviewCycle.query
+        .filter_by(record_id=record.id)
+        .order_by(ITPReviewCycle.cycle_number.desc())
+        .first()
+    )
+    next_num = (max_row.cycle_number + 1) if max_row else 1
+    cycle = ITPReviewCycle(
+        record_id    = record.id,
+        cycle_number = next_num,
+        revision     = record.revision or 0,
+        status       = 'open',
+        opened_by_id = opened_by_id,
+    )
+    db.session.add(cycle)
+    db.session.flush()
+    log_audit('itp_review_cycle_opened',
+              project_id=_itp_project_id(record) if record.wtg else None,
+              detail={'record_id': record.id, 'cycle_number': next_num})
+    return cycle
 
 
 # ─── Auth ────────────────────────────────────────────────────────────────────
@@ -4044,21 +4083,31 @@ def api_delete_project(pid):
 def api_add_area(eid):
     if not _validate_csrf_token():
         return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
-    el   = WTG.query.get_or_404(eid)
-    if not _user_can_manage_project(el.project_id):
-        return jsonify({'error': 'Forbidden'}), 403
+    el = WTG.query.get_or_404(eid)
+    if not (user_is_project_owner(el.project_id) or user_can(el.project_id, 'can_manage_hierarchy')):
+        log_audit('itp_unauthorized_access_attempt',
+                  project_id=el.project_id,
+                  detail={'route': 'api_add_area', 'element_id': el.id})
+        return jsonify({'error': 'Forbidden', 'forbidden': True}), 403
     data = request.get_json() or {}
-    area_type = data.get('area_type', '').strip()
+    area_type = data.get('area_type', '').strip().lower().replace(' ', '_')
     label     = data.get('label', '').strip() or area_type.replace('_', ' ').title()
     tests     = data.get('tests', [])   # list of test_type strings
     if not area_type:
         return jsonify({'error': 'area_type is required'}), 400
+    # Dedup: return existing area instead of creating a duplicate
+    existing = Area.query.filter_by(wtg_id=el.id, area_type=area_type).first()
+    if existing:
+        return jsonify({'already_exists': True, 'id': existing.id, 'label': existing.label}), 200
     area = Area(wtg_id=el.id, area_type=area_type, label=label)
     db.session.add(area)
     db.session.flush()
     for tt in tests:
         db.session.add(QATest(area_id=area.id, test_type=tt))
     db.session.commit()
+    log_audit('area_created',
+              project_id=el.project_id,
+              detail={'element_id': el.id, 'area_type': area_type, 'label': label})
     return jsonify({'id': area.id, 'area_type': area.area_type, 'label': area.label,
                     'test_count': len(area.required_tests)})
 
@@ -5330,21 +5379,55 @@ def api_project_itp_add_invite(pid, tid, eid):
     else:
         signers_text = None
 
+    # ── Get or create review cycle ────────────────────────────────────────────
+    _active_cycle = _get_or_create_active_cycle(
+        record, opened_by_id=current_user.id
+    )
+
+    # ── Snapshot lucas_complete criterion IDs into the cycle ─────────────────
+    _signed_ids = [s.id for s in record.item_statuses if s.lucas_complete]
+    if _active_cycle.assigned_criterion_ids is None and _signed_ids:
+        _active_cycle.assigned_ids = _signed_ids
+
+    # ── Block if no new criteria exist since last cycle ───────────────────────
+    if not _signed_ids:
+        return jsonify({
+            'error': 'No engineer-signed criteria found. At least one criterion must be signed before inviting a client.',
+            'no_new_criteria': True,
+        }), 400
+
     # ── Duplicate assignment prevention ─────────────────────────────────────
     ACTIVE_STATUSES = {'pending', 'pending_project_access', 'pending_review', 'viewed', 'signed'}
     if email:
-        dup = ITPClientInvite.query.filter(
+        dup_query = ITPClientInvite.query.filter(
             ITPClientInvite.record_id == record.id,
             ITPClientInvite.is_revoked == False,
             ITPClientInvite.status.in_(ACTIVE_STATUSES),
             db.func.lower(ITPClientInvite.email) == email,
-        ).first()
+        )
+        # Also check same cycle to prevent per-cycle duplicate
+        if _active_cycle and _active_cycle.id:
+            dup = dup_query.filter(
+                ITPClientInvite.review_cycle_id == _active_cycle.id
+            ).first()
+            if not dup:
+                # Fall back: check any active invite for same email on same record
+                dup = dup_query.first()
+        else:
+            dup = dup_query.first()
         if dup:
+            log_audit('itp_duplicate_invitation_blocked',
+                      project_id=record.wtg.project_id if record.wtg else None,
+                      actor=current_user,
+                      detail={'record_id': record.id, 'email': email,
+                              'existing_invite_id': dup.id,
+                              'cycle_number': _active_cycle.cycle_number if _active_cycle else None})
             return jsonify({
-                'error': 'This signatory has already been notified for this ITP.',
+                'error': f'{name} has already been invited to review these ITP items.',
                 'duplicate': True,
                 'existing_invite_id': dup.id,
                 'invited_by': dup.invited_by_name or 'a team member',
+                'cycle_number': _active_cycle.cycle_number if _active_cycle else 1,
             }), 409
 
     # ── Determine invite status based on member state ────────────────────────
@@ -5369,6 +5452,7 @@ def api_project_itp_add_invite(pid, tid, eid):
         invited_by_id        = current_user.id,
         invited_by_name      = current_user.name,
         invited_by_company   = (current_user.company or ''),
+        review_cycle_id      = _active_cycle.id if _active_cycle else None,
     )
     db.session.add(invite)
     db.session.flush()   # get invite.id
@@ -5409,6 +5493,7 @@ def api_project_itp_add_invite(pid, tid, eid):
             'member_ac_id':  member.id,
             'invite_status': invite_status_val,
             'is_new_person': bool(is_new_person),
+            'cycle_number':  _active_cycle.cycle_number if _active_cycle else 1,
         },
     )
     db.session.commit()
@@ -6008,6 +6093,13 @@ def itp_client_sign_entry(token):
                                record=record,
                                token=token), 403
 
+    # ── Area 8: Redirect superseded / already-signed invites early ────────────
+    if invite:
+        if invite.status == 'superseded':
+            return redirect(url_for('itp_client_sign', token=token))
+        if invite.status == 'signed' and invite.signed_at:
+            return redirect(url_for('itp_client_sign', token=token))
+
     # ── 2. Normalise invite e-mail ───────────────────────────────────────────
     invite_email = (invite.email or '').strip().lower() if invite else ''
 
@@ -6245,6 +6337,34 @@ def itp_client_sign(token):
                                token=token, link_error=link_error,
                                today=date.today().isoformat()), 403
 
+    # ── Area 8: Handle superseded / already-signed states early ──────────────
+    if invite and invite.status == 'superseded':
+        _wtg_s = record.wtg if record else None
+        _pname_s = _wtg_s.project.name if _wtg_s and _wtg_s.project else 'Project'
+        _comp_invite = None
+        _comp_name = ''
+        _comp_company = ''
+        _comp_date = ''
+        if invite.review_cycle_id:
+            _cyc = ITPReviewCycle.query.get(invite.review_cycle_id)
+            if _cyc and _cyc.completed_by_invite_id:
+                _comp_invite = ITPClientInvite.query.get(_cyc.completed_by_invite_id)
+                if _comp_invite:
+                    _comp_name    = _comp_invite.signer_name or _comp_invite.name or ''
+                    _comp_company = _comp_invite.signer_company or _comp_invite.company or ''
+                    _comp_date    = (_comp_invite.signed_at.strftime('%d %b %Y at %H:%M UTC')
+                                     if _comp_invite.signed_at else '')
+        return render_template('itp_client_sign.html',
+                               record=record, wtg=_wtg_s, defn={},
+                               statuses={}, proj_name=_pname_s,
+                               token=token, invite=invite,
+                               link_error=None,
+                               today=date.today().isoformat(),
+                               superseded_state=True,
+                               superseded_by_name=_comp_name,
+                               superseded_by_company=_comp_company,
+                               superseded_date=_comp_date)
+
     # Identity guard — if the invite is email-bound and the current user is
     # logged in, their email must match.  Direct access without going through
     # /entry still gets the same protection.
@@ -6285,9 +6405,26 @@ def itp_client_sign(token):
                                    proj_name=proj_name, member=_signing_member,
                                    record=record, token=token)
         if not user_can(_itp_proj_id, 'can_view_itp'):
+            log_audit('itp_unauthorized_access_attempt',
+                      project_id=_itp_proj_id,
+                      detail={'route': 'itp_client_sign', 'token': token[:8]})
             return render_template('itp_client_entry.html',
                                    state='no_sign_permission',
                                    proj_name=proj_name, record=record, token=token), 403
+
+    # ── Area 9: Log viewed_at and itp_invite_viewed audit ────────────────────
+    if request.method == 'GET' and invite and not invite.viewed_at:
+        try:
+            invite.viewed_at = datetime.now(timezone.utc)
+            if invite.status == 'pending_review':
+                invite.status = 'viewed'
+            log_audit('itp_invite_viewed',
+                      project_id=_itp_proj_id,
+                      detail={'invite_id': invite.id, 'record_id': record.id})
+            db.session.commit()
+        except Exception:
+            try: db.session.rollback()
+            except Exception: pass
 
     if request.method == 'POST':
         action = request.form.get('action')
@@ -6314,17 +6451,53 @@ def itp_client_sign(token):
                 record.status           = 'client_commented' if concerns else 'complete'
 
                 # Mark the invite as signed and lock in signer identity
+                _signer_name    = (current_user.name
+                                   if current_user.is_authenticated
+                                   else record.client_name or invite.name if invite else record.client_name)
+                _signer_company = (current_user.company
+                                   if current_user.is_authenticated
+                                   else (record.client_company or (invite.company if invite else '') or ''))
+
                 if invite and not invite.signed_at:
-                    invite.status       = 'signed'
-                    invite.signed_at    = _sign_now
-                    invite.signer_name    = (current_user.name
-                                             if current_user.is_authenticated
-                                             else record.client_name or invite.name)
-                    invite.signer_company = (current_user.company
-                                             if current_user.is_authenticated
-                                             else record.client_company or invite.company or '')
+                    invite.status         = 'signed'
+                    invite.signed_at      = _sign_now
+                    invite.signer_name    = _signer_name
+                    invite.signer_company = _signer_company
                     if not invite.user_id and current_user.is_authenticated:
                         invite.user_id = current_user.id
+
+                # ── Area 6: First-completion-wins — mark cycle completed ──────
+                _cycle = None
+                if invite and invite.review_cycle_id:
+                    _cycle = ITPReviewCycle.query.get(invite.review_cycle_id)
+                    if _cycle and _cycle.status != 'completed':
+                        _cycle.status                = 'completed'
+                        _cycle.completed_at          = _sign_now
+                        _cycle.completed_by_invite_id = invite.id
+                        # Supersede other non-revoked invites for same cycle
+                        _other_invites = ITPClientInvite.query.filter(
+                            ITPClientInvite.review_cycle_id == _cycle.id,
+                            ITPClientInvite.id != invite.id,
+                            ITPClientInvite.is_revoked == False,
+                            ITPClientInvite.status.notin_(['signed', 'revoked', 'expired']),
+                        ).all()
+                        for _oi in _other_invites:
+                            _oi.status = 'superseded'
+                            if _oi.user_id:
+                                db.session.add(Notification(
+                                    user_id = _oi.user_id,
+                                    type    = 'itp_review_superseded',
+                                    title   = 'ITP review completed by another reviewer',
+                                    message = (f'This ITP review was completed by {_signer_name}'
+                                               f' ({_signer_company}). Your invitation has been superseded.'),
+                                    url     = url_for('my_itp_action_open', invite_id=_oi.id),
+                                ))
+                        if _other_invites:
+                            log_audit('itp_competing_invitations_superseded',
+                                      project_id=_itp_project_id(record),
+                                      detail={'record_id': record.id,
+                                              'cycle_id': _cycle.id,
+                                              'superseded_count': len(_other_invites)})
 
                 # Audit: client signed the ITP
                 log_audit(
@@ -6339,8 +6512,77 @@ def itp_client_sign(token):
                         'client_company': record.client_company,
                         'status':         record.status,
                         'concerns':       len(concerns),
+                        'cycle_id':       _cycle.id if _cycle else None,
                     },
                 )
+                if concerns:
+                    log_audit('itp_review_completed_with_concerns',
+                              project_id=_itp_project_id(record),
+                              detail={'record_id': record.id, 'concern_count': len(concerns),
+                                      'signer': _signer_name})
+                else:
+                    log_audit('itp_review_completed',
+                              project_id=_itp_project_id(record),
+                              detail={'record_id': record.id, 'signer': _signer_name})
+                db.session.commit()
+
+                # ── Area 7: Notify invite sender of outcome ──────────────────
+                _outcome_summary = (
+                    f'completed the review with {len(concerns)} concern(s).'
+                    if concerns else 'approved all assigned items.'
+                )
+                # Notify the person who sent the invite
+                if invite and invite.invited_by_id:
+                    _sender = User.query.get(invite.invited_by_id)
+                    if _sender:
+                        _itp_detail_url = ''
+                        try:
+                            if record.project_itp_template_id and wtg:
+                                _itp_detail_url = url_for('project_itp_detail',
+                                    pid=wtg.project_id,
+                                    tid=record.project_itp_template_id,
+                                    eid=wtg.id)
+                        except Exception:
+                            pass
+                        db.session.add(Notification(
+                            user_id = _sender.id,
+                            type    = 'itp_review_outcome',
+                            title   = f'ITP review completed — {wtg.name if wtg else ""}',
+                            message = (f'{_signer_name} ({_signer_company}) {_outcome_summary}'),
+                            url     = _itp_detail_url,
+                        ))
+
+                # Notify project members with can_view_itp
+                _proj_id_for_notif = _itp_project_id(record)
+                if _proj_id_for_notif:
+                    _view_members = ProjectMemberAC.query.filter_by(
+                        project_id=_proj_id_for_notif, is_active=True
+                    ).all()
+                    for _vm in _view_members:
+                        if _vm.has_permission('can_view_itp') and _vm.user_id:
+                            # Don't double-notify the sender
+                            if invite and _vm.user_id == invite.invited_by_id:
+                                continue
+                            _itp_url = ''
+                            try:
+                                if record.project_itp_template_id and wtg:
+                                    _itp_url = url_for('project_itp_detail',
+                                        pid=_proj_id_for_notif,
+                                        tid=record.project_itp_template_id,
+                                        eid=wtg.id)
+                            except Exception:
+                                pass
+                            db.session.add(Notification(
+                                user_id = _vm.user_id,
+                                type    = 'itp_review_outcome',
+                                title   = f'ITP review outcome — {wtg.name if wtg else ""}',
+                                message = (f'{_signer_name} ({_signer_company}) {_outcome_summary}'),
+                                url     = _itp_url,
+                            ))
+                log_audit('itp_review_outcome_notified',
+                          project_id=_proj_id_for_notif,
+                          detail={'record_id': record.id, 'signer': _signer_name,
+                                  'outcome': _outcome_summary})
                 db.session.commit()
 
                 # ── In-app notifications ────────────────────────────────────
@@ -6453,7 +6695,7 @@ def my_itp_actions():
         eff_status = inv.status or 'pending_review'
         if eff_status == 'pending':
             eff_status = 'pending_review'   # backward-compat
-        if eff_status not in ('signed', 'revoked') and inv.expires_at:
+        if eff_status not in ('signed', 'revoked', 'superseded') and inv.expires_at:
             if _ensure_utc(inv.expires_at) < datetime.now(timezone.utc):
                 eff_status = 'expired'
 
@@ -6468,15 +6710,16 @@ def my_itp_actions():
             'sign_url':       url_for('my_itp_action_open', invite_id=inv.id),
         })
 
-    # Group: pending_project_access(0), pending_review(1), viewed(2), signed(3), expired(4), revoked(5)
+    # Group: pending_project_access(0), pending_review(1), viewed(2), signed(3), superseded(4), expired(5), revoked(6)
     _order = {
         'pending_project_access': 0,
         'pending_review': 1,
         'pending': 1,   # backward-compat
         'viewed': 2,
         'signed': 3,
-        'expired': 4,
-        'revoked': 5,
+        'superseded': 4,
+        'expired': 5,
+        'revoked': 6,
     }
     rows.sort(key=lambda r: _order.get(r['status'], 9))
 
@@ -7637,6 +7880,8 @@ def run_migrations():
                 ("itp_records", "reopened_at",      "TIMESTAMP"),
                 ("itp_records", "reopened_by_id",   "INTEGER"),
                 ("itp_records", "reopen_reason",    "TEXT"),
+                # ── itp_client_invites (Area 4 — review cycles) ──────────────
+                ("itp_client_invites", "review_cycle_id", "INTEGER"),
             ]
 
             with db.engine.connect() as conn:
@@ -7692,6 +7937,43 @@ def run_migrations():
                 try: db.session.rollback()
                 except Exception: pass
 
+            # ── Area 4: Bootstrap ITPReviewCycle for legacy invites ──────────
+            # For any ITPClientInvite without review_cycle_id, create a cycle.
+            try:
+                _orphan_invites = ITPClientInvite.query.filter(
+                    ITPClientInvite.review_cycle_id == None,
+                    ITPClientInvite.is_revoked == False,
+                ).all()
+                _cycle_map = {}  # record_id → ITPReviewCycle (cycle 1)
+                for _inv in _orphan_invites:
+                    _rec_id = _inv.record_id
+                    if _rec_id not in _cycle_map:
+                        # Check if a cycle 1 already exists for this record
+                        _existing_c = ITPReviewCycle.query.filter_by(
+                            record_id=_rec_id, cycle_number=1
+                        ).first()
+                        if not _existing_c:
+                            _rec = ITPRecord.query.get(_rec_id)
+                            if _rec:
+                                _c_status = 'completed' if _inv.status == 'signed' else 'open'
+                                _c = ITPReviewCycle(
+                                    record_id    = _rec_id,
+                                    cycle_number = 1,
+                                    revision     = (_rec.revision or 0),
+                                    status       = _c_status,
+                                )
+                                db.session.add(_c)
+                                db.session.flush()
+                                _existing_c = _c
+                        _cycle_map[_rec_id] = _existing_c
+                    _cycle = _cycle_map.get(_rec_id)
+                    if _cycle:
+                        _inv.review_cycle_id = _cycle.id
+                db.session.commit()
+            except Exception:
+                try: db.session.rollback()
+                except Exception: pass
+
     except Exception:
         pass  # migration errors must never crash startup
 
@@ -7724,6 +8006,16 @@ def audit_category_for_event(event_type):
         'itp_invite_created', 'itp_invite_revoked',
         'itp_exported_zip', 'itp_reopened',
         'itp_submitted_for_client_review',
+        # Area 9 new events
+        'itp_signatory_invited', 'itp_duplicate_invitation_blocked',
+        'itp_invite_viewed', 'itp_review_completed',
+        'itp_review_completed_with_concerns',
+        'itp_competing_invitations_superseded', 'itp_review_outcome_notified',
+        'itp_review_cycle_opened', 'itp_review_cycle_reopened',
+    }
+    _SYSTEM = {
+        'itp_unauthorized_access_attempt', 'area_created',
+        'area_bulk_create_result',
     }
     _DOCUMENTS = {
         'document_uploaded', 'document_deleted', 'document_moved',
@@ -7759,6 +8051,7 @@ def audit_category_for_event(event_type):
     if event_type in _PROOF_ROLLS:    return 'Proof Rolls'
     if event_type in _FOUNDATION:     return 'Foundation'
     if event_type in _PROJECT_SETUP:  return 'Project Setup'
+    if event_type in _SYSTEM:         return 'System'
     return 'System'
 
 

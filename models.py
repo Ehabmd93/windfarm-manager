@@ -1045,10 +1045,49 @@ class ITPClientInvite(db.Model):
     invited_by_name      = db.Column(db.String(100), nullable=True)
     invited_by_company   = db.Column(db.String(100), nullable=True)
 
+    # Review cycle linkage (Area 4 — ITP review cycles)
+    review_cycle_id = db.Column(db.Integer, db.ForeignKey('itp_review_cycles.id'), nullable=True)
+
     record             = db.relationship('ITPRecord', backref='client_invites', lazy=True)
     user               = db.relationship('User', foreign_keys=[user_id], lazy=True)
     project_member_ac  = db.relationship('ProjectMemberAC', foreign_keys=[project_member_ac_id], lazy=True)
     invited_by_user    = db.relationship('User', foreign_keys=[invited_by_id], lazy=True)
+
+
+# ═══════════════════════════════════════════════
+# ITP REVIEW CYCLES  (Area 4 — explicit review cycles)
+# ═══════════════════════════════════════════════
+class ITPReviewCycle(db.Model):
+    __tablename__ = 'itp_review_cycles'
+    id                     = db.Column(db.Integer, primary_key=True)
+    record_id              = db.Column(db.Integer, db.ForeignKey('itp_records.id'), nullable=False)
+    cycle_number           = db.Column(db.Integer, nullable=False, default=1)
+    revision               = db.Column(db.Integer, nullable=False, default=0)
+    # status: open | awaiting_review | completed | reopened | superseded
+    status                 = db.Column(db.String(20), nullable=False, default='open')
+    opened_at              = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    opened_by_id           = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    completed_at           = db.Column(db.DateTime, nullable=True)
+    completed_by_invite_id = db.Column(db.Integer, db.ForeignKey('itp_client_invites.id'), nullable=True)
+    # Snapshot of ITPItemStatus ids assigned to this cycle (JSON list)
+    assigned_criterion_ids = db.Column(db.Text, nullable=True)
+
+    record  = db.relationship('ITPRecord', backref='review_cycles', lazy=True)
+    invites = db.relationship(
+        'ITPClientInvite',
+        backref='review_cycle',
+        foreign_keys='ITPClientInvite.review_cycle_id',
+        lazy=True,
+    )
+
+    @property
+    def assigned_ids(self):
+        try:    return json.loads(self.assigned_criterion_ids or '[]')
+        except: return []
+
+    @assigned_ids.setter
+    def assigned_ids(self, val):
+        self.assigned_criterion_ids = json.dumps(val)
 
 
 # ═══════════════════════════════════════════════

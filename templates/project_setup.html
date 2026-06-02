@@ -2228,20 +2228,50 @@ async function submitBulkAddArea() {
   const elIds     = [...document.querySelectorAll('.bulk-area-el-cb:checked')].map(c => parseInt(c.value));
   if (!area_type) { showToast('Area type is required','error'); return; }
   if (!elIds.length) { showToast('Tick at least one element','error'); return; }
-  let created = 0, errors = 0;
+
+  let created = 0, already_exists = 0, forbidden = 0, failed = 0;
+  let lastError = '';
+
   for (const eid of elIds) {
-    const res = await fetch(`/api/elements/${eid}/areas`, {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({area_type, label, tests})
-    });
-    if (res.ok) created++; else errors++;
+    try {
+      const res = await fetch(`/api/elements/${eid}/areas`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json', 'X-CSRFToken': window.CSRF_TOKEN || ''},
+        body: JSON.stringify({area_type, label, tests})
+      });
+      const body = await res.json();
+      if (res.status === 403) {
+        forbidden++;
+        lastError = body.error || 'Forbidden';
+      } else if (res.ok) {
+        if (body.already_exists) already_exists++;
+        else created++;
+      } else {
+        failed++;
+        lastError = body.error || 'Failed';
+      }
+    } catch(e) {
+      failed++;
+    }
   }
+
   closeModal('modal-bulk-area');
-  if (created) {
-    showToast(`Area "${label}" added to ${created} element(s)`, 'success');
-    setTimeout(() => location.reload(), 700);
+
+  // Build a meaningful summary message
+  const parts = [];
+  if (created > 0)        parts.push(`${label} added to ${created} element${created !== 1 ? 's' : ''}.`);
+  if (already_exists > 0) parts.push(`Already existed on ${already_exists} element${already_exists !== 1 ? 's' : ''}.`);
+  if (failed > 0)         parts.push(`${failed} failed: ${lastError}`);
+
+  if (forbidden > 0) {
+    showToast(`Forbidden: you need 'Manage Hierarchy' permission.`, 'error');
+  } else if (created > 0) {
+    showToast(parts.join(' '), 'success');
+    setTimeout(() => location.reload(), 900);
+  } else if (already_exists > 0 && failed === 0) {
+    showToast(parts.join(' '), 'warning');
   } else {
-    showToast('No areas created — they may already exist', 'error');
+    showToast(parts.join(' ') || 'No areas created.', 'error');
   }
 }
 

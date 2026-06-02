@@ -236,6 +236,28 @@
   </div>
   {% else %}
 
+  <!-- ─── AREA 8: SUPERSEDED STATE BANNER ────────────────────────────── -->
+  {% if superseded_state %}
+  <div style="background:#f5f3ff;border:2px solid #ddd6fe;border-radius:18px;
+              padding:32px 24px;text-align:center;margin-bottom:16px;">
+    <i class="fa-solid fa-circle-xmark" style="font-size:48px;color:#7c3aed;display:block;margin-bottom:14px;"></i>
+    <h2 style="font-size:18px;font-weight:800;color:#5b21b6;margin:0 0 10px;">This Invitation Has Been Superseded</h2>
+    <p style="color:#6d28d9;font-size:14px;margin:0 0 6px;line-height:1.6;">
+      This ITP review was completed by another reviewer.
+    </p>
+    {% if superseded_by_name %}
+    <p style="color:#7c3aed;font-size:13px;margin:0;">
+      <strong>{{ superseded_by_name }}</strong>
+      {% if superseded_by_company %} ({{ superseded_by_company }}){% endif %}
+      {% if superseded_date %} &middot; {{ superseded_date }}{% endif %}
+    </p>
+    {% endif %}
+    <p style="color:#a78bfa;font-size:12px;margin:10px 0 0;">
+      No further action is required from you.
+    </p>
+  </div>
+  {% else %}
+
   <!-- ─── FINAL STATE BANNERS ─────────────────────────────────────────── -->
   {% if record.status == 'complete' %}
   <div style="background:#f0fdf4;border:2px solid #bbf7d0;border-radius:18px;
@@ -807,6 +829,122 @@
   </div>
 
 
+  {% if not is_finalized and not link_error %}
+  <!-- ─── AREA 3: STICKY COMPLETION PANEL ───────────────────────────────── -->
+  <div id="sticky-completion-panel"
+       style="position:fixed;bottom:0;left:0;right:0;z-index:900;
+              background:white;border-top:2px solid #e2e8f0;
+              box-shadow:0 -4px 24px rgba(0,0,0,.10);padding:12px 16px;">
+    <div style="max-width:760px;margin:0 auto;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+      <!-- Progress bar section -->
+      <div style="flex:1;min-width:160px;">
+        <div style="display:flex;justify-content:space-between;margin-bottom:5px;">
+          <span style="font-size:12px;font-weight:700;color:#475569;">
+            <span id="sticky-reviewed">{{ ns.reviewed }}</span> of <span id="sticky-total">{{ ns.total_signed }}</span> items reviewed
+          </span>
+          <span id="sticky-pct-label" style="font-size:12px;font-weight:700;color:#7c3aed;">{{ init_pct }}%</span>
+        </div>
+        <div style="background:#f1f5f9;border-radius:999px;height:8px;overflow:hidden;">
+          <div id="sticky-prog-bar"
+               style="height:100%;border-radius:999px;transition:width .5s ease;
+                      background:linear-gradient(90deg,#2563eb,#7c3aed);width:{{ init_pct }}%;"></div>
+        </div>
+      </div>
+      <!-- CTA button -->
+      <button id="sticky-complete-btn"
+              onclick="openCompletionModal()"
+              {% if ns.pending > 0 or ns.total_signed == 0 %}disabled{% endif %}
+              style="flex-shrink:0;padding:12px 22px;border-radius:12px;font-size:13px;font-weight:700;
+                     border:none;cursor:pointer;transition:all .15s;white-space:nowrap;
+                     {% if ns.pending == 0 and ns.total_signed > 0 %}
+                     background:linear-gradient(135deg,#1d4ed8,#2563eb);color:white;
+                     box-shadow:0 4px 16px rgba(37,99,235,.35);
+                     {% else %}
+                     background:#e2e8f0;color:#94a3b8;cursor:not-allowed;
+                     {% endif %}">
+        <i class="fa-solid fa-pen-nib" style="margin-right:6px;"></i>Save Review &amp; Complete Action
+      </button>
+    </div>
+  </div>
+  <!-- Spacer so content isn't hidden behind sticky panel -->
+  <div style="height:80px;"></div>
+
+  <!-- ─── COMPLETION CONFIRMATION MODAL ──────────────────────────────────── -->
+  <div id="completion-modal-overlay"
+       style="display:none;position:fixed;inset:0;z-index:1000;
+              background:rgba(0,0,0,.45);">
+    <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+                background:white;border-radius:20px;padding:28px 24px;
+                max-width:480px;width:calc(100% - 32px);
+                box-shadow:0 20px 60px rgba(0,0,0,.25);">
+      <div style="text-align:center;margin-bottom:20px;">
+        <div style="width:56px;height:56px;border-radius:16px;background:#eff6ff;
+                    display:flex;align-items:center;justify-content:center;
+                    margin:0 auto 12px;">
+          <i class="fa-solid fa-clipboard-check" style="font-size:24px;color:#2563eb;"></i>
+        </div>
+        <h2 style="font-size:18px;font-weight:800;color:#0f172a;margin:0 0 6px;">Confirm Review Submission</h2>
+        <p style="font-size:13px;color:#64748b;margin:0;">Please review the summary below before submitting.</p>
+      </div>
+
+      <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:14px;
+                  padding:16px;margin-bottom:18px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+          <div>
+            <p style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;margin:0 0 2px;">Accepted</p>
+            <p id="modal-accepted-count" style="font-size:18px;font-weight:800;color:#16a34a;margin:0;">{{ ns.accepted }}</p>
+          </div>
+          <div>
+            <p style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;margin:0 0 2px;">Concerns</p>
+            <p id="modal-concern-count" style="font-size:18px;font-weight:800;color:#d97706;margin:0;">{{ ns.concerns }}</p>
+          </div>
+        </div>
+        <div style="border-top:1px solid #e2e8f0;padding-top:10px;margin-top:2px;">
+          <p style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;margin:0 0 2px;">Reviewer</p>
+          <p id="modal-reviewer-name" style="font-size:13px;font-weight:700;color:#0f172a;margin:0;">
+            {{ invite.name if invite else record.client_name or 'Client' }}
+            {% if (invite.company if invite else record.client_company) %}
+              &middot; {{ invite.company if invite else record.client_company }}
+            {% endif %}
+          </p>
+          <p id="modal-review-time" style="font-size:11px;color:#94a3b8;margin:2px 0 0;"></p>
+        </div>
+      </div>
+
+      <!-- Signature pad for final submission -->
+      <div style="margin-bottom:16px;">
+        <p style="font-size:12px;font-weight:700;color:#475569;margin:0 0 8px;">
+          <i class="fa-solid fa-pen-nib" style="margin-right:5px;color:#2563eb;"></i>Draw your signature to confirm:
+        </p>
+        <div class="sig-pad-wrap">
+          <canvas id="final-sig-canvas" style="display:block;width:100%;height:120px;touch-action:none;cursor:crosshair;border-radius:8px;"></canvas>
+        </div>
+        <button onclick="clearFinalSig()"
+                style="margin-top:6px;padding:5px 12px;border-radius:7px;font-size:11px;font-weight:600;
+                       background:white;color:#64748b;border:1.5px solid #e2e8f0;cursor:pointer;">
+          <i class="fa-solid fa-eraser" style="margin-right:3px;"></i>Clear
+        </button>
+      </div>
+
+      <div style="display:flex;gap:10px;">
+        <button onclick="closeCompletionModal()"
+                style="flex:1;padding:12px 16px;border-radius:12px;font-size:13px;font-weight:700;
+                       background:#f1f5f9;border:none;color:#64748b;cursor:pointer;">
+          Cancel
+        </button>
+        <button onclick="submitFinalReview()"
+                style="flex:2;padding:12px 16px;border-radius:12px;font-size:13px;font-weight:700;
+                       background:linear-gradient(135deg,#1d4ed8,#2563eb);color:white;
+                       border:none;cursor:pointer;box-shadow:0 4px 14px rgba(37,99,235,.35);">
+          <i class="fa-solid fa-paper-plane" style="margin-right:6px;"></i>Submit Review
+        </button>
+      </div>
+    </div>
+  </div>
+  {% endif %}{# end not is_finalized #}
+
+  {% endif %}{# end superseded_state else #}
+
   {% endif %}{# end link_error else block #}
 
 </div><!-- /max-width container -->
@@ -1200,7 +1338,137 @@ function updateProgress(data) {
 
   const banner = document.getElementById('all-reviewed-banner');
   if (banner) banner.style.display = data.all_reviewed ? 'flex' : 'none';
+
+  // ── Area 3: Update sticky completion panel ────────────────────────────────
+  const stickyPanel = document.getElementById('sticky-completion-panel');
+  if (!stickyPanel) return;
+  const stickyReviewed = document.getElementById('sticky-reviewed');
+  const stickyTotal    = document.getElementById('sticky-total');
+  const stickyBar      = document.getElementById('sticky-prog-bar');
+  const stickyPctLbl   = document.getElementById('sticky-pct-label');
+  const stickyBtn      = document.getElementById('sticky-complete-btn');
+  if (stickyReviewed) stickyReviewed.textContent = data.reviewed;
+  if (stickyTotal)    stickyTotal.textContent    = data.total;
+  if (stickyBar)      stickyBar.style.width      = pct + '%';
+  if (stickyPctLbl)   stickyPctLbl.textContent   = pct + '%';
+  if (stickyBtn) {
+    const allDone = data.all_reviewed && data.total > 0;
+    stickyBtn.disabled = !allDone;
+    if (allDone) {
+      stickyBtn.style.background = 'linear-gradient(135deg,#1d4ed8,#2563eb)';
+      stickyBtn.style.color      = 'white';
+      stickyBtn.style.cursor     = 'pointer';
+      stickyBtn.style.boxShadow  = '0 4px 16px rgba(37,99,235,.35)';
+    } else {
+      stickyBtn.style.background = '#e2e8f0';
+      stickyBtn.style.color      = '#94a3b8';
+      stickyBtn.style.cursor     = 'not-allowed';
+      stickyBtn.style.boxShadow  = 'none';
+    }
+    // Also update modal counts
+    const mc = document.getElementById('modal-accepted-count');
+    const mcc = document.getElementById('modal-concern-count');
+    if (mc)  mc.textContent  = data.accepted;
+    if (mcc) mcc.textContent = data.concerns;
+  }
 }
+
+// ── Area 3: Completion modal ──────────────────────────────────────────────
+let _finalSigState = null;
+
+function initFinalSigCanvas() {
+  const canvas = document.getElementById('final-sig-canvas');
+  if (!canvas || _finalSigState) return;
+  const ctx = canvas.getContext('2d');
+  // Scale canvas to actual display size
+  const rect = canvas.getBoundingClientRect();
+  canvas.width  = rect.width  || 600;
+  canvas.height = rect.height || 120;
+  _finalSigState = { ctx, drawing: false, hasContent: false };
+  function gp(e) {
+    const r = canvas.getBoundingClientRect();
+    const s = e.touches ? e.touches[0] : e;
+    return { x: (s.clientX - r.left) * (canvas.width / r.width),
+             y: (s.clientY - r.top)  * (canvas.height / r.height) };
+  }
+  canvas.addEventListener('pointerdown', e => {
+    _finalSigState.drawing = true; _finalSigState.hasContent = true;
+    const p = gp(e); ctx.beginPath(); ctx.moveTo(p.x, p.y);
+    canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener('pointermove', e => {
+    if (!_finalSigState.drawing) return;
+    const p = gp(e);
+    ctx.lineTo(p.x, p.y);
+    ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.stroke();
+  });
+  canvas.addEventListener('pointerup',    () => { _finalSigState.drawing = false; });
+  canvas.addEventListener('pointerleave', () => { _finalSigState.drawing = false; });
+}
+
+function clearFinalSig() {
+  if (!_finalSigState) return;
+  const canvas = document.getElementById('final-sig-canvas');
+  if (canvas) _finalSigState.ctx.clearRect(0, 0, canvas.width, canvas.height);
+  _finalSigState.hasContent = false;
+}
+
+function openCompletionModal() {
+  const overlay = document.getElementById('completion-modal-overlay');
+  if (!overlay) return;
+  // Set current timestamp
+  const ts = document.getElementById('modal-review-time');
+  if (ts) ts.textContent = 'Submitted: ' + new Date().toLocaleString();
+  overlay.style.display = 'block';
+  setTimeout(initFinalSigCanvas, 50);
+}
+
+function closeCompletionModal() {
+  const overlay = document.getElementById('completion-modal-overlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+async function submitFinalReview() {
+  const canvas = document.getElementById('final-sig-canvas');
+  if (!_finalSigState || !canvas) { alert('Signature pad not ready.'); return; }
+
+  const pd = _finalSigState.ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+  const hasDrawing = Array.from(pd).some((v, i) => i % 4 === 3 && v > 0);
+  if (!hasDrawing) { alert('Please draw your signature before submitting.'); return; }
+
+  const signature = canvas.toDataURL('image/png');
+
+  // Submit via the form POST (use a hidden form to keep CSRF flow)
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = window.location.pathname;
+
+  const addField = (name, val) => {
+    const inp = document.createElement('input');
+    inp.type  = 'hidden';
+    inp.name  = name;
+    inp.value = val;
+    form.appendChild(inp);
+  };
+  addField('action', 'client_sign');
+  addField('client_signature', signature);
+  addField('csrf_token', window.CSRF_TOKEN || '');
+
+  document.body.appendChild(form);
+  closeCompletionModal();
+  form.submit();
+}
+
+// Close modal on overlay click
+document.addEventListener('DOMContentLoaded', () => {
+  const overlay = document.getElementById('completion-modal-overlay');
+  if (overlay) {
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay) closeCompletionModal();
+    });
+  }
+});
 </script>
 </body>
 </html>
