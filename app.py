@@ -6180,22 +6180,51 @@ def api_client_review_item(token, item_no, ci):
                             'author_name': _author_name},
         )
         # Notify invite sender and same-company can_view_itp members about concern
-        if s.client_action in ('rejected', 'request_changes', 'request_clarification') and invite and invite.invited_by_id:
-            _notified_ids = set()
+        if s.client_action in ('rejected', 'request_changes', 'request_clarification') and invite:
+            _cn_proj_id   = record.wtg.project_id if record.wtg else None
+            _cn_notif_url = ''
             try:
-                _sender = invite.invited_by_user
-                if _sender and _sender.id not in _notified_ids:
-                    _notif = Notification(
-                        user_id  = _sender.id,
-                        title    = f'Client raised a concern on ITP',
-                        message  = f'{_author_name} ({_author_company}) raised a {s.client_action.replace("_"," ")} on {wtg_name} item {item_no}.{ci + 1}: {_note_text[:120]}',
-                        link     = f'/itp/{record.id}',
-                        category = 'itp_concern',
-                    )
-                    db.session.add(_notif)
-                    _notified_ids.add(_sender.id)
+                if record.project_itp_template_id and record.wtg:
+                    _cn_notif_url = url_for('project_itp_detail',
+                                            pid=record.wtg.project_id,
+                                            tid=record.project_itp_template_id,
+                                            eid=record.wtg.id)
             except Exception:
                 pass
+            _cn_title   = f'Client concern raised — {wtg_name} item {item_no}.{int(ci)+1}'
+            _cn_message = (f'{_author_name} ({_author_company}) raised a '
+                           f'{s.client_action.replace("_"," ")} on {wtg_name} '
+                           f'item {item_no}.{int(ci)+1}: {_note_text[:160]}')
+            _notified_ids = set()
+            # Notify invite sender
+            if invite.invited_by_id:
+                db.session.add(Notification(
+                    user_id = invite.invited_by_id,
+                    type    = 'itp_concern',
+                    title   = _cn_title,
+                    message = _cn_message,
+                    url     = _cn_notif_url,
+                ))
+                _notified_ids.add(invite.invited_by_id)
+            # Notify same-company teammates with can_view_itp
+            if _cn_proj_id:
+                _sender_co = (invite.invited_by_company or '').strip().lower()
+                for _vm in ProjectMemberAC.query.filter_by(project_id=_cn_proj_id, is_active=True).all():
+                    if not (_vm.has_permission('can_view_itp') and _vm.user_id):
+                        continue
+                    if _vm.user_id in _notified_ids:
+                        continue
+                    _vm_user = User.query.get(_vm.user_id)
+                    if _vm_user and _sender_co and (_vm_user.company or '').strip().lower() != _sender_co:
+                        continue
+                    db.session.add(Notification(
+                        user_id = _vm.user_id,
+                        type    = 'itp_concern',
+                        title   = _cn_title,
+                        message = _cn_message,
+                        url     = _cn_notif_url,
+                    ))
+                    _notified_ids.add(_vm.user_id)
 
     db.session.commit()
 
@@ -7160,15 +7189,44 @@ def api_itp_criterion_notes_get(record_id, item_no, ci):
     record     = ITPRecord.query.get_or_404(record_id)
     project_id = _itp_project_id(record)
 
-    # Access: internal user with project view, OR client via invite token
+    # Access: internal authenticated project member, OR verified client via invite token
     token = request.args.get('token') or request.headers.get('X-Invite-Token')
     if token:
+        # Client-token path — full validation required
         invite = ITPClientInvite.query.filter_by(token=token).first()
         if not invite or invite.record_id != record_id:
-            return jsonify({'error': 'Invalid token.'}), 403
+            return jsonify({'error': 'Invalid or mismatched invite token.'}), 403
         if invite.is_revoked:
-            return jsonify({'error': 'Invite revoked.'}), 403
-    elif not (current_user.is_authenticated and user_can_view_project_ac(project_id)):
+            return jsonify({'error': 'This invite has been revoked.'}), 403
+        if invite.expires_at and _ensure_utc(invite.expires_at) < datetime.now(timezone.utc):
+            return jsonify({'error': 'This invite has expired.'}), 403
+        if invite.status == 'superseded':
+            return jsonify({'error': 'This invite has been superseded by another reviewer.'}), 403
+        # Require authenticated user whose identity matches the invite
+        if not current_user.is_authenticated:
+            return jsonify({'error': 'Authentication required.'}), 401
+        _matches = (
+            (invite.user_id and invite.user_id == current_user.id) or
+            (invite.email and invite.email.strip().lower() == (current_user.email or '').strip().lower())
+        )
+        if not _matches:
+            return jsonify({'error': 'Authenticated user does not match this invite.'}), 403
+        # Project membership + permission
+        _get_member = _find_invite_member(invite, project_id)
+        if not _get_member or _get_member.invite_status != 'accepted':
+            return jsonify({'error': 'Accepted project membership required.'}), 403
+        if not user_can(project_id, 'can_review_itp'):
+            return jsonify({'error': 'You do not have permission to review ITP items.'}), 403
+    elif current_user.is_authenticated and user_can_view_project_ac(project_id):
+        # Internal path — active membership via ProjectMemberAC
+        _i_member = ProjectMemberAC.query.filter_by(
+            project_id=project_id, user_id=current_user.id, is_active=True
+        ).first()
+        if not _i_member:
+            return jsonify({'error': 'Active project membership required.'}), 403
+        if not user_can(project_id, 'can_view_itp'):
+            return jsonify({'error': 'You do not have permission to view ITPs.'}), 403
+    else:
         return jsonify({'error': 'Authentication required.'}), 401
 
     notes = (ITPCriterionNote.query
@@ -7228,6 +7286,16 @@ def api_itp_criterion_notes_post(record_id, item_no, ci):
         author_user_id = current_user.id
         cycle_id       = None
 
+    # Validate parent_note_id belongs to this criterion
+    if parent_note_id:
+        _parent_note = ITPCriterionNote.query.get(int(parent_note_id))
+        if not _parent_note:
+            return jsonify({'error': 'Parent note not found.'}), 400
+        if (_parent_note.itp_record_id != record_id or
+                str(_parent_note.item_no) != str(item_no) or
+                _parent_note.criterion_index != ci):
+            return jsonify({'error': 'Parent note does not belong to this criterion.'}), 400
+
     # Find item_status for item_status_id linkage
     s = ITPItemStatus.query.filter_by(
         itp_record_id=record_id, item_no=str(item_no), criterion_index=ci
@@ -7263,37 +7331,70 @@ def api_itp_criterion_notes_post(record_id, item_no, ci):
 
     # Notification: internal reply → notify the client who wrote the parent note
     if parent_note_id and party == 'internal':
-        try:
-            parent_note = ITPCriterionNote.query.get(int(parent_note_id))
-            if parent_note and parent_note.party == 'client' and parent_note.author_user_id:
-                _notif = Notification(
-                    user_id  = parent_note.author_user_id,
-                    title    = f'Reply to your concern on ITP',
-                    message  = (f'{author_name} replied to your note on {wtg_name} '
-                                f'item {item_no}.{ci + 1}: {note_text[:120]}'),
-                    link     = f'/itp/{record_id}',
-                    category = 'itp_note_reply',
-                )
-                db.session.add(_notif)
-        except Exception:
-            pass
-
-    # Notification: client raises concern → notify invite sender
-    if party == 'client' and related_action in ('rejected', 'request_changes', 'request_clarification'):
-        if invite and invite.invited_by_id:
+        _reply_parent = ITPCriterionNote.query.get(int(parent_note_id))
+        if _reply_parent and _reply_parent.party == 'client' and _reply_parent.author_user_id:
+            _reply_url = ''
             try:
-                _notif = Notification(
-                    user_id  = invite.invited_by_id,
-                    title    = f'Client raised a concern on ITP',
-                    message  = (f'{author_name} ({author_company}) raised a '
-                                f'{(related_action or "concern").replace("_"," ")} on {wtg_name} '
-                                f'item {item_no}.{ci + 1}: {note_text[:120]}'),
-                    link     = f'/itp/{record_id}',
-                    category = 'itp_concern',
-                )
-                db.session.add(_notif)
+                if record.project_itp_template_id and record.wtg:
+                    _reply_url = url_for('project_itp_detail',
+                                         pid=record.wtg.project_id,
+                                         tid=record.project_itp_template_id,
+                                         eid=record.wtg.id)
             except Exception:
                 pass
+            db.session.add(Notification(
+                user_id = _reply_parent.author_user_id,
+                type    = 'itp_note_reply',
+                title   = f'Reply to your concern on ITP',
+                message = (f'{author_name} replied to your note on {wtg_name} '
+                           f'item {item_no}.{ci + 1}: {note_text[:120]}'),
+                url     = _reply_url,
+            ))
+
+    # Notification: client raises concern → notify invite sender + same-company teammates
+    if party == 'client' and related_action in ('rejected', 'request_changes', 'request_clarification'):
+        if invite:
+            _concern_url = ''
+            try:
+                if record.project_itp_template_id and record.wtg:
+                    _concern_url = url_for('project_itp_detail',
+                                           pid=record.wtg.project_id,
+                                           tid=record.project_itp_template_id,
+                                           eid=record.wtg.id)
+            except Exception:
+                pass
+            _concern_title   = f'Client raised a concern — {wtg_name} item {item_no}.{int(ci)+1}'
+            _concern_message = (f'{author_name} ({author_company}) raised a '
+                                f'{(related_action or "concern").replace("_"," ")} on {wtg_name} '
+                                f'item {item_no}.{ci + 1}: {note_text[:120]}')
+            _cn_notified = set()
+            if invite.invited_by_id:
+                db.session.add(Notification(
+                    user_id = invite.invited_by_id,
+                    type    = 'itp_concern',
+                    title   = _concern_title,
+                    message = _concern_message,
+                    url     = _concern_url,
+                ))
+                _cn_notified.add(invite.invited_by_id)
+            if project_id:
+                _sender_co = (invite.invited_by_company or '').strip().lower()
+                for _vm in ProjectMemberAC.query.filter_by(project_id=project_id, is_active=True).all():
+                    if not (_vm.has_permission('can_view_itp') and _vm.user_id):
+                        continue
+                    if _vm.user_id in _cn_notified:
+                        continue
+                    _vm_user = User.query.get(_vm.user_id)
+                    if _vm_user and _sender_co and (_vm_user.company or '').strip().lower() != _sender_co:
+                        continue
+                    db.session.add(Notification(
+                        user_id = _vm.user_id,
+                        type    = 'itp_concern',
+                        title   = _concern_title,
+                        message = _concern_message,
+                        url     = _concern_url,
+                    ))
+                    _cn_notified.add(_vm.user_id)
 
     db.session.commit()
     return jsonify({'ok': True, 'note': _format_note(note)})
@@ -8391,6 +8492,7 @@ def audit_category_for_event(event_type):
         'itp_review_completed_with_concerns',
         'itp_competing_invitations_superseded', 'itp_review_outcome_notified',
         'itp_review_cycle_opened', 'itp_review_cycle_reopened',
+        'itp_criterion_note_added', 'itp_note_reply',
     }
     _SYSTEM = {
         'itp_unauthorized_access_attempt', 'area_created',

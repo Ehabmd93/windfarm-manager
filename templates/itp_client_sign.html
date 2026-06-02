@@ -758,9 +758,15 @@
 
                   <!-- Per-item approve signature pad (hidden by default) -->
                   <div id="accept-sig-box-{{ act_no }}-{{ ci }}" class="accept-sig-box">
-                    <p style="font-size:12px;font-weight:700;color:#166534;margin:0 0 8px;">
+                    <p style="font-size:12px;font-weight:700;color:#166534;margin:0 0 6px;">
                       <i class="fa-solid fa-pen-nib" style="margin-right:5px;"></i>Draw your signature to approve this item:
                     </p>
+                    <textarea id="accept-note-{{ act_no }}-{{ ci }}"
+                              placeholder="Optional note (e.g. Approved as per drawing Rev B)"
+                              style="width:100%;min-height:60px;border:1.5px solid #86efac;border-radius:8px;
+                                     padding:8px 10px;font-size:12px;color:#0f172a;background:white;
+                                     font-family:inherit;resize:vertical;margin-bottom:8px;
+                                     box-sizing:border-box;"></textarea>
                     <canvas id="accept-sig-canvas-{{ act_no }}-{{ ci }}"
                             class="accept-sig-canvas" width="600" height="100"></canvas>
                     <div style="display:flex;gap:8px;margin-top:10px;">
@@ -1089,6 +1095,8 @@ function cancelAccept(actNo, ci) {
   const box = document.getElementById(`accept-sig-box-${actNo}-${ci}`);
   if (box) box.classList.remove('open');
   clearItemSig(actNo, ci);
+  const noteTa = document.getElementById(`accept-note-${actNo}-${ci}`);
+  if (noteTa) noteTa.value = '';
 }
 
 async function confirmAccept(actNo, ci) {
@@ -1102,9 +1110,12 @@ async function confirmAccept(actNo, ci) {
   const hasDrawing = Array.from(pd).some((v, i) => i % 4 === 3 && v > 0);
   if (!hasDrawing) { alert('Please draw your signature before accepting.'); return; }
 
-  const signature = canvas.toDataURL('image/png');
-  const res = await callReview(actNo, ci, { action: 'accept', signature });
+  const signature  = canvas.toDataURL('image/png');
+  const noteTa     = document.getElementById(`accept-note-${actNo}-${ci}`);
+  const note_text  = noteTa ? noteTa.value.trim() : '';
+  const res = await callReview(actNo, ci, { action: 'accept', signature, note_text });
   if (res.ok) {
+    if (noteTa) noteTa.value = '';
     setCritState(actNo, ci, 'accepted', '', signature);
     updateProgress(res);
     showToast('✓ Item accepted & saved', 'success');
@@ -1280,9 +1291,15 @@ function setCritState(actNo, ci, state, comment, signature) {
         </div>
 
         <div id="accept-sig-box-${actNo}-${ci}" class="accept-sig-box">
-          <p style="font-size:12px;font-weight:700;color:#166534;margin:0 0 8px;">
+          <p style="font-size:12px;font-weight:700;color:#166534;margin:0 0 6px;">
             <i class="fa-solid fa-pen-nib" style="margin-right:5px;"></i>Draw your signature to approve this item:
           </p>
+          <textarea id="accept-note-${actNo}-${ci}"
+                    placeholder="Optional note (e.g. Approved as per drawing Rev B)"
+                    style="width:100%;min-height:60px;border:1.5px solid #86efac;border-radius:8px;
+                           padding:8px 10px;font-size:12px;color:#0f172a;background:white;
+                           font-family:inherit;resize:vertical;margin-bottom:8px;
+                           box-sizing:border-box;"></textarea>
           <canvas id="accept-sig-canvas-${actNo}-${ci}" class="accept-sig-canvas" width="600" height="100"></canvas>
           <div style="display:flex;gap:8px;margin-top:10px;">
             <button onclick="clearItemSig('${actNo}', ${ci})"
