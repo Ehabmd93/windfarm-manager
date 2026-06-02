@@ -643,6 +643,45 @@ def _find_invite_member(invite, project_id):
     return None
 
 
+def _validate_itp_client_token(token, record_id, project_id):
+    """Shared validator for client-token access to ITP criterion notes.
+
+    Used by both GET and POST criterion-notes routes so the same nine checks
+    are enforced consistently.  Returns (invite, None) on success or
+    (None, flask_response_tuple) on any failure so callers can do:
+
+        invite, err = _validate_itp_client_token(token, record_id, project_id)
+        if err:
+            return err
+    """
+    if not token:
+        return None, (jsonify({'error': 'invite_token is required.'}), 400)
+    invite = ITPClientInvite.query.filter_by(token=token).first()
+    if not invite or invite.record_id != record_id:
+        return None, (jsonify({'error': 'Invalid or mismatched invite token.'}), 403)
+    if invite.is_revoked:
+        return None, (jsonify({'error': 'This invite has been revoked.'}), 403)
+    if invite.expires_at and _ensure_utc(invite.expires_at) < datetime.now(timezone.utc):
+        return None, (jsonify({'error': 'This invite has expired.'}), 403)
+    if invite.status == 'superseded':
+        return None, (jsonify({'error': 'This invite has been superseded by another reviewer.'}), 403)
+    if not current_user.is_authenticated:
+        return None, (jsonify({'error': 'Authentication required.'}), 401)
+    _matches = (
+        (invite.user_id  and invite.user_id  == current_user.id) or
+        (invite.email    and invite.email.strip().lower() ==
+         (current_user.email or '').strip().lower())
+    )
+    if not _matches:
+        return None, (jsonify({'error': 'Authenticated user does not match this invite.'}), 403)
+    _member = _find_invite_member(invite, project_id)
+    if not _member or _member.invite_status != 'accepted':
+        return None, (jsonify({'error': 'Accepted project membership required.'}), 403)
+    if not user_can(project_id, 'can_review_itp'):
+        return None, (jsonify({'error': 'You do not have permission to review ITP items.'}), 403)
+    return invite, None
+
+
 def _compute_itp_status(record):
     """Derive the canonical ITP record status from actual data.
 
@@ -6206,25 +6245,29 @@ def api_client_review_item(token, item_no, ci):
                     url     = _cn_notif_url,
                 ))
                 _notified_ids.add(invite.invited_by_id)
-            # Notify same-company teammates with can_view_itp
+            # Only fan out to teammates when the sender's company is known.
+            # A blank invited_by_company must never broaden to all project members.
             if _cn_proj_id:
                 _sender_co = (invite.invited_by_company or '').strip().lower()
-                for _vm in ProjectMemberAC.query.filter_by(project_id=_cn_proj_id, is_active=True).all():
-                    if not (_vm.has_permission('can_view_itp') and _vm.user_id):
-                        continue
-                    if _vm.user_id in _notified_ids:
-                        continue
-                    _vm_user = User.query.get(_vm.user_id)
-                    if _vm_user and _sender_co and (_vm_user.company or '').strip().lower() != _sender_co:
-                        continue
-                    db.session.add(Notification(
-                        user_id = _vm.user_id,
-                        type    = 'itp_concern',
-                        title   = _cn_title,
-                        message = _cn_message,
-                        url     = _cn_notif_url,
-                    ))
-                    _notified_ids.add(_vm.user_id)
+                if _sender_co:
+                    for _vm in ProjectMemberAC.query.filter_by(project_id=_cn_proj_id, is_active=True).all():
+                        if not (_vm.has_permission('can_view_itp') and _vm.user_id):
+                            continue
+                        if _vm.user_id in _notified_ids:
+                            continue
+                        _vm_user = User.query.get(_vm.user_id)
+                        if not _vm_user:
+                            continue
+                        if (_vm_user.company or '').strip().lower() != _sender_co:
+                            continue
+                        db.session.add(Notification(
+                            user_id = _vm.user_id,
+                            type    = 'itp_concern',
+                            title   = _cn_title,
+                            message = _cn_message,
+                            url     = _cn_notif_url,
+                        ))
+                        _notified_ids.add(_vm.user_id)
 
     db.session.commit()
 
@@ -7192,31 +7235,10 @@ def api_itp_criterion_notes_get(record_id, item_no, ci):
     # Access: internal authenticated project member, OR verified client via invite token
     token = request.args.get('token') or request.headers.get('X-Invite-Token')
     if token:
-        # Client-token path — full validation required
-        invite = ITPClientInvite.query.filter_by(token=token).first()
-        if not invite or invite.record_id != record_id:
-            return jsonify({'error': 'Invalid or mismatched invite token.'}), 403
-        if invite.is_revoked:
-            return jsonify({'error': 'This invite has been revoked.'}), 403
-        if invite.expires_at and _ensure_utc(invite.expires_at) < datetime.now(timezone.utc):
-            return jsonify({'error': 'This invite has expired.'}), 403
-        if invite.status == 'superseded':
-            return jsonify({'error': 'This invite has been superseded by another reviewer.'}), 403
-        # Require authenticated user whose identity matches the invite
-        if not current_user.is_authenticated:
-            return jsonify({'error': 'Authentication required.'}), 401
-        _matches = (
-            (invite.user_id and invite.user_id == current_user.id) or
-            (invite.email and invite.email.strip().lower() == (current_user.email or '').strip().lower())
-        )
-        if not _matches:
-            return jsonify({'error': 'Authenticated user does not match this invite.'}), 403
-        # Project membership + permission
-        _get_member = _find_invite_member(invite, project_id)
-        if not _get_member or _get_member.invite_status != 'accepted':
-            return jsonify({'error': 'Accepted project membership required.'}), 403
-        if not user_can(project_id, 'can_review_itp'):
-            return jsonify({'error': 'You do not have permission to review ITP items.'}), 403
+        # Client-token path — delegate to shared validator
+        _invite, _err = _validate_itp_client_token(token, record_id, project_id)
+        if _err:
+            return _err
     elif current_user.is_authenticated and user_can_view_project_ac(project_id):
         # Internal path — active membership via ProjectMemberAC
         _i_member = ProjectMemberAC.query.filter_by(
@@ -7259,21 +7281,15 @@ def api_itp_criterion_notes_post(record_id, item_no, ci):
 
     invite = None
     if party == 'client':
-        if not invite_token:
-            return jsonify({'error': 'invite_token required for client notes.'}), 400
-        invite = ITPClientInvite.query.filter_by(token=invite_token).first()
-        if not invite or invite.record_id != record_id:
-            return jsonify({'error': 'Invalid invite token.'}), 403
-        if invite.is_revoked:
-            return jsonify({'error': 'Invite revoked.'}), 403
-        _inv_member = _find_invite_member(invite, project_id)
-        if not _inv_member or _inv_member.invite_status != 'accepted':
-            return jsonify({'error': 'Project membership required.'}), 403
-        if not user_can(project_id, 'can_review_itp'):
-            return jsonify({'error': 'No permission to review ITP items.'}), 403
-        author_name    = current_user.name if current_user.is_authenticated else invite.name
-        author_company = (current_user.company if current_user.is_authenticated else invite.company) or ''
-        author_user_id = current_user.id if current_user.is_authenticated else None
+        # Full nine-check validation via shared helper (expiry, superseded,
+        # authenticated user, identity match, accepted membership, can_review_itp)
+        invite, _err = _validate_itp_client_token(invite_token, record_id, project_id)
+        if _err:
+            return _err
+        # current_user is guaranteed authenticated and matched by the helper
+        author_name    = current_user.name
+        author_company = (current_user.company or '')
+        author_user_id = current_user.id
         cycle_id       = invite.review_cycle_id if invite.review_cycle_id else None
     else:
         # Internal note
@@ -7377,24 +7393,29 @@ def api_itp_criterion_notes_post(record_id, item_no, ci):
                     url     = _concern_url,
                 ))
                 _cn_notified.add(invite.invited_by_id)
+            # Only fan out to teammates when the sender's company is known.
+            # A blank invited_by_company must never broaden to all project members.
             if project_id:
                 _sender_co = (invite.invited_by_company or '').strip().lower()
-                for _vm in ProjectMemberAC.query.filter_by(project_id=project_id, is_active=True).all():
-                    if not (_vm.has_permission('can_view_itp') and _vm.user_id):
-                        continue
-                    if _vm.user_id in _cn_notified:
-                        continue
-                    _vm_user = User.query.get(_vm.user_id)
-                    if _vm_user and _sender_co and (_vm_user.company or '').strip().lower() != _sender_co:
-                        continue
-                    db.session.add(Notification(
-                        user_id = _vm.user_id,
-                        type    = 'itp_concern',
-                        title   = _concern_title,
-                        message = _concern_message,
-                        url     = _concern_url,
-                    ))
-                    _cn_notified.add(_vm.user_id)
+                if _sender_co:
+                    for _vm in ProjectMemberAC.query.filter_by(project_id=project_id, is_active=True).all():
+                        if not (_vm.has_permission('can_view_itp') and _vm.user_id):
+                            continue
+                        if _vm.user_id in _cn_notified:
+                            continue
+                        _vm_user = User.query.get(_vm.user_id)
+                        if not _vm_user:
+                            continue
+                        if (_vm_user.company or '').strip().lower() != _sender_co:
+                            continue
+                        db.session.add(Notification(
+                            user_id = _vm.user_id,
+                            type    = 'itp_concern',
+                            title   = _concern_title,
+                            message = _concern_message,
+                            url     = _concern_url,
+                        ))
+                        _cn_notified.add(_vm.user_id)
 
     db.session.commit()
     return jsonify({'ok': True, 'note': _format_note(note)})
