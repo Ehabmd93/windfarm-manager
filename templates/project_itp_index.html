@@ -396,28 +396,40 @@
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;">
         {% for el in t_elements %}
         {% set rec = by_key.get((el.id, t.id)) %}
+        {% set cs  = computed_status_map.get((el.id, t.id), 'draft') if rec else 'none' %}
+        {% set pg  = progress_map.get((el.id, t.id), {'signed':0,'total':0,'pct':0}) if rec else none %}
         <a href="{{ url_for('project_itp_detail', pid=proj.id, tid=t.id, eid=el.id) }}"
            class="itp-card block">
           <div class="bg-white border rounded-xl p-3
-            {% if rec and rec.status == 'complete' %}border-green-300 bg-green-50
-            {% elif rec and rec.status == 'client_invited' %}border-blue-300 bg-blue-50
-            {% elif rec and rec.status == 'engineer_signed' %}border-violet-300 bg-violet-50
-            {% elif rec %}border-yellow-200 bg-yellow-50
+            {% if cs == 'complete' %}border-green-300 bg-green-50
+            {% elif cs == 'under_review' %}border-blue-300 bg-blue-50
+            {% elif cs == 'action_required' %}border-orange-300 bg-orange-50
+            {% elif cs == 'in_progress' %}border-yellow-200 bg-yellow-50
+            {% elif rec %}border-slate-200 bg-slate-50
             {% else %}border-slate-200{% endif %}">
             <p style="font-weight:800;color:#1e293b;font-size:12px;margin-bottom:4px;">{{ el.name }}</p>
             {% if rec %}
-              {% if rec.status == 'complete' %}
+              {% if cs == 'complete' %}
                 <span class="status-pill bg-green-100 text-green-700">Complete</span>
-              {% elif rec.status == 'client_invited' %}
-                <span class="status-pill bg-blue-100 text-blue-700">Client Invited</span>
-              {% elif rec.status == 'engineer_signed' %}
-                <span class="status-pill bg-violet-100 text-violet-700">Eng. Signed</span>
-              {% else %}
+              {% elif cs == 'under_review' %}
+                <span class="status-pill bg-blue-100 text-blue-700">Under Review</span>
+              {% elif cs == 'action_required' %}
+                <span class="status-pill bg-orange-100 text-orange-700">Action Required</span>
+              {% elif cs == 'in_progress' %}
                 <span class="status-pill bg-yellow-100 text-yellow-700">In Progress</span>
+              {% else %}
+                <span class="status-pill bg-slate-100 text-slate-500">Not Started</span>
               {% endif %}
+              {% if pg %}
               <p style="font-size:10px;color:#94a3b8;margin-top:3px;">
-                {{ rec.items_complete_count }}/{{ t.items|length }} items
+                {{ pg.signed }}/{{ pg.total }} signed · {{ pg.pct }}%
               </p>
+              <div style="height:3px;background:#e2e8f0;border-radius:99px;margin-top:3px;overflow:hidden;">
+                <div style="height:100%;width:{{ pg.pct }}%;border-radius:99px;
+                  background:{% if cs == 'complete' %}#16a34a{% elif cs == 'under_review' %}#2563eb{% elif cs == 'action_required' %}#ea580c{% else %}#f59e0b{% endif %};
+                  transition:width .3s;"></div>
+              </div>
+              {% endif %}
             {% else %}
               <span class="status-pill bg-slate-100 text-slate-500">Not Started</span>
             {% endif %}

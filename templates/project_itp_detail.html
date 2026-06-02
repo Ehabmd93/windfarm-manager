@@ -846,7 +846,12 @@ async function saveCriterion(itemNo, ci) {
     method: 'POST', headers: {'Content-Type':'application/json', 'X-CSRF-Token': CSRF_TOKEN},
     body: JSON.stringify({signature: sig, comments, datetime: dtVal})
   });
-  if (!resp.ok) { alert('Error saving signature.'); return; }
+  if (!resp.ok) {
+    let errMsg = 'Error saving signature.';
+    try { const errBody = await resp.json(); if (errBody.error) errMsg = errBody.error; } catch(e) {}
+    alert(errMsg);
+    return;
+  }
   const data = await resp.json();
 
   const img = document.getElementById(`sig-img-${itemNo}-${ci}`);

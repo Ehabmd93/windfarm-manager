@@ -643,6 +643,66 @@ def _find_invite_member(invite, project_id):
     return None
 
 
+def _compute_itp_status(record):
+    """Derive the canonical ITP record status from actual data.
+
+    This is the single source of truth for ITP status. Call this instead
+    of reading record.status directly for locking or display decisions.
+
+    States returned:
+      'draft'           — no criteria have been engineer-signed yet
+      'in_progress'     — at least one criterion signed; work ongoing
+      'under_review'    — an active review cycle has pending/viewed client invites
+      'action_required' — a review completed with ≥1 unresolved client concern
+      'complete'        — every criterion signed + client-approved, no concerns,
+                          no pending cycle
+    """
+    statuses = record.item_statuses
+    if not statuses:
+        return 'draft'
+
+    signed   = [s for s in statuses if s.lucas_complete]
+    unsigned = [s for s in statuses if not s.lucas_complete]
+
+    if not signed:
+        return 'draft'
+
+    # Check for an active review cycle with pending/viewed invites
+    active_cycle = (
+        ITPReviewCycle.query
+        .filter_by(record_id=record.id)
+        .filter(ITPReviewCycle.status.notin_(['completed', 'superseded']))
+        .order_by(ITPReviewCycle.cycle_number.desc())
+        .first()
+    )
+    if active_cycle:
+        pending_invites = ITPClientInvite.query.filter(
+            ITPClientInvite.review_cycle_id == active_cycle.id,
+            ITPClientInvite.is_revoked == False,
+            ITPClientInvite.status.in_(['pending_review', 'viewed', 'pending',
+                                        'pending_project_access']),
+        ).count()
+        if pending_invites > 0:
+            return 'under_review'
+
+    # Check for unresolved concerns on any signed criterion
+    concerns = [s for s in signed if s.client_reviewed and not s.client_accepted]
+    if concerns:
+        return 'action_required'
+
+    # COMPLETE: every criterion signed + every signed criterion client-approved
+    # + no unsigned criteria remain + no open cycle awaiting action
+    if not unsigned:
+        all_approved = all(
+            s.client_reviewed and s.client_accepted
+            for s in signed
+        )
+        if all_approved:
+            return 'complete'
+
+    return 'in_progress'
+
+
 def _get_or_create_active_cycle(record, opened_by_id=None):
     """Return the latest non-superseded, non-completed ITPReviewCycle for record.
 
@@ -4997,23 +5057,37 @@ def project_itp_index(pid):
     # Permission flag for archive/delete UI
     ac_can_delete = user_can(pid, 'can_delete_itp')
 
-    # Per-template record-count stats for the archive modal
+    # Build computed-status map: (wtg_id, tid) → computed status string
+    # Also build progress map: (wtg_id, tid) → {signed, total, pct}
+    computed_status_map = {}
+    progress_map        = {}
+    for r in records_all:
+        key = (r.wtg_id, r.project_itp_template_id)
+        computed_status_map[key] = _compute_itp_status(r)
+        signed_count = sum(1 for s in r.item_statuses if s.lucas_complete)
+        total_count  = len(r.item_statuses)
+        pct = round(signed_count / total_count * 100) if total_count else 0
+        progress_map[key] = {
+            'signed': signed_count,
+            'total':  total_count,
+            'pct':    pct,
+        }
+
+    # Per-template record-count stats for the archive modal (use computed status)
     _STATUS_LABELS = {
-        'draft':            'Not Started',
-        'in_progress':      'In Progress',
-        'engineer_signed':  'Engineer Signed',
-        'client_invited':   'Client Invited',
-        'client_signed':    'Client Signed',
-        'complete':         'Complete',
-        'client_commented': 'Client Commented',
-        'reopened':         'Reopened',
+        'draft':          'Not Started',
+        'in_progress':    'In Progress',
+        'under_review':   'Under Review',
+        'action_required':'Action Required',
+        'complete':       'Complete',
     }
     template_stats = {}
     for t in templates:
         t_recs = [r for r in records_all if r.project_itp_template_id == t.id]
         counts = {}
         for r in t_recs:
-            counts[r.status] = counts.get(r.status, 0) + 1
+            cs = computed_status_map.get((r.wtg_id, r.project_itp_template_id), 'in_progress')
+            counts[cs] = counts.get(cs, 0) + 1
         template_stats[t.id] = {
             'total':    len(t_recs),
             'counts':   counts,
@@ -5025,7 +5099,9 @@ def project_itp_index(pid):
                            elements=elements, groups=groups, work_packages=work_packages,
                            ac_can_delete=ac_can_delete,
                            template_stats=template_stats,
-                           status_labels=_STATUS_LABELS)
+                           status_labels=_STATUS_LABELS,
+                           computed_status_map=computed_status_map,
+                           progress_map=progress_map)
 
 
 @app.route('/projects/<int:pid>/itp/create', methods=['GET', 'POST'])
@@ -5219,8 +5295,8 @@ def api_project_itp_save_meta(pid, tid, eid):
     proj   = Project.query.get_or_404(pid)
     record = ITPRecord.query.filter_by(wtg_id=eid).filter(
         ITPRecord.project_itp_template_id == tid).first_or_404()
-    if record.status == 'complete':
-        return jsonify({'error': 'This ITP is complete and locked. Reopen it before editing.'}), 400
+    if _compute_itp_status(record) == 'complete':
+        return jsonify({'error': 'This ITP is fully complete and locked. Reopen it before editing.'}), 400
     data = request.get_json(silent=True) or {}
     record.lot_number       = (data.get('lot_number') or '').strip()
     record.engineer_name    = (data.get('engineer_name') or current_user.name).strip()
@@ -5256,7 +5332,7 @@ def api_project_itp_add_invite(pid, tid, eid):
     WTG.query.filter_by(id=eid, project_id=pid).first_or_404()
     record = ITPRecord.query.filter_by(wtg_id=eid).filter(
         ITPRecord.project_itp_template_id == tid).first_or_404()
-    if record.status == 'complete':
+    if _compute_itp_status(record) == 'complete':
         return jsonify({'error': 'This ITP is complete and locked. Reopen it before adding invites.'}), 400
 
     data         = request.get_json(silent=True) or {}
@@ -5384,17 +5460,47 @@ def api_project_itp_add_invite(pid, tid, eid):
         record, opened_by_id=current_user.id
     )
 
-    # ── Snapshot lucas_complete criterion IDs into the cycle ─────────────────
-    _signed_ids = [s.id for s in record.item_statuses if s.lucas_complete]
-    if _active_cycle.assigned_criterion_ids is None and _signed_ids:
-        _active_cycle.assigned_ids = _signed_ids
+    # ── Determine criteria eligible for this cycle ───────────────────────────
+    # Eligible = engineer-signed AND NOT already client-approved AND NOT already
+    # snapshotted in another active (non-completed) cycle.
+    _already_approved_ids = {
+        s.id for s in record.item_statuses
+        if s.lucas_complete and s.client_reviewed and s.client_accepted
+    }
+    # Collect IDs already assigned to any OTHER open/awaiting cycle
+    _other_active_cycles = (
+        ITPReviewCycle.query
+        .filter(ITPReviewCycle.record_id == record.id,
+                ITPReviewCycle.id != _active_cycle.id,
+                ITPReviewCycle.status.notin_(['completed', 'superseded']))
+        .all()
+    )
+    _in_other_cycle_ids = set()
+    for _oac in _other_active_cycles:
+        if _oac.assigned_criterion_ids:
+            try:
+                _in_other_cycle_ids.update(json.loads(_oac.assigned_criterion_ids))
+            except (ValueError, TypeError):
+                pass
 
-    # ── Block if no new criteria exist since last cycle ───────────────────────
-    if not _signed_ids:
+    _eligible_statuses = [
+        s for s in record.item_statuses
+        if s.lucas_complete
+        and s.id not in _already_approved_ids
+        and s.id not in _in_other_cycle_ids
+    ]
+    _eligible_ids = [s.id for s in _eligible_statuses]
+
+    # ── Block if no new reviewable criteria exist ─────────────────────────────
+    if not _eligible_ids:
         return jsonify({
-            'error': 'No engineer-signed criteria found. At least one criterion must be signed before inviting a client.',
+            'error': 'No new signed items are available for review. All signed criteria have already been approved or are under review in another active cycle.',
             'no_new_criteria': True,
         }), 400
+
+    # ── Snapshot eligible criterion IDs into the cycle (once, idempotent) ────
+    if _active_cycle.assigned_criterion_ids is None:
+        _active_cycle.assigned_criterion_ids = json.dumps(_eligible_ids)
 
     # ── Duplicate assignment prevention ─────────────────────────────────────
     ACTIVE_STATUSES = {'pending', 'pending_project_access', 'pending_review', 'viewed', 'signed'}
@@ -5468,13 +5574,33 @@ def api_project_itp_add_invite(pid, tid, eid):
             _tmpl = ProjectITPTemplate.query.get(record.project_itp_template_id)
             if _tmpl:
                 itp_type_label = _tmpl.name
-        proj_name_notif = wtg.project.name if wtg and wtg.project else 'Project'
+        # Build item-numbers label from cycle snapshot
+        _item_nos_label = ''
+        if _active_cycle and _active_cycle.assigned_criterion_ids:
+            try:
+                _snap_ids = set(json.loads(_active_cycle.assigned_criterion_ids))
+                _snap_statuses = [s for s in record.item_statuses if s.id in _snap_ids]
+                _nos = sorted(
+                    {f'{s.item_no}.{s.criterion_index + 1}' for s in _snap_statuses},
+                    key=lambda x: [int(p) if p.isdigit() else p for p in x.split('.')]
+                )
+                if _nos:
+                    _item_nos_label = f' Items: {", ".join(_nos)}.'
+            except (ValueError, TypeError):
+                pass
+        _actor_label = current_user.name or 'A team member'
+        if current_user.company:
+            _actor_label = f'{_actor_label} ({current_user.company})'
+        _client_label = name
+        if company:
+            _client_label = f'{_client_label} ({company})'
         notif = Notification(
             user_id=member.user_id,
             type='itp_invited',
-            title=f'ITP signature requested — {wtg.name if wtg else ""}',
-            message=(f'You have been invited to review and sign '
-                     f'{itp_type_label} for {proj_name_notif}.'),
+            title=f'ITP review requested — {wtg.name if wtg else ""}',
+            message=(f'{_actor_label} invited {_client_label} to review and sign '
+                     f'{itp_type_label} for {wtg.name if wtg else "the element"}.'
+                     f'{_item_nos_label}'),
             url=notif_url,
         )
         db.session.add(notif)
@@ -5878,8 +6004,8 @@ def itp_detail(wtg_id, itp_type):
 
         # ── Save lot/location metadata ────────────────────────────────────
         if action == 'save_meta':
-            if record.status == 'complete':
-                flash('This ITP is complete and locked. Reopen it before editing.', 'danger')
+            if _compute_itp_status(record) == 'complete':
+                flash('This ITP is fully complete and locked. Reopen it before editing.', 'danger')
                 return redirect(url_for('itp_detail', wtg_id=wtg_id, itp_type=itp_type))
             record.lot_number = request.form.get('lot_number', '').strip()
             record.location   = request.form.get('location', '').strip()
@@ -5936,9 +6062,10 @@ def api_client_review_item(token, item_no, ci):
         # Legacy fallback — shared record.client_token
         record = ITPRecord.query.filter_by(client_token=token).first_or_404()
 
-    # Allow review in any active state (ITP is open for the life of the project)
-    if record.status not in ('client_invited', 'client_reviewing', 'in_progress'):
-        return jsonify({'error': 'This ITP is not in a reviewable state.'}), 400
+    # Block review only when the ITP is fully complete — partial-cycle completion
+    # must not prevent the client reviewing items in an active invitation.
+    if _compute_itp_status(record) == 'complete':
+        return jsonify({'error': 'This ITP has been fully completed and is now locked.'}), 400
 
     # Require authenticated user with can_review_itp permission
     if not current_user.is_authenticated:
@@ -6448,7 +6575,9 @@ def itp_client_sign(token):
                 _sign_now = datetime.now(timezone.utc)
                 record.client_signature = sig
                 record.client_signed_at = _sign_now
-                record.status           = 'client_commented' if concerns else 'complete'
+                # Derive status from actual data — completing a review CYCLE does
+                # NOT lock the whole ITP record (it may still have unsigned criteria).
+                record.status           = _compute_itp_status(record)
 
                 # Mark the invite as signed and lock in signer identity
                 _signer_name    = (current_user.name
@@ -6527,116 +6656,112 @@ def itp_client_sign(token):
                 db.session.commit()
 
                 # ── Area 7: Notify invite sender of outcome ──────────────────
-                _outcome_summary = (
-                    f'completed the review with {len(concerns)} concern(s).'
-                    if concerns else 'approved all assigned items.'
-                )
-                # Notify the person who sent the invite
+                # Build item-number labels from cycle snapshot
+                _outcome_item_nos = ''
+                if _cycle and _cycle.assigned_criterion_ids:
+                    try:
+                        _snap_ids = set(json.loads(_cycle.assigned_criterion_ids))
+                        _snap_s   = [s for s in record.item_statuses if s.id in _snap_ids]
+                        _nos_out  = sorted(
+                            {f'{s.item_no}.{s.criterion_index + 1}' for s in _snap_s},
+                            key=lambda x: [int(p) if p.isdigit() else p for p in x.split('.')]
+                        )
+                        if _nos_out:
+                            _outcome_item_nos = f' Items: {", ".join(_nos_out)}.'
+                    except (ValueError, TypeError):
+                        pass
+
+                _signer_label = _signer_name
+                if _signer_company:
+                    _signer_label = f'{_signer_name} ({_signer_company})'
+                _itp_display  = defn.get('name', record.itp_type) if defn else record.itp_type
+                _wtg_display  = wtg.name if wtg else ''
+
+                if concerns:
+                    _outcome_summary = (
+                        f'{_signer_label} completed the review of {_itp_display} for '
+                        f'{_wtg_display} with {len(concerns)} concern(s).{_outcome_item_nos}'
+                    )
+                    _outcome_title = f'ITP concerns raised — {_wtg_display}'
+                else:
+                    _outcome_summary = (
+                        f'{_signer_label} approved {_itp_display} for '
+                        f'{_wtg_display}.{_outcome_item_nos}'
+                    )
+                    _outcome_title = f'ITP approved — {_wtg_display}'
+
+                # Build ITP detail URL (used for all outcome notifications)
+                _itp_detail_url = ''
+                try:
+                    if record.project_itp_template_id and wtg:
+                        _itp_detail_url = url_for('project_itp_detail',
+                            pid=wtg.project_id,
+                            tid=record.project_itp_template_id,
+                            eid=wtg.id)
+                except Exception:
+                    pass
+
+                # Track already-notified user IDs to prevent duplicates
+                _notified_uids = set()
+
+                # Notify the person who sent the invite (do not self-notify)
                 if invite and invite.invited_by_id:
                     _sender = User.query.get(invite.invited_by_id)
-                    if _sender:
-                        _itp_detail_url = ''
-                        try:
-                            if record.project_itp_template_id and wtg:
-                                _itp_detail_url = url_for('project_itp_detail',
-                                    pid=wtg.project_id,
-                                    tid=record.project_itp_template_id,
-                                    eid=wtg.id)
-                        except Exception:
-                            pass
+                    if _sender and (not current_user.is_authenticated
+                                    or _sender.id != current_user.id):
                         db.session.add(Notification(
                             user_id = _sender.id,
                             type    = 'itp_review_outcome',
-                            title   = f'ITP review completed — {wtg.name if wtg else ""}',
-                            message = (f'{_signer_name} ({_signer_company}) {_outcome_summary}'),
+                            title   = _outcome_title,
+                            message = _outcome_summary,
                             url     = _itp_detail_url,
                         ))
+                        _notified_uids.add(_sender.id)
 
-                # Notify project members with can_view_itp
+                # Notify other same-company project members with can_view_itp
                 _proj_id_for_notif = _itp_project_id(record)
+                _sender_company    = (invite.invited_by_company or '').strip().lower() if invite else ''
                 if _proj_id_for_notif:
                     _view_members = ProjectMemberAC.query.filter_by(
                         project_id=_proj_id_for_notif, is_active=True
                     ).all()
                     for _vm in _view_members:
-                        if _vm.has_permission('can_view_itp') and _vm.user_id:
-                            # Don't double-notify the sender
-                            if invite and _vm.user_id == invite.invited_by_id:
+                        if not (_vm.has_permission('can_view_itp') and _vm.user_id):
+                            continue
+                        if _vm.user_id in _notified_uids:
+                            continue
+                        # Only notify same company as sender (scoped, not global)
+                        _vm_user = User.query.get(_vm.user_id)
+                        if _vm_user and _sender_company:
+                            _vm_company = (_vm_user.company or '').strip().lower()
+                            if _vm_company != _sender_company:
                                 continue
-                            _itp_url = ''
-                            try:
-                                if record.project_itp_template_id and wtg:
-                                    _itp_url = url_for('project_itp_detail',
-                                        pid=_proj_id_for_notif,
-                                        tid=record.project_itp_template_id,
-                                        eid=wtg.id)
-                            except Exception:
-                                pass
-                            db.session.add(Notification(
+                        db.session.add(Notification(
                                 user_id = _vm.user_id,
                                 type    = 'itp_review_outcome',
-                                title   = f'ITP review outcome — {wtg.name if wtg else ""}',
-                                message = (f'{_signer_name} ({_signer_company}) {_outcome_summary}'),
-                                url     = _itp_url,
+                                title   = _outcome_title,
+                                message = _outcome_summary,
+                                url     = _itp_detail_url,
                             ))
+                        _notified_uids.add(_vm.user_id)
                 log_audit('itp_review_outcome_notified',
                           project_id=_proj_id_for_notif,
                           detail={'record_id': record.id, 'signer': _signer_name,
-                                  'outcome': _outcome_summary})
+                                  'outcome': _outcome_summary,
+                                  'notified_count': len(_notified_uids)})
                 db.session.commit()
 
-                # ── In-app notifications ────────────────────────────────────
-                notify_users = User.query.filter(
-                    User.role.in_(['engineer', 'supervisor', 'manager', 'admin'])
-                ).all()
-                itp_name  = defn.get('name', record.itp_type)
-                notif_url = ''
-                if record.project_itp_template_id and wtg:
-                    try:
-                        notif_url = url_for('project_itp_detail',
-                                            pid=wtg.project_id,
-                                            tid=record.project_itp_template_id,
-                                            eid=wtg.id)
-                    except Exception:
-                        pass
-                else:
-                    try:
-                        notif_url = url_for('itp_detail',
-                                            wtg_id=wtg.id,
-                                            itp_type=record.itp_type)
-                    except Exception:
-                        pass
-
-                if concerns:
-                    notif_type  = 'warning'
-                    notif_title = f'Client Raised {len(concerns)} Concern(s) — {wtg.name}'
-                    notif_msg   = (f'{record.client_name} ({record.client_company}) reviewed '
-                                   f'"{itp_name}" for {wtg.name} · {proj_name} and raised '
-                                   f'{len(concerns)} concern(s). Review their comments.')
-                else:
-                    notif_type  = 'itp_signed'
-                    notif_title = f'ITP Approved by Client — {wtg.name}'
-                    notif_msg   = (f'{record.client_name} ({record.client_company}) approved all '
-                                   f'items in "{itp_name}" for {wtg.name} · {proj_name}')
-
-                for u in notify_users:
-                    db.session.add(Notification(
-                        user_id = u.id,
-                        type    = notif_type,
-                        title   = notif_title,
-                        message = notif_msg,
-                        url     = notif_url,
-                    ))
-                db.session.commit()
-
-                # ── Email notification to internal team ─────────────────────
+                # ── Email notification to invite sender ─────────────────────
+                _itp_name_for_email = defn.get('name', record.itp_type) if defn else record.itp_type
+                _sender_for_email   = User.query.get(invite.invited_by_id) if invite and invite.invited_by_id else None
+                _notify_for_email   = [_sender_for_email] if _sender_for_email else []
                 email_client_signed(
                     record       = record,
-                    wtg_name     = wtg.name,
-                    client_name  = record.client_name or 'Client',
-                    notify_users = notify_users,
+                    wtg_name     = wtg.name if wtg else '',
+                    client_name  = _signer_name or record.client_name or 'Client',
+                    notify_users = _notify_for_email,
                     proj_name    = proj_name,
-                    itp_name     = itp_name,
+                    itp_name     = _itp_name_for_email,
                 )
 
                 if concerns:
@@ -6749,12 +6874,17 @@ def api_itp_sign_criterion(record_id, item_no, crit_idx):
 
     if not user_can(project_id, 'can_sign_itp'):
         return jsonify({'error': 'You do not have permission to sign ITP criteria.'}), 403
-    if record.status == 'complete':
-        return jsonify({'error': 'This ITP is complete and locked. Ask the project admin to reopen it.'}), 400
+    if _compute_itp_status(record) == 'complete':
+        return jsonify({'error': 'This ITP is fully complete and locked. Reopen it before making changes.'}), 400
 
     s = ITPItemStatus.query.filter_by(
         itp_record_id=record_id, item_no=item_no, criterion_index=crit_idx
     ).first_or_404()
+
+    # Block re-signing a criterion that has already been client-approved (read-only historical record)
+    if s.client_reviewed and s.client_accepted:
+        return jsonify({'error': 'This criterion has been approved by the client and is now a read-only record. Use the reopen workflow to make changes.'}), 400
+
     data     = request.get_json() or {}
     sig      = data.get('signature', '').strip()
     comments = data.get('comments', '').strip()
@@ -6774,9 +6904,8 @@ def api_itp_sign_criterion(record_id, item_no, crit_idx):
     except (ValueError, TypeError):
         s.lucas_signed_at = datetime.now()
 
-    # Update ITP record status from draft → in_progress, and auto-fill engineer name
-    if record.status == 'draft':
-        record.status = 'in_progress'
+    # Recompute and persist the canonical ITP status so the home page stays accurate
+    record.status = _compute_itp_status(record)
     if not record.engineer_name:
         record.engineer_name = current_user.name
     if not record.engineer_company:
@@ -6813,12 +6942,15 @@ def api_itp_unsign_criterion(record_id, item_no, crit_idx):
 
     if not user_can(project_id, 'can_sign_itp'):
         return jsonify({'error': 'You do not have permission to modify ITP signatures.'}), 403
-    if record.status == 'complete':
-        return jsonify({'error': 'This ITP is complete and locked. Ask the project admin to reopen it.'}), 400
+    if _compute_itp_status(record) == 'complete':
+        return jsonify({'error': 'This ITP is fully complete and locked. Reopen it before making changes.'}), 400
 
     s = ITPItemStatus.query.filter_by(
         itp_record_id=record_id, item_no=item_no, criterion_index=crit_idx
     ).first_or_404()
+    # Cannot unsign a client-approved criterion without a reopen workflow
+    if s.client_reviewed and s.client_accepted:
+        return jsonify({'error': 'This criterion has been approved by the client. Use the reopen workflow to make changes.'}), 400
     s.lucas_complete   = False
     s.lucas_signature  = None
     s.lucas_signed_at  = None
@@ -6853,8 +6985,8 @@ def api_itp_item_upload(record_id, item_no, crit_idx):
     project_id = _itp_project_id(record)
     if not user_can(project_id, 'can_attach_itp_docs'):
         return jsonify({'error': 'You do not have permission to attach documents to ITPs.'}), 403
-    if record.status == 'complete':
-        return jsonify({'error': 'This ITP is complete and locked. Reopen it before uploading.'}), 400
+    if _compute_itp_status(record) == 'complete':
+        return jsonify({'error': 'This ITP is fully complete and locked. Reopen it before uploading.'}), 400
     s = ITPItemStatus.query.filter_by(
         itp_record_id=record_id, item_no=item_no, criterion_index=crit_idx
     ).first_or_404()
@@ -6905,8 +7037,8 @@ def api_itp_item_doc_delete(doc_id):
     # Delete is restricted to project owners and users with the can_delete_itp permission
     if record and not (user_is_project_owner(project_id) or user_can(project_id, 'can_delete_itp')):
         return jsonify({'error': 'Only project owners or administrators can delete ITP evidence.'}), 403
-    if record and record.status == 'complete':
-        return jsonify({'error': 'This ITP is complete and locked. Reopen it before deleting documents.'}), 400
+    if record and _compute_itp_status(record) == 'complete':
+        return jsonify({'error': 'This ITP is fully complete and locked. Reopen it before deleting documents.'}), 400
     original_name = doc.original_name
     try:
         fpath = os.path.join(get_itp_docs_dir(), doc.filename)

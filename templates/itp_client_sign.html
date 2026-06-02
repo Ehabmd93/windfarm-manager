@@ -502,6 +502,20 @@
         <p style="font-size:11px;color:#4ade80;margin:0;">Your review progress is saved automatically</p>
       </div>
     </div>
+
+    <!-- Cycle-completed banner (shown after cycle is approved, engineer can continue) -->
+    {% if invite and invite.status == 'signed' and invite.signed_at %}
+    <div style="margin-top:12px;display:flex;align-items:center;gap:10px;padding:12px 16px;
+                background:#eff6ff;border-radius:10px;border:1.5px solid #93c5fd;">
+      <i class="fa-solid fa-rotate" style="color:#2563eb;font-size:16px;"></i>
+      <div>
+        <p style="font-size:13px;font-weight:700;color:#1d4ed8;margin:0;">Review cycle completed</p>
+        <p style="font-size:11px;color:#3b82f6;margin:0;">
+          Your review has been recorded. The inspection team can now continue recording the remaining ITP items and open a new review cycle when ready.
+        </p>
+      </div>
+    </div>
+    {% endif %}
   </div>
 
   <!-- ─── CHECKLIST ────────────────────────────────────────────────────── -->
