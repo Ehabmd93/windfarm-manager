@@ -6167,6 +6167,12 @@ def api_client_review_item(token, item_no, ci):
         s.client_comments  = ''
         s.client_signature = sig
         s.client_signed_at = datetime.now(timezone.utc)
+        # Store per-criterion reviewer identity (Phase 2A)
+        s.client_signed_by_id      = current_user.id if current_user.is_authenticated else None
+        s.client_signed_by_name    = current_user.name if current_user.is_authenticated else None
+        s.client_signed_by_company = (current_user.company or '') if current_user.is_authenticated else ''
+        s.client_invite_id         = invite.id if invite else None
+        s.client_review_cycle_id   = invite.review_cycle_id if invite and invite.review_cycle_id else None
 
     # --- Actions requiring a comment (no signature) ---
     elif action in ('concern', 'rejected', 'request_changes', 'request_clarification'):
@@ -6184,6 +6190,12 @@ def api_client_review_item(token, item_no, ci):
         s.client_action    = action if action != 'concern' else 'request_changes'
         s.client_comments  = comment
         s.client_signed_at = datetime.now(timezone.utc)
+        # Store per-criterion reviewer identity (Phase 2A)
+        s.client_signed_by_id      = current_user.id if current_user.is_authenticated else None
+        s.client_signed_by_name    = current_user.name if current_user.is_authenticated else None
+        s.client_signed_by_company = (current_user.company or '') if current_user.is_authenticated else ''
+        s.client_invite_id         = invite.id if invite else None
+        s.client_review_cycle_id   = invite.review_cycle_id if invite and invite.review_cycle_id else None
 
     elif action == 'reset':
         s.client_reviewed  = False
@@ -6192,6 +6204,12 @@ def api_client_review_item(token, item_no, ci):
         s.client_comments  = ''
         s.client_signed_at = None
         s.client_signature = None
+        # Clear per-criterion reviewer identity (Phase 2A)
+        s.client_signed_by_id      = None
+        s.client_signed_by_name    = None
+        s.client_signed_by_company = None
+        s.client_invite_id         = None
+        s.client_review_cycle_id   = None
 
     else:
         return jsonify({'error': f'Unknown action: {action}'}), 400
@@ -8420,6 +8438,14 @@ def run_migrations():
                 ("itp_records", "reopen_reason",    "TEXT"),
                 # ── itp_client_invites (Area 4 — review cycles) ──────────────
                 ("itp_client_invites", "review_cycle_id", "INTEGER"),
+                # ── Phase 2A — per-criterion client reviewer identity ─────────
+                ("itp_item_statuses", "client_signed_by_id",      "INTEGER"),
+                ("itp_item_statuses", "client_signed_by_name",    "VARCHAR(100)"),
+                ("itp_item_statuses", "client_signed_by_company", "VARCHAR(100)"),
+                ("itp_item_statuses", "client_invite_id",         "INTEGER"),
+                ("itp_item_statuses", "client_review_cycle_id",   "INTEGER"),
+                # ── Phase 2B — item scope tracking ───────────────────────────
+                ("itp_client_invites", "item_scope_json", "TEXT"),
             ]
 
             with db.engine.connect() as conn:

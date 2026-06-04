@@ -720,6 +720,14 @@ class ITPItemStatus(db.Model):
     # Legacy value: not_accepted (display as "Not Accepted (Legacy)" in read-only views)
     client_action    = db.Column(db.String(50), nullable=True)
 
+    # Per-criterion client reviewer identity (Phase 2A)
+    # Populated when a client reviews this criterion; cleared on reset.
+    client_signed_by_id      = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    client_signed_by_name    = db.Column(db.String(100), nullable=True)
+    client_signed_by_company = db.Column(db.String(100), nullable=True)
+    client_invite_id         = db.Column(db.Integer, db.ForeignKey('itp_client_invites.id'), nullable=True)
+    client_review_cycle_id   = db.Column(db.Integer, db.ForeignKey('itp_review_cycles.id'), nullable=True)
+
     # Attached documents / photos per criterion
     documents        = db.relationship('ITPItemDocument', backref='item_status',
                                        cascade='all, delete-orphan', lazy='select')
@@ -1088,6 +1096,19 @@ class ITPClientInvite(db.Model):
 
     # Review cycle linkage (Area 4 — ITP review cycles)
     review_cycle_id = db.Column(db.Integer, db.ForeignKey('itp_review_cycles.id'), nullable=True)
+
+    # Phase 2B — scoped criteria for this invite (JSON list of ITPItemStatus IDs)
+    item_scope_json = db.Column(db.Text, nullable=True)
+
+    @property
+    def item_scope_ids(self):
+        """List of ITPItemStatus IDs scoped to this invite (empty = all signed criteria)."""
+        try:    return json.loads(self.item_scope_json or '[]')
+        except: return []
+
+    @item_scope_ids.setter
+    def item_scope_ids(self, val):
+        self.item_scope_json = json.dumps(val)
 
     record             = db.relationship('ITPRecord', backref='client_invites', lazy=True)
     user               = db.relationship('User', foreign_keys=[user_id], lazy=True)

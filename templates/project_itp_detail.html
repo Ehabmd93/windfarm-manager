@@ -357,13 +357,15 @@
           <!-- Client review status -->
           {% if s and s.client_reviewed %}
           {% set _ca = s.client_action if s.client_action else ('approved' if s.client_accepted else 'request_changes') %}
-          {# Resolve client signer identity — prefer invite signer, fall back to record-level #}
-          {% set _cl_name = latest_signed_invite.signer_name if latest_signed_invite and latest_signed_invite.signer_name
+          {# Resolve client signer identity — Phase 2A: per-criterion fields take precedence #}
+          {% set _cl_name = s.client_signed_by_name if s.client_signed_by_name
+                            else (latest_signed_invite.signer_name if latest_signed_invite and latest_signed_invite.signer_name
                             else (latest_signed_invite.name if latest_signed_invite
-                            else (record.client_name or 'Client')) %}
-          {% set _cl_company = latest_signed_invite.signer_company if latest_signed_invite and latest_signed_invite.signer_company
+                            else (record.client_name or 'Client'))) %}
+          {% set _cl_company = s.client_signed_by_company if s.client_signed_by_company
+                               else (latest_signed_invite.signer_company if latest_signed_invite and latest_signed_invite.signer_company
                                else (latest_signed_invite.company if latest_signed_invite
-                               else (record.client_company or '')) %}
+                               else (record.client_company or ''))) %}
           <div class="sig-preview" style="margin-top:4px;">
             <div class="sig-preview-inner"
                  style="{% if s.client_accepted %}background:#eff6ff;border-color:#93c5fd;
