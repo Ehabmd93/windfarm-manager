@@ -780,6 +780,57 @@ def _get_or_create_active_cycle(record, opened_by_id=None):
     return cycle
 
 
+def get_reviewable_criteria_for_invitee(record, email):
+    """Return ITPItemStatus rows eligible for a *new* invite to this email address.
+
+    Includes criteria that are:
+    - Engineer-signed (lucas_complete=True)
+    - Not globally client-approved (client_reviewed=True AND client_accepted=True)
+    - Not already in scope of an active (pending_*/viewed) non-revoked invite for this email
+
+    For legacy invites with no item_scope_json the invite is treated as covering
+    ALL signed criteria at that time, so nothing new is returned unless criteria
+    were signed after that invite was created.
+
+    When email is blank, returns all signed non-approved criteria (no per-person filter).
+    """
+    email_norm = (email or '').strip().lower()
+
+    # Criteria already globally approved — done, exclude from new scope
+    already_approved_ids = {
+        s.id for s in record.item_statuses
+        if s.lucas_complete and s.client_reviewed and s.client_accepted
+    }
+
+    # IDs already covered by any active pending/viewed invite for this email
+    in_active_invite_ids = set()
+    if email_norm:
+        _pending = {'pending', 'pending_project_access', 'pending_review', 'viewed'}
+        for inv in record.client_invites:
+            if (inv.email or '').strip().lower() != email_norm:
+                continue
+            if inv.is_revoked:
+                continue
+            if inv.status not in _pending:
+                continue
+            scope = inv.item_scope_ids   # [] for legacy invites with no item_scope_json
+            if scope:
+                in_active_invite_ids.update(scope)
+            else:
+                # Legacy invite — treat as covering all signed criteria so the
+                # invitee doesn't receive a redundant second invite
+                in_active_invite_ids.update(
+                    s.id for s in record.item_statuses if s.lucas_complete
+                )
+
+    return [
+        s for s in record.item_statuses
+        if s.lucas_complete
+        and s.id not in already_approved_ids
+        and s.id not in in_active_invite_ids
+    ]
+
+
 # ─── Auth ────────────────────────────────────────────────────────────────────
 @app.route('/login', methods=['GET','POST'])
 def login():
@@ -5550,39 +5601,47 @@ def api_project_itp_add_invite(pid, tid, eid):
     if _active_cycle.assigned_criterion_ids is None:
         _active_cycle.assigned_criterion_ids = json.dumps(_eligible_ids)
 
-    # ── Duplicate assignment prevention ─────────────────────────────────────
-    ACTIVE_STATUSES = {'pending', 'pending_project_access', 'pending_review', 'viewed', 'signed'}
-    if email:
-        dup_query = ITPClientInvite.query.filter(
+    # ── Per-invitee scope + duplicate check (Phase 2B) ───────────────────────
+    # Compute which criteria are new for this specific invitee: signed, not yet
+    # globally approved, and not already covered by one of their active invites.
+    # Intersect with cycle-eligible IDs so cycle boundaries are respected.
+    _eligible_id_set    = set(_eligible_ids)
+    _invitee_scope_rows = [
+        s for s in get_reviewable_criteria_for_invitee(record, email)
+        if s.id in _eligible_id_set
+    ]
+    _invite_scope_ids = [s.id for s in _invitee_scope_rows]
+
+    if email and not _invite_scope_ids:
+        # All currently-eligible criteria are already covered by an active invite
+        # for this person, or have already been approved — nothing new to send.
+        _dup = ITPClientInvite.query.filter(
             ITPClientInvite.record_id == record.id,
             ITPClientInvite.is_revoked == False,
-            ITPClientInvite.status.in_(ACTIVE_STATUSES),
+            ITPClientInvite.status.in_(
+                {'pending', 'pending_project_access', 'pending_review', 'viewed'}),
             db.func.lower(ITPClientInvite.email) == email,
-        )
-        # Also check same cycle to prevent per-cycle duplicate
-        if _active_cycle and _active_cycle.id:
-            dup = dup_query.filter(
-                ITPClientInvite.review_cycle_id == _active_cycle.id
-            ).first()
-            if not dup:
-                # Fall back: check any active invite for same email on same record
-                dup = dup_query.first()
-        else:
-            dup = dup_query.first()
-        if dup:
-            log_audit('itp_duplicate_invitation_blocked',
-                      project_id=record.wtg.project_id if record.wtg else None,
-                      actor=current_user,
-                      detail={'record_id': record.id, 'email': email,
-                              'existing_invite_id': dup.id,
-                              'cycle_number': _active_cycle.cycle_number if _active_cycle else None})
-            return jsonify({
-                'error': f'{name} has already been invited to review these ITP items.',
-                'duplicate': True,
-                'existing_invite_id': dup.id,
-                'invited_by': dup.invited_by_name or 'a team member',
-                'cycle_number': _active_cycle.cycle_number if _active_cycle else 1,
-            }), 409
+        ).first()
+        log_audit('itp_duplicate_invitation_blocked',
+                  project_id=record.wtg.project_id if record.wtg else None,
+                  actor=current_user,
+                  detail={'record_id': record.id, 'email': email,
+                          'existing_invite_id': _dup.id if _dup else None,
+                          'cycle_number': _active_cycle.cycle_number if _active_cycle else None,
+                          'reason': 'no_new_scope'})
+        return jsonify({
+            'error': (
+                f'{name} is already invited to review all currently signed criteria — '
+                'no new items to send.'
+            ) if _dup else (
+                f'No new signed criteria are available for {name} to review right now.'
+            ),
+            'duplicate': True,
+            'already_covered': True,
+            'existing_invite_id': _dup.id if _dup else None,
+            'invited_by': (_dup.invited_by_name or 'a team member') if _dup else None,
+            'cycle_number': _active_cycle.cycle_number if _active_cycle else 1,
+        }), 409
 
     # ── Determine invite status based on member state ────────────────────────
     if member.invite_status == 'accepted':
@@ -5607,6 +5666,7 @@ def api_project_itp_add_invite(pid, tid, eid):
         invited_by_name      = current_user.name,
         invited_by_company   = (current_user.company or ''),
         review_cycle_id      = _active_cycle.id if _active_cycle else None,
+        item_scope_json      = json.dumps(_invite_scope_ids) if _invite_scope_ids else None,
     )
     db.session.add(invite)
     db.session.flush()   # get invite.id
@@ -5728,6 +5788,7 @@ def api_project_itp_add_invite(pid, tid, eid):
         'notif_sent':           notif_sent,
         'is_new_person_created': bool(is_new_person),
         'status':               invite_status_val,
+        'item_scope_count':     len(_invite_scope_ids),
     })
 
 
