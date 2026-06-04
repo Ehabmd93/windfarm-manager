@@ -6087,35 +6087,52 @@ def itp_detail(wtg_id, itp_type):
 
 @app.route('/api/itp/client/<token>/item/<item_no>/<int:ci>', methods=['POST'])
 def api_client_review_item(token, item_no, ci):
-    """Public API — client per-item review (5 actions + legacy accept/concern)."""
+    """Public API — client per-item review (accept / reject / request_changes /
+    request_clarification / reset).
+
+    Authorization hierarchy (checked in order):
+    1. ITPClientInvite token  → full nine-check validation via
+       _validate_itp_client_token (revoked, expired, superseded, authenticated,
+       identity match, accepted ProjectMemberAC, can_review_itp).
+    2. Legacy shared client_token → allowed only for non-project ITPs that
+       pre-date the per-invite system; strictly blocked for any project-scoped record.
+    """
     invite = ITPClientInvite.query.filter_by(token=token).first()
     if invite:
-        # Enforce revocation
-        if invite.is_revoked:
-            return jsonify({'error': 'This signing link has been revoked.'}), 403
-        # Enforce expiry — _ensure_utc guards against naive TIMESTAMP from PostgreSQL
-        if invite.expires_at and _ensure_utc(invite.expires_at) < datetime.now(timezone.utc):
-            return jsonify({'error': 'This signing link has expired.'}), 403
         record = invite.record
+        if not record:
+            return jsonify({'error': 'ITP record not found.'}), 404
+        project_id = _itp_project_id(record)
+        # Full nine-check validation: revoked, expired, superseded, authenticated,
+        # identity match, accepted ProjectMemberAC, can_review_itp.
+        _inv, _err = _validate_itp_client_token(token, record.id, project_id)
+        if _err:
+            return _err
+        # Block modifications when the review cycle is already closed.
+        if invite.review_cycle_id:
+            _cycle = ITPReviewCycle.query.get(invite.review_cycle_id)
+            if _cycle and _cycle.status in ('completed', 'superseded'):
+                return jsonify({'error': 'This review cycle has already been completed.'}), 400
+        # Block if the final review submission was already recorded for this invite.
+        if invite.status == 'signed':
+            return jsonify({'error': 'This review has already been submitted.'}), 400
     else:
-        # Legacy fallback — shared record.client_token
-        record = ITPRecord.query.filter_by(client_token=token).first_or_404()
+        # Legacy shared client_token path (pre-dates per-invite system).
+        record = ITPRecord.query.filter_by(client_token=token).first()
+        if not record:
+            return jsonify({'error': 'Invalid or expired token.'}), 403
+        # Project-scoped ITPs must always use per-invite tokens — reject legacy access.
+        if record.project_itp_template_id or (record.wtg and record.wtg.project_id):
+            return jsonify({'error': 'Project ITP records require a per-invite token. '
+                                     'Please use the link from your invitation email.'}), 403
+        # Legacy non-project ITP — still require authentication.
+        if not current_user.is_authenticated:
+            return jsonify({'error': 'Authentication required.'}), 401
+        project_id = None
 
-    # Block review only when the ITP is fully complete — partial-cycle completion
-    # must not prevent the client reviewing items in an active invitation.
+    # Block review when ITP is fully complete.
     if _compute_itp_status(record) == 'complete':
         return jsonify({'error': 'This ITP has been fully completed and is now locked.'}), 400
-
-    # Require authenticated user with can_review_itp permission
-    if not current_user.is_authenticated:
-        return jsonify({'error': 'Authentication required to review ITP items.'}), 401
-    _rev_proj_id = record.wtg.project_id if record and record.wtg else None
-    if _rev_proj_id and invite:
-        _rev_member = _find_invite_member(invite, _rev_proj_id)
-        if not _rev_member or _rev_member.invite_status != 'accepted':
-            return jsonify({'error': 'Project membership required to review ITP items.'}), 403
-        if not user_can(_rev_proj_id, 'can_review_itp'):
-            return jsonify({'error': 'You do not have permission to review ITP items.'}), 403
 
     s = ITPItemStatus.query.filter_by(
         itp_record_id   = record.id,
@@ -6176,11 +6193,10 @@ def api_client_review_item(token, item_no, ci):
 
     # Log the audit event
     wtg_name = record.wtg.name if record.wtg else f'ITP #{record.id}'
-    _rev_proj_id_log = record.wtg.project_id if record.wtg else None
     log_audit(
         'itp_item_client_reviewed',
-        project_id   = _rev_proj_id_log,
-        actor        = current_user if current_user.is_authenticated else None,
+        project_id   = project_id,
+        actor        = current_user,
         entity_type  = 'itp_item',
         entity_id    = s.id,
         entity_label = f'{wtg_name} · {s.item_no}.{s.criterion_index + 1}',
@@ -6191,15 +6207,15 @@ def api_client_review_item(token, item_no, ci):
     # Attach note: for concern actions the comment IS the note_text; for approve use optional note_text
     _note_text = (data.get('note_text') or data.get('comment') or '').strip()
     if _note_text and action != 'reset':
-        _author_name    = (current_user.name if current_user.is_authenticated else (invite.name if invite else 'Client'))
-        _author_company = (current_user.company if current_user.is_authenticated else (invite.company if invite else '')) or ''
+        _author_name    = current_user.name
+        _author_company = (current_user.company or '')
         _cycle_id       = invite.review_cycle_id if invite and invite.review_cycle_id else None
         _cn = ITPCriterionNote(
             itp_record_id   = record.id,
             item_status_id  = s.id,
             item_no         = str(item_no),
             criterion_index = ci,
-            author_user_id  = current_user.id if current_user.is_authenticated else None,
+            author_user_id  = current_user.id,
             author_name     = _author_name,
             author_company  = _author_company,
             party           = 'client',
@@ -6210,8 +6226,8 @@ def api_client_review_item(token, item_no, ci):
         db.session.add(_cn)
         log_audit(
             'itp_criterion_note_added',
-            project_id   = _rev_proj_id_log,
-            actor        = current_user if current_user.is_authenticated else None,
+            project_id   = project_id,
+            actor        = current_user,
             entity_type  = 'itp_criterion_note',
             entity_id    = None,
             entity_label = f'{wtg_name} · {item_no}.{ci + 1}',
