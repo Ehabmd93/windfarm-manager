@@ -438,6 +438,31 @@
   {# Per-invite scope (Phase 2B): list of ITPItemStatus IDs this invite covers.          #}
   {# Empty list = no scope filtering (legacy invite or no invite = all criteria visible). #}
   {% set invite_scope_set = invite.item_scope_ids if invite else [] %}
+
+  {# ── Scope-specific readiness (Phase 2B fix) ─────────────────────────────────────── #}
+  {# current_scope_ready_to_submit: all items in THIS INVITE'S SCOPE reviewed + accepted #}
+  {# Enables "Submit Current Review" — does NOT require entire ITP to be complete.       #}
+  {# For legacy/no-scope: equivalent to all signed criteria reviewed (pre-Phase-2 logic) #}
+  {% if invite_scope_set %}
+    {% set scs = namespace(reviewed=0, concerns=0) %}
+    {% for _s in record.item_statuses %}
+      {% if _s.id in invite_scope_set %}
+        {% if _s.client_reviewed %}
+          {% set scs.reviewed = scs.reviewed + 1 %}
+          {% if not _s.client_accepted %}{% set scs.concerns = scs.concerns + 1 %}{% endif %}
+        {% endif %}
+      {% endif %}
+    {% endfor %}
+    {% set scope_total   = invite_scope_set | length %}
+    {% set scope_pending = scope_total - scs.reviewed %}
+    {% set current_scope_ready_to_submit = (scope_total > 0 and scope_pending == 0 and scs.concerns == 0) %}
+  {% else %}
+    {# Legacy/no-scope: scope = all engineer-signed criteria #}
+    {% set scope_total   = ns.total_signed %}
+    {% set scope_pending = ns.pending %}
+    {% set current_scope_ready_to_submit = (ns.total_signed > 0 and ns.pending == 0 and ns.concerns == 0) %}
+  {% endif %}
+
   {% set init_pct = ((ns.reviewed / ns.total_signed * 100)|int) if ns.total_signed else 0 %}
   {% set init_offset = (157 * (1 - init_pct / 100))|round|int %}
 
@@ -1030,21 +1055,35 @@
               background:white;border-top:2px solid #e2e8f0;
               box-shadow:0 -4px 24px rgba(0,0,0,.10);padding:10px 16px;">
     <div style="max-width:760px;margin:0 auto;">
-      <!-- Status message row (hidden when ready) -->
+      <!-- Status message row (hidden when scope or final is ready) -->
       <div id="sticky-status-msg"
            style="margin-bottom:8px;font-size:11px;font-weight:600;color:#64748b;
-                  {% if ready_for_final %}display:none;{% endif %}">
-        {% if ns.total_signed < ns.total_criteria %}
-          <i class="fa-solid fa-hourglass-half" style="margin-right:4px;color:#3b82f6;"></i>
-          <span id="sticky-msg-text">{{ ns.total_criteria - ns.total_signed }} of {{ ns.total_criteria }} criteria still awaiting engineer sign-off. Review signed items now.</span>
-        {% elif ns.pending > 0 %}
-          <i class="fa-solid fa-list-check" style="margin-right:4px;color:#7c3aed;"></i>
-          <span id="sticky-msg-text">{{ ns.pending }} item{{ 's' if ns.pending != 1 else '' }} still pending your review — scroll up to review them.</span>
-        {% elif ns.concerns > 0 %}
-          <i class="fa-solid fa-triangle-exclamation" style="margin-right:4px;color:#d97706;"></i>
-          <span id="sticky-msg-text">{{ ns.concerns }} concern{{ 's' if ns.concerns != 1 else '' }} raised — the inspection team will respond before final acknowledgement is available.</span>
+                  {% if ready_for_final or current_scope_ready_to_submit %}display:none;{% endif %}">
+        {% if invite_scope_set %}
+          {# Scoped invite: show scope-specific pending count #}
+          {% if scope_pending > 0 %}
+            <i class="fa-solid fa-list-check" style="margin-right:4px;color:#7c3aed;"></i>
+            <span id="sticky-msg-text">{{ scope_pending }} item{{ 's' if scope_pending != 1 else '' }} in this invitation still need{{ 's' if scope_pending == 1 else '' }} your review.</span>
+          {% elif scs.concerns > 0 %}
+            <i class="fa-solid fa-triangle-exclamation" style="margin-right:4px;color:#d97706;"></i>
+            <span id="sticky-msg-text">{{ scs.concerns }} concern{{ 's' if scs.concerns != 1 else '' }} raised — the inspection team will respond before you can submit.</span>
+          {% else %}
+            <span id="sticky-msg-text"></span>
+          {% endif %}
         {% else %}
-          <span id="sticky-msg-text"></span>
+          {# Legacy / no-scope: global messages #}
+          {% if ns.total_signed < ns.total_criteria %}
+            <i class="fa-solid fa-hourglass-half" style="margin-right:4px;color:#3b82f6;"></i>
+            <span id="sticky-msg-text">{{ ns.total_criteria - ns.total_signed }} of {{ ns.total_criteria }} criteria still awaiting engineer sign-off. Review signed items now.</span>
+          {% elif ns.pending > 0 %}
+            <i class="fa-solid fa-list-check" style="margin-right:4px;color:#7c3aed;"></i>
+            <span id="sticky-msg-text">{{ ns.pending }} item{{ 's' if ns.pending != 1 else '' }} still pending your review — scroll up to review them.</span>
+          {% elif ns.concerns > 0 %}
+            <i class="fa-solid fa-triangle-exclamation" style="margin-right:4px;color:#d97706;"></i>
+            <span id="sticky-msg-text">{{ ns.concerns }} concern{{ 's' if ns.concerns != 1 else '' }} raised — the inspection team will respond before final acknowledgement is available.</span>
+          {% else %}
+            <span id="sticky-msg-text"></span>
+          {% endif %}
         {% endif %}
       </div>
       <!-- Progress bar + button row -->
@@ -1065,20 +1104,26 @@
                         background:linear-gradient(90deg,#2563eb,#7c3aed);width:{{ init_pct }}%;"></div>
           </div>
         </div>
-        <!-- CTA button — only active when ALL criteria signed + reviewed + accepted -->
+        <!-- CTA button — 3 states: Final Acknowledgement / Submit Current Review / disabled -->
+        {% set _btn_enabled = ready_for_final or current_scope_ready_to_submit %}
         <button id="sticky-complete-btn"
                 onclick="openCompletionModal()"
-                {% if not ready_for_final %}disabled{% endif %}
+                {% if not _btn_enabled %}disabled{% endif %}
                 style="flex-shrink:0;padding:12px 22px;border-radius:12px;font-size:13px;font-weight:700;
                        border:none;cursor:pointer;transition:all .15s;white-space:nowrap;
                        {% if ready_for_final %}
+                       background:linear-gradient(135deg,#166534,#16a34a);color:white;
+                       box-shadow:0 4px 16px rgba(22,163,74,.35);
+                       {% elif current_scope_ready_to_submit %}
                        background:linear-gradient(135deg,#1d4ed8,#2563eb);color:white;
                        box-shadow:0 4px 16px rgba(37,99,235,.35);
                        {% else %}
                        background:#e2e8f0;color:#94a3b8;cursor:not-allowed;
                        {% endif %}">
           <i class="fa-solid fa-pen-nib" style="margin-right:6px;"></i>
-          {% if ready_for_final %}Final Acknowledgement{% else %}Complete Review{% endif %}
+          {% if ready_for_final %}Final Acknowledgement
+          {% elif current_scope_ready_to_submit %}Submit Current Review
+          {% else %}Complete Review{% endif %}
         </button>
       </div>
     </div>
@@ -1100,11 +1145,14 @@
                     margin:0 auto 12px;">
           <i class="fa-solid fa-clipboard-check" style="font-size:24px;color:#2563eb;"></i>
         </div>
-        <h2 style="font-size:18px;font-weight:800;color:#0f172a;margin:0 0 6px;">
-          {% if ready_for_final %}Final Acknowledgement &amp; Approval{% else %}Confirm Review Submission{% endif %}
+        <h2 id="modal-title" style="font-size:18px;font-weight:800;color:#0f172a;margin:0 0 6px;">
+          {% if ready_for_final %}Final Acknowledgement &amp; Approval
+          {% elif current_scope_ready_to_submit %}Submit Current Review
+          {% else %}Confirm Review Submission{% endif %}
         </h2>
-        <p style="font-size:13px;color:#64748b;margin:0;">
+        <p id="modal-body-text" style="font-size:13px;color:#64748b;margin:0;">
           {% if ready_for_final %}All criteria have been signed and approved. Sign below to record your final acknowledgement.
+          {% elif current_scope_ready_to_submit %}You have reviewed all items included in this invitation. This will notify the inspection team. The ITP will remain open for future signed criteria.
           {% else %}Please review the summary below before submitting.{% endif %}
         </p>
       </div>
@@ -1218,7 +1266,10 @@ function toggleEvidenceIndex() {
 // ── Constants ──────────────────────────────────────────────────────────────
 const TOKEN          = '{{ token }}';
 const FINALIZED      = {{ 'true' if record and record.status in ('complete', 'client_commented') else 'false' }};
-const TOTAL_CRITERIA = {{ ns.total_criteria }};  // all criteria (signed + unsigned)
+const TOTAL_CRITERIA    = {{ ns.total_criteria }};  // all criteria (signed + unsigned)
+const INVITE_SCOPE_SIZE = {{ invite_scope_set | length if invite_scope_set else 0 }};
+let _currentReadyForFinal = {{ 'true' if ready_for_final else 'false' }};
+let _currentScopeReady    = {{ 'true' if current_scope_ready_to_submit else 'false' }};
 
 // ── Activity accordion ─────────────────────────────────────────────────────
 function toggleAct(id) {
@@ -1590,16 +1641,28 @@ function updateProgress(data) {
   if (stickyPctLbl)    stickyPctLbl.textContent    = pct + '%';
 
   // ready_for_final: all criteria signed + reviewed + accepted (no concerns)
+  // current_scope_ready: all items in THIS invite's scope reviewed + accepted
   const readyForFinal = !!data.ready_for_final;
+  const scopeReady    = !!data.current_scope_ready;
+  _currentReadyForFinal = readyForFinal;
+  _currentScopeReady    = scopeReady;
   if (stickyBtn) {
-    stickyBtn.disabled = !readyForFinal;
     if (readyForFinal) {
+      stickyBtn.disabled         = false;
+      stickyBtn.style.background = 'linear-gradient(135deg,#166534,#16a34a)';
+      stickyBtn.style.color      = 'white';
+      stickyBtn.style.cursor     = 'pointer';
+      stickyBtn.style.boxShadow  = '0 4px 16px rgba(22,163,74,.35)';
+      stickyBtn.innerHTML        = '<i class="fa-solid fa-pen-nib" style="margin-right:6px;"></i>Final Acknowledgement';
+    } else if (scopeReady) {
+      stickyBtn.disabled         = false;
       stickyBtn.style.background = 'linear-gradient(135deg,#1d4ed8,#2563eb)';
       stickyBtn.style.color      = 'white';
       stickyBtn.style.cursor     = 'pointer';
       stickyBtn.style.boxShadow  = '0 4px 16px rgba(37,99,235,.35)';
-      stickyBtn.innerHTML        = '<i class="fa-solid fa-pen-nib" style="margin-right:6px;"></i>Final Acknowledgement';
+      stickyBtn.innerHTML        = '<i class="fa-solid fa-pen-nib" style="margin-right:6px;"></i>Submit Current Review';
     } else {
+      stickyBtn.disabled         = true;
       stickyBtn.style.background = '#e2e8f0';
       stickyBtn.style.color      = '#94a3b8';
       stickyBtn.style.cursor     = 'not-allowed';
@@ -1609,19 +1672,30 @@ function updateProgress(data) {
   }
 
   // Update the status message
-  const totalCrit   = data.total_criteria || data.total;
-  const unsignedCnt = totalCrit - data.total;
+  const totalCrit    = data.total_criteria || data.total;
+  const unsignedCnt  = totalCrit - data.total;
+  const scopePendCnt = data.scope_pending !== undefined ? data.scope_pending : data.pending;
   if (stickyMsg && stickyMsgText) {
-    if (readyForFinal) {
+    if (readyForFinal || scopeReady) {
       stickyMsg.style.display = 'none';
     } else {
       stickyMsg.style.display = 'block';
-      if (unsignedCnt > 0) {
-        stickyMsgText.textContent = `${unsignedCnt} of ${totalCrit} criteria still awaiting engineer sign-off. Review signed items now.`;
-      } else if (data.pending > 0) {
-        stickyMsgText.textContent = `${data.pending} item${data.pending !== 1 ? 's' : ''} still pending your review — scroll up to review them.`;
-      } else if (data.concerns > 0) {
-        stickyMsgText.textContent = `${data.concerns} concern${data.concerns !== 1 ? 's' : ''} raised — the inspection team will respond before final acknowledgement is available.`;
+      if (INVITE_SCOPE_SIZE > 0) {
+        // Scoped invite: use scope-specific counts
+        if (scopePendCnt > 0) {
+          stickyMsgText.textContent = `${scopePendCnt} item${scopePendCnt !== 1 ? 's' : ''} in this invitation still need${scopePendCnt === 1 ? 's' : ''} your review.`;
+        } else if (data.concerns > 0) {
+          stickyMsgText.textContent = `${data.concerns} concern${data.concerns !== 1 ? 's' : ''} raised — the inspection team will respond before you can submit.`;
+        }
+      } else {
+        // Legacy / no-scope: global counts
+        if (unsignedCnt > 0) {
+          stickyMsgText.textContent = `${unsignedCnt} of ${totalCrit} criteria still awaiting engineer sign-off. Review signed items now.`;
+        } else if (data.pending > 0) {
+          stickyMsgText.textContent = `${data.pending} item${data.pending !== 1 ? 's' : ''} still pending your review — scroll up to review them.`;
+        } else if (data.concerns > 0) {
+          stickyMsgText.textContent = `${data.concerns} concern${data.concerns !== 1 ? 's' : ''} raised — the inspection team will respond before final acknowledgement is available.`;
+        }
       }
     }
   }
@@ -1717,6 +1791,23 @@ function clearFinalSig() {
 function openCompletionModal() {
   const overlay = document.getElementById('completion-modal-overlay');
   if (!overlay) return;
+  // Dynamically update modal title and body based on current submission type
+  const title    = document.getElementById('modal-title');
+  const bodyText = document.getElementById('modal-body-text');
+  if (title) {
+    title.innerHTML = _currentReadyForFinal
+      ? 'Final Acknowledgement &amp; Approval'
+      : (_currentScopeReady
+          ? 'Submit Current Review'
+          : 'Confirm Review Submission');
+  }
+  if (bodyText) {
+    bodyText.textContent = _currentReadyForFinal
+      ? 'All criteria have been signed and approved. Sign below to record your final acknowledgement.'
+      : (_currentScopeReady
+          ? 'You have reviewed all items included in this invitation. This will notify the inspection team. The ITP will remain open for future signed criteria.'
+          : 'Please review the summary below before submitting.');
+  }
   // Set current timestamp
   const ts = document.getElementById('modal-review-time');
   if (ts) ts.textContent = 'Submitted: ' + new Date().toLocaleString();
@@ -1753,6 +1844,7 @@ async function submitFinalReview() {
   };
   addField('action', 'client_sign');
   addField('client_signature', signature);
+  addField('submission_type', _currentReadyForFinal ? 'final_ack' : 'current_scope');
   addField('csrf_token', window.CSRF_TOKEN || '');
 
   document.body.appendChild(form);

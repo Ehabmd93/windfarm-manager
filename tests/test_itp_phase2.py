@@ -525,3 +525,174 @@ class TestItemScopeIdsProperty:
         from models import ITPClientInvite as IC
         fresh = db.session.get(IC, invite.id)
         assert fresh.item_scope_ids == []
+
+
+# ─── Phase 2C: Progressive review submission ────────────────────────────────
+
+SIG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+
+
+def _add_sign_perm(db, member):
+    """Add can_sign_client_itp permission to a ProjectMemberAC row."""
+    from models import ProjectMemberPermission
+    db.session.add(ProjectMemberPermission(
+        member_id      = member.id,
+        permission_key = "can_sign_client_itp",
+        value          = True,
+    ))
+    db.session.flush()
+
+
+class TestProgressiveReviewSubmission:
+    """Tests for the two-tier client submission flow:
+    - 'Submit Current Review' when only scoped criteria are all reviewed.
+    - 'Final Acknowledgement' only when the entire ITP is complete.
+    """
+
+    def test_scoped_invite_can_submit_when_scope_complete_but_itp_not(self, client, db):
+        """A scoped invite whose criteria are all reviewed+accepted can be submitted
+        even when other ITP criteria are still unsigned (whole ITP not complete).
+
+        Acceptance criterion 1: scoped invite with all scoped items reviewed but
+        whole ITP incomplete can submit current review.
+        """
+        from models import ITPRecord, ITPClientInvite
+
+        proj   = _make_project(db)
+        wtg    = _make_wtg(db, proj.id)
+        record = _make_itp_record(db, wtg)
+
+        # s1, s2 are in scope — both signed, reviewed, and accepted
+        s1 = _make_item_status(db, record, item_no="1", ci=0, signed=True,
+                               client_reviewed=True, client_accepted=True)
+        s2 = _make_item_status(db, record, item_no="1", ci=1, signed=True,
+                               client_reviewed=True, client_accepted=True)
+        # s3, s4 are NOT in scope and still unsigned → whole ITP is NOT complete
+        _make_item_status(db, record, item_no="2", ci=0, signed=False)
+        _make_item_status(db, record, item_no="2", ci=1, signed=False)
+
+        user   = _make_user(db)
+        member = _make_member_ac(db, proj, user)
+        _add_sign_perm(db, member)
+        invite = _make_invite(db, record, member, user,
+                              status="pending_review",
+                              item_scope_ids=[s1.id, s2.id])
+        db.session.commit()
+
+        _inject_session(client, user.id)
+        resp = client.post(
+            f"/itp/client/{invite.token}",
+            data={
+                "action":           "client_sign",
+                "client_signature": SIG,
+                "submission_type":  "current_scope",
+            },
+            follow_redirects=False,
+        )
+        # Route should redirect on success (not 400/403/500)
+        assert resp.status_code in (302, 303), (
+            f"Expected redirect on success, got {resp.status_code}"
+        )
+
+        db.session.expire_all()
+        inv = db.session.get(ITPClientInvite, invite.id)
+        assert inv.status == "signed", (
+            f"Invite should be marked signed after successful submission, got {inv.status!r}"
+        )
+
+    def test_current_review_does_not_set_itp_complete(self, client, db):
+        """Submitting a current-scope review does NOT mark the ITP as complete
+        when there are still unsigned or unreviewed criteria outside the scope.
+
+        Acceptance criterion 2: current review submission does not set whole ITP
+        to complete.
+        """
+        from models import ITPRecord, ITPClientInvite
+
+        proj   = _make_project(db)
+        wtg    = _make_wtg(db, proj.id)
+        record = _make_itp_record(db, wtg)
+
+        # Scope criteria: signed, reviewed, accepted
+        s1 = _make_item_status(db, record, item_no="1", ci=0, signed=True,
+                               client_reviewed=True, client_accepted=True)
+        s2 = _make_item_status(db, record, item_no="1", ci=1, signed=True,
+                               client_reviewed=True, client_accepted=True)
+        # Out-of-scope criteria: not yet signed → ITP cannot be complete
+        _make_item_status(db, record, item_no="2", ci=0, signed=False)
+        _make_item_status(db, record, item_no="2", ci=1, signed=False)
+
+        user   = _make_user(db)
+        member = _make_member_ac(db, proj, user)
+        _add_sign_perm(db, member)
+        invite = _make_invite(db, record, member, user,
+                              status="pending_review",
+                              item_scope_ids=[s1.id, s2.id])
+        db.session.commit()
+
+        _inject_session(client, user.id)
+        client.post(
+            f"/itp/client/{invite.token}",
+            data={
+                "action":           "client_sign",
+                "client_signature": SIG,
+                "submission_type":  "current_scope",
+            },
+            follow_redirects=False,
+        )
+
+        db.session.expire_all()
+        rec = db.session.get(ITPRecord, record.id)
+        assert rec.status != "complete", (
+            f"ITP should NOT be complete after a partial-scope submission, "
+            f"got status={rec.status!r}"
+        )
+
+    def test_api_ready_for_final_only_when_all_criteria_complete(self, client, db):
+        """The review-item API returns ready_for_final=False when unsigned criteria
+        remain, and ready_for_final=True only when all criteria are signed+reviewed+accepted.
+
+        Acceptance criterion 3: final acknowledgement only enabled when all criteria
+        are signed and approved.
+        """
+        from models import ITPItemStatus
+
+        proj   = _make_project(db)
+        wtg    = _make_wtg(db, proj.id)
+        record = _make_itp_record(db, wtg)
+
+        # 2 criteria total; start with only 1 signed and reviewed
+        s1 = _make_item_status(db, record, item_no="1", ci=0, signed=True)
+        s2 = _make_item_status(db, record, item_no="1", ci=1, signed=False)
+
+        user   = _make_user(db)
+        member = _make_member_ac(db, proj, user)
+        invite = _make_invite(db, record, member, user)
+        db.session.commit()
+
+        _inject_session(client, user.id)
+
+        # Accept criterion 0 — s2 still unsigned, so ready_for_final must be False
+        resp, data = _post_review(client, invite.token, "1", 0, action="accept")
+        assert resp.status_code == 200, data
+        assert data.get("ready_for_final") is False, (
+            f"ready_for_final should be False while s2 is unsigned, got {data!r}"
+        )
+        assert data.get("current_scope_ready") is True, (
+            f"current_scope_ready should be True once s1 is accepted (no explicit scope = all signed), "
+            f"got {data!r}"
+        )
+
+        # Now sign s2 and accept it → whole ITP complete → ready_for_final = True
+        db.session.expire_all()
+        s2_fresh = db.session.get(ITPItemStatus, s2.id)
+        s2_fresh.lucas_complete  = True
+        s2_fresh.lucas_signed_at = datetime.now(timezone.utc)
+        db.session.commit()
+
+        resp2, data2 = _post_review(client, invite.token, "1", 1, action="accept")
+        assert resp2.status_code == 200, data2
+        assert data2.get("ready_for_final") is True, (
+            f"ready_for_final should be True when all criteria are signed+accepted, "
+            f"got {data2!r}"
+        )

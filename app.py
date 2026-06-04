@@ -6386,16 +6386,16 @@ def api_client_review_item(token, item_no, ci):
 
     db.session.commit()
 
-    # Compute review progress totals
-    all_statuses  = record.item_statuses          # every criterion row
-    signed_items  = [x for x in all_statuses if x.lucas_complete]
-    reviewed      = [x for x in signed_items if x.client_reviewed]
-    accepted      = [x for x in reviewed if x.client_accepted]
-    concerns      = [x for x in reviewed if not x.client_accepted]
-    pending       = [x for x in signed_items if not x.client_reviewed]
+    # Compute review progress totals (whole-record counts)
+    all_statuses   = record.item_statuses          # every criterion row
+    signed_items   = [x for x in all_statuses if x.lucas_complete]
+    reviewed       = [x for x in signed_items if x.client_reviewed]
+    accepted       = [x for x in reviewed if x.client_accepted]
+    concerns       = [x for x in reviewed if not x.client_accepted]
+    pending        = [x for x in signed_items if not x.client_reviewed]
     total_criteria = len(all_statuses)
 
-    # ready_for_final: every criterion is engineer-signed, client-reviewed, and client-accepted
+    # ready_for_final: ENTIRE ITP — every criterion signed + reviewed + accepted, zero concerns
     ready_for_final = (
         total_criteria > 0 and
         len(signed_items) == total_criteria and
@@ -6403,17 +6403,41 @@ def api_client_review_item(token, item_no, ci):
         len(concerns) == 0
     )
 
+    # current_scope_ready: only the criteria in THIS invite's scope need to be reviewed.
+    # For scoped invites (Phase 2B): check only items in invite.item_scope_ids.
+    # For legacy/no-scope invites: equivalent to all-pending = 0.
+    if invite and invite.item_scope_ids:
+        _scope_ids  = set(invite.item_scope_ids)
+        _scope_sts  = [x for x in all_statuses if x.id in _scope_ids]
+        _scope_rev  = [x for x in _scope_sts  if x.client_reviewed]
+        _scope_con  = [x for x in _scope_rev  if not x.client_accepted]
+        _scope_pend = [x for x in _scope_sts  if not x.client_reviewed]
+        current_scope_ready = (
+            len(_scope_sts) > 0 and
+            len(_scope_pend) == 0 and
+            len(_scope_con) == 0
+        )
+        scope_pending_cnt = len(_scope_pend)
+    else:
+        # Legacy / no-scope invite: scope == all engineer-signed criteria
+        current_scope_ready = (len(signed_items) > 0 and
+                               len(pending) == 0 and
+                               len(concerns) == 0)
+        scope_pending_cnt   = len(pending)
+
     return jsonify({
-        'ok':             True,
-        'action':         s.client_action,
-        'total':          len(signed_items),
-        'total_criteria': total_criteria,
-        'reviewed':       len(reviewed),
-        'accepted':       len(accepted),
-        'concerns':       len(concerns),
-        'pending':        len(pending),
-        'all_reviewed':   len(pending) == 0 and len(signed_items) > 0,
-        'ready_for_final': ready_for_final,
+        'ok':                  True,
+        'action':              s.client_action,
+        'total':               len(signed_items),
+        'total_criteria':      total_criteria,
+        'reviewed':            len(reviewed),
+        'accepted':            len(accepted),
+        'concerns':            len(concerns),
+        'pending':             len(pending),
+        'all_reviewed':        len(pending) == 0 and len(signed_items) > 0,
+        'ready_for_final':     ready_for_final,
+        'current_scope_ready': current_scope_ready,
+        'scope_pending':       scope_pending_cnt,
     })
 
 
@@ -6805,18 +6829,30 @@ def itp_client_sign(token):
             if _itp_proj_id and not user_can(_itp_proj_id, 'can_sign_client_itp'):
                 flash('You do not have permission to sign this ITP.', 'danger')
                 return redirect(url_for('itp_client_sign', token=token))
-            sig = request.form.get('client_signature', '').strip()
+            sig             = request.form.get('client_signature', '').strip()
+            submission_type = request.form.get('submission_type', 'current_scope')  # 'final_ack' or 'current_scope'
             if not sig:
                 flash('Please draw your signature.', 'danger')
             else:
-                # Ensure all engineer-signed items have been reviewed
-                signed_items = [s for s in record.item_statuses if s.lucas_complete]
-                unreviewed   = [s for s in signed_items if not s.client_reviewed]
+                # Determine review scope for this submission.
+                # For scoped invites (Phase 2B): only items in invite.item_scope_ids matter.
+                # For legacy / no-scope invites: all engineer-signed criteria.
+                if invite and invite.item_scope_ids:
+                    _sub_scope_ids = set(invite.item_scope_ids)
+                    scope_items    = [s for s in record.item_statuses
+                                      if s.id in _sub_scope_ids]
+                else:
+                    scope_items = [s for s in record.item_statuses if s.lucas_complete]
+
+                unreviewed = [s for s in scope_items if not s.client_reviewed]
                 if unreviewed:
-                    flash(f'Please review all {len(unreviewed)} remaining item(s) before signing.', 'danger')
+                    flash(
+                        f'Please review all {len(unreviewed)} remaining item(s) '
+                        'in this invitation before signing.', 'danger'
+                    )
                     return redirect(url_for('itp_client_sign', token=token))
 
-                concerns = [s for s in signed_items if s.client_reviewed and not s.client_accepted]
+                concerns = [s for s in scope_items if s.client_reviewed and not s.client_accepted]
 
                 _sign_now = datetime.now(timezone.utc)
                 record.client_signature = sig
@@ -6883,11 +6919,12 @@ def itp_client_sign(token):
                     entity_id   = record.id,
                     entity_label= f'{wtg.name if wtg else ""} — {record.client_name or "Client"}',
                     detail      = {
-                        'client_name':    record.client_name,
-                        'client_company': record.client_company,
-                        'status':         record.status,
-                        'concerns':       len(concerns),
-                        'cycle_id':       _cycle.id if _cycle else None,
+                        'client_name':     record.client_name,
+                        'client_company':  record.client_company,
+                        'status':          record.status,
+                        'concerns':        len(concerns),
+                        'cycle_id':        _cycle.id if _cycle else None,
+                        'submission_type': submission_type,
                     },
                 )
                 if concerns:
