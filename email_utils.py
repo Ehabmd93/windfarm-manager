@@ -336,7 +336,8 @@ def _email_shell(title, body_html, preheader=''):
 def email_client_invitation(record, wtg_name, sign_url,
                              client_name, client_email,
                              proj_name='', itp_name='',
-                             signers_text=None):
+                             signers_text=None,
+                             scope_items_text=None):
     """
     Send client an authenticated-entry email to review and sign the ITP.
     sign_url should point to /itp/client/<token>/entry which handles
@@ -419,6 +420,10 @@ def email_client_invitation(record, wtg_name, sign_url,
     <p style="color:#64748b;font-size:14px;margin:0 0 8px;line-height:1.6;">
       Please review the completed inspection checklist and provide your approval.
     </p>
+    {'<p style="color:#64748b;font-size:13px;margin:0 0 16px;line-height:1.6;">'
+     '<strong>Criteria included in this review:</strong> '
+     + _html_lib.escape(scope_items_text) +
+     '</p>' if scope_items_text else ''}
     <p style="color:#64748b;font-size:14px;margin:0 0 4px;line-height:1.6;">
       You will need a SiteGrid account to access the ITP. If you don't have one yet,
       you'll be guided through a quick registration on the next page.
@@ -444,6 +449,8 @@ def email_client_invitation(record, wtg_name, sign_url,
 </body>
 </html>"""
 
+    scope_line = (f"Criteria in this review: {scope_items_text}\n\n"
+                  if scope_items_text else "")
     plain = (
         f"Dear {client_name},\n\n"
         f"{signers_text} has requested your signature "
@@ -451,6 +458,7 @@ def email_client_invitation(record, wtg_name, sign_url,
         f"Project: {proj_label}\n"
         f"Location: {wtg_name}\n"
         f"ITP: {itp_label}\n\n"
+        f"{scope_line}"
         f"Review and sign here:\n{sign_url}\n\n"
         f"You will need a SiteGrid account to access this ITP.\n\n"
         f"SiteGrid — Construction QA, ITPs & Project Handover"

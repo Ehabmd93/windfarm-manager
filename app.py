@@ -5723,14 +5723,23 @@ def api_project_itp_add_invite(pid, tid, eid):
         entity_id   = invite.id,
         entity_label= f'{name} ({email or "no email"})',
         detail      = {
-            'record_id':     record.id,
-            'member_ac_id':  member.id,
-            'invite_status': invite_status_val,
-            'is_new_person': bool(is_new_person),
-            'cycle_number':  _active_cycle.cycle_number if _active_cycle else 1,
+            'record_id':        record.id,
+            'member_ac_id':     member.id,
+            'invite_status':    invite_status_val,
+            'is_new_person':    bool(is_new_person),
+            'cycle_number':     _active_cycle.cycle_number if _active_cycle else 1,
+            'item_scope_count': len(_invite_scope_ids),
+            'item_scope_ids':   _invite_scope_ids[:30],  # cap for log size
         },
     )
     db.session.commit()
+
+    # ── Scope items label for email (sorted criterion numbers) ───────────────
+    _scope_labels = sorted(
+        {f'{s.item_no}.{s.criterion_index + 1}' for s in _invitee_scope_rows},
+        key=lambda x: [int(p) if p.isdigit() else p for p in x.split('.')]
+    )
+    _scope_items_text = ', '.join(_scope_labels) if _scope_labels else None
 
     # ── Email sending ────────────────────────────────────────────────────────
     itp_type = record.itp_type
@@ -5750,6 +5759,7 @@ def api_project_itp_add_invite(pid, tid, eid):
                 sign_url=sign_url, client_name=name, client_email=email,
                 proj_name=proj_name, itp_name=defn.get('name', ''),
                 signers_text=signers_text,
+                scope_items_text=_scope_items_text,
             ))
         else:
             # pending_project_access — send combined project + ITP invite
@@ -5772,6 +5782,7 @@ def api_project_itp_add_invite(pid, tid, eid):
                     sign_url=sign_url, client_name=name, client_email=email,
                     proj_name=proj_name, itp_name=defn.get('name', ''),
                     signers_text=signers_text,
+                    scope_items_text=_scope_items_text,
                 ))
 
     return jsonify({
