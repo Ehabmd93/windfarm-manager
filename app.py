@@ -5302,6 +5302,14 @@ def project_itp_detail(pid, tid, eid):
 
     ac_can_view_panel = user_can_view_project_ac(pid)
 
+    # ── Latest signed invite: used to display client name on approved criteria ─
+    _signed_invites = sorted(
+        [i for i in record.client_invites if i.status == 'signed' and not i.is_revoked and i.signed_at],
+        key=lambda x: x.signed_at,
+        reverse=True,
+    )
+    latest_signed_invite = _signed_invites[0] if _signed_invites else None
+
     return render_template('project_itp_detail.html',
                            proj=proj, template=template,
                            wtg=wtg, itp_type=itp_type,
@@ -5317,7 +5325,8 @@ def project_itp_detail(pid, tid, eid):
                            ac_can_delete_doc=ac_can_delete_doc,
                            ac_can_view_panel=ac_can_view_panel,
                            member_company=member_company,
-                           member_suggestions=member_suggestions)
+                           member_suggestions=member_suggestions,
+                           latest_signed_invite=latest_signed_invite)
 
 
 @app.route('/projects/<int:pid>/itp/<int:tid>/element/<int:eid>/save-meta', methods=['POST'])
@@ -6288,21 +6297,33 @@ def api_client_review_item(token, item_no, ci):
     db.session.commit()
 
     # Compute review progress totals
-    signed_items = [x for x in record.item_statuses if x.lucas_complete]
-    reviewed     = [x for x in signed_items if x.client_reviewed]
-    accepted     = [x for x in reviewed if x.client_accepted]
-    concerns     = [x for x in reviewed if not x.client_accepted]
-    pending      = [x for x in signed_items if not x.client_reviewed]
+    all_statuses  = record.item_statuses          # every criterion row
+    signed_items  = [x for x in all_statuses if x.lucas_complete]
+    reviewed      = [x for x in signed_items if x.client_reviewed]
+    accepted      = [x for x in reviewed if x.client_accepted]
+    concerns      = [x for x in reviewed if not x.client_accepted]
+    pending       = [x for x in signed_items if not x.client_reviewed]
+    total_criteria = len(all_statuses)
+
+    # ready_for_final: every criterion is engineer-signed, client-reviewed, and client-accepted
+    ready_for_final = (
+        total_criteria > 0 and
+        len(signed_items) == total_criteria and
+        len(pending) == 0 and
+        len(concerns) == 0
+    )
 
     return jsonify({
-        'ok':          True,
-        'action':      s.client_action,
-        'total':       len(signed_items),
-        'reviewed':    len(reviewed),
-        'accepted':    len(accepted),
-        'concerns':    len(concerns),
-        'pending':     len(pending),
-        'all_reviewed': len(pending) == 0 and len(signed_items) > 0,
+        'ok':             True,
+        'action':         s.client_action,
+        'total':          len(signed_items),
+        'total_criteria': total_criteria,
+        'reviewed':       len(reviewed),
+        'accepted':       len(accepted),
+        'concerns':       len(concerns),
+        'pending':        len(pending),
+        'all_reviewed':   len(pending) == 0 and len(signed_items) > 0,
+        'ready_for_final': ready_for_final,
     })
 
 

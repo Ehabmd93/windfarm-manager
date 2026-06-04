@@ -200,21 +200,53 @@
     <div class="activity-group" id="act-{{ item['no'] }}">
 
       <!-- Activity header -->
+      {# Pre-compute activity progress for badge and counters #}
+      {% set ap = namespace(signed=0, client_approved=0, client_reviewed=0, concerns=0, total=item['criteria']|length) %}
+      {% for _ci in range(item['criteria']|length) %}
+        {% set _s = statuses.get((item['no'], _ci)) %}
+        {% if _s and _s.lucas_complete %}
+          {% set ap.signed = ap.signed + 1 %}
+          {% if _s.client_reviewed %}
+            {% set ap.client_reviewed = ap.client_reviewed + 1 %}
+            {% if _s.client_accepted %}{% set ap.client_approved = ap.client_approved + 1 %}
+            {% else %}{% set ap.concerns = ap.concerns + 1 %}{% endif %}
+          {% endif %}
+        {% endif %}
+      {% endfor %}
       <div class="activity-header" onclick="toggleActivity('{{ item['no'] }}')">
-        <span class="text-xs font-bold text-slate-400 w-5">{{ item['no'] }}</span>
+        <span class="text-xs font-bold text-slate-400 w-5 flex-shrink-0">{{ item['no'] }}</span>
         <span class="font-bold text-slate-800 text-sm flex-1">{{ item['activity'] }}</span>
         {% if item.get('hold_witness') %}
         <span class="code-badge code-HW">CLIENT: {{ item['hold_witness'] }}</span>
         {% endif %}
-        <span class="text-xs font-bold text-slate-500 ml-2" id="act-prog-{{ item['no'] }}">
-          {% set act_done = namespace(n=0) %}
-          {% for ci in range(item['criteria']|length) %}
-            {% set s = statuses.get((item['no'], ci)) %}
-            {% if s and s.lucas_complete %}{% set act_done.n = act_done.n + 1 %}{% endif %}
-          {% endfor %}
-          {{ act_done.n }}/{{ item['criteria']|length }}
-        </span>
-        <i class="fa-solid fa-chevron-down text-slate-300 text-xs ml-2 transition-transform" id="act-arr-{{ item['no'] }}"></i>
+        {# Status badge #}
+        {% if ap.signed == ap.total and ap.client_approved == ap.total and ap.total > 0 %}
+          <span style="font-size:10px;font-weight:700;padding:2px 9px;border-radius:5px;background:#dcfce7;color:#166534;white-space:nowrap;flex-shrink:0;">
+            <i class="fa-solid fa-circle-check" style="margin-right:3px;"></i>Complete</span>
+        {% elif ap.client_reviewed > 0 and ap.concerns > 0 %}
+          <span style="font-size:10px;font-weight:700;padding:2px 9px;border-radius:5px;background:#fffbeb;color:#92400e;white-space:nowrap;flex-shrink:0;">
+            <i class="fa-solid fa-triangle-exclamation" style="margin-right:3px;"></i>{{ ap.concerns }} Concern{{ 's' if ap.concerns != 1 else '' }}</span>
+        {% elif ap.client_reviewed > 0 %}
+          <span style="font-size:10px;font-weight:700;padding:2px 9px;border-radius:5px;background:#dbeafe;color:#1d4ed8;white-space:nowrap;flex-shrink:0;">
+            <i class="fa-solid fa-magnifying-glass" style="margin-right:3px;"></i>Client Reviewing</span>
+        {% elif ap.signed == ap.total and ap.total > 0 %}
+          <span style="font-size:10px;font-weight:700;padding:2px 9px;border-radius:5px;background:#e0e7ff;color:#4338ca;white-space:nowrap;flex-shrink:0;">
+            <i class="fa-solid fa-paper-plane" style="margin-right:3px;"></i>Ready for Client</span>
+        {% elif ap.signed > 0 %}
+          <span style="font-size:10px;font-weight:700;padding:2px 9px;border-radius:5px;background:#fef3c7;color:#92400e;white-space:nowrap;flex-shrink:0;">
+            <i class="fa-solid fa-pen" style="margin-right:3px;"></i>In Progress</span>
+        {% else %}
+          <span style="font-size:10px;font-weight:700;padding:2px 9px;border-radius:5px;background:#f1f5f9;color:#94a3b8;white-space:nowrap;flex-shrink:0;">
+            Not Started</span>
+        {% endif %}
+        {# Engineer + client progress counters #}
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:1px;flex-shrink:0;">
+          <span class="text-xs font-bold text-slate-500" id="act-prog-{{ item['no'] }}">{{ ap.signed }}/{{ ap.total }} signed</span>
+          {% if ap.client_reviewed > 0 %}
+          <span style="font-size:10px;color:#2563eb;font-weight:700;">{{ ap.client_approved }}/{{ ap.signed }} approved</span>
+          {% endif %}
+        </div>
+        <i class="fa-solid fa-chevron-down text-slate-300 text-xs ml-2 transition-transform flex-shrink-0" id="act-arr-{{ item['no'] }}"></i>
       </div>
 
       <!-- Criteria rows -->
@@ -325,6 +357,13 @@
           <!-- Client review status -->
           {% if s and s.client_reviewed %}
           {% set _ca = s.client_action if s.client_action else ('approved' if s.client_accepted else 'request_changes') %}
+          {# Resolve client signer identity — prefer invite signer, fall back to record-level #}
+          {% set _cl_name = latest_signed_invite.signer_name if latest_signed_invite and latest_signed_invite.signer_name
+                            else (latest_signed_invite.name if latest_signed_invite
+                            else (record.client_name or 'Client')) %}
+          {% set _cl_company = latest_signed_invite.signer_company if latest_signed_invite and latest_signed_invite.signer_company
+                               else (latest_signed_invite.company if latest_signed_invite
+                               else (record.client_company or '')) %}
           <div class="sig-preview" style="margin-top:4px;">
             <div class="sig-preview-inner"
                  style="{% if s.client_accepted %}background:#eff6ff;border-color:#93c5fd;
@@ -347,11 +386,11 @@
                     {% elif _ca == 'request_clarification' %}fa-question-circle
                     {% elif _ca == 'not_accepted' %}fa-ban
                     {% else %}fa-pencil{% endif %} mr-1"></i>
-                  {% if s.client_accepted %}Client Approved
-                  {% elif _ca == 'rejected' %}Rejected
-                  {% elif _ca == 'request_clarification' %}Clarification Requested
+                  {% if s.client_accepted %}Signed by {{ _cl_name }}{% if _cl_company %} &middot; {{ _cl_company }}{% endif %}
+                  {% elif _ca == 'rejected' %}Rejected{% if _cl_name %} by {{ _cl_name }}{% if _cl_company %} &middot; {{ _cl_company }}{% endif %}{% endif %}
+                  {% elif _ca == 'request_clarification' %}Clarification Requested{% if _cl_name %} by {{ _cl_name }}{% endif %}
                   {% elif _ca == 'not_accepted' %}Not Accepted (Legacy)
-                  {% else %}Changes Requested{% endif %}
+                  {% else %}Changes Requested{% if _cl_name %} by {{ _cl_name }}{% endif %}{% endif %}
                 </p>
                 <p class="dt">
                   {% if s.client_comments %}{{ s.client_comments }}{% if s.client_signed_at %} · {% endif %}{% endif %}
@@ -539,12 +578,22 @@
             <div>
               <label class="form-label">Company</label>
               <input type="text" name="engineer_company" class="form-input"
-                     value="{{ record.engineer_company or member_company }}"/>
+                     id="engineer-company-input"
+                     value="{{ record.engineer_company or member_company }}"
+                     placeholder="Your company name"/>
+              {% if not (record.engineer_company or member_company) %}
+              <p style="font-size:11px;color:#7c3aed;margin:4px 0 0;font-style:italic;">
+                <i class="fa-solid fa-circle-info" style="margin-right:3px;"></i>Add your company name for this ITP.
+              </p>
+              {% endif %}
             </div>
             <div>
-              <label class="form-label">Lot Number</label>
+              <label class="form-label" style="display:flex;align-items:center;gap:6px;">
+                Lot Number
+                <span style="font-size:10px;font-weight:600;color:#94a3b8;background:#f1f5f9;padding:1px 6px;border-radius:4px;">optional</span>
+              </label>
               <input type="text" name="lot_number" class="form-input"
-                     value="{{ record.lot_number or '' }}" placeholder="LOT-001"/>
+                     value="{{ record.lot_number or '' }}" placeholder="e.g. LOT-001"/>
             </div>
             <div>
               <label class="form-label">Location / Description</label>

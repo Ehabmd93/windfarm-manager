@@ -416,8 +416,9 @@
 
   <!-- ─── REVIEW PROGRESS ──────────────────────────────────────────────── -->
   {# Compute counts server-side for initial render #}
-  {% set ns = namespace(total_signed=0, reviewed=0, accepted=0, concerns=0, pending=0) %}
+  {% set ns = namespace(total_signed=0, reviewed=0, accepted=0, concerns=0, pending=0, total_criteria=0) %}
   {% for s in record.item_statuses %}
+    {% set ns.total_criteria = ns.total_criteria + 1 %}
     {% if s.lucas_complete %}
       {% set ns.total_signed = ns.total_signed + 1 %}
       {% if s.client_reviewed %}
@@ -432,6 +433,8 @@
       {% endif %}
     {% endif %}
   {% endfor %}
+  {# ready_for_final: ALL criteria signed by engineer, ALL reviewed, ALL accepted, zero concerns #}
+  {% set ready_for_final = (ns.total_criteria > 0 and ns.total_signed == ns.total_criteria and ns.pending == 0 and ns.concerns == 0) %}
   {% set init_pct = ((ns.reviewed / ns.total_signed * 100)|int) if ns.total_signed else 0 %}
   {% set init_offset = (157 * (1 - init_pct / 100))|round|int %}
 
@@ -460,11 +463,17 @@
           </span>
         </div>
         <div style="display:flex;gap:7px;flex-wrap:wrap;">
+          <span id="chip-signed" style="display:inline-flex;align-items:center;gap:4px;
+            padding:4px 10px;border-radius:7px;font-size:11px;font-weight:700;
+            background:#f5f3ff;color:#6d28d9;border:1px solid #ddd6fe;">
+            <i class="fa-solid fa-pen-nib"></i>
+            <span id="cnt-signed">{{ ns.total_signed }}</span>/<span id="cnt-total-crit">{{ ns.total_criteria }}</span>&nbsp;Signed
+          </span>
           <span id="chip-accepted" style="display:inline-flex;align-items:center;gap:4px;
             padding:4px 10px;border-radius:7px;font-size:11px;font-weight:700;
             background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;">
             <i class="fa-solid fa-check"></i>
-            <span id="cnt-accepted">{{ ns.accepted }}</span>&nbsp;Accepted
+            <span id="cnt-accepted">{{ ns.accepted }}</span>&nbsp;Approved
           </span>
           <span id="chip-concern" style="display:inline-flex;align-items:center;gap:4px;
             padding:4px 10px;border-radius:7px;font-size:11px;font-weight:700;
@@ -489,17 +498,59 @@
                   background:linear-gradient(90deg,#2563eb,#7c3aed);width:{{ init_pct }}%;"></div>
     </div>
 
-    <!-- All-reviewed banner -->
-    <div id="all-reviewed-banner"
-         style="margin-top:12px;display:{% if ns.pending == 0 and ns.total_signed > 0 %}flex{% else %}none{% endif %};
-                align-items:center;gap:10px;padding:11px 14px;
-                background:#f0fdf4;border-radius:10px;border:1.5px solid #bbf7d0;">
-      <i class="fa-solid fa-circle-check" style="color:#22c55e;font-size:16px;"></i>
-      <div>
-        <p style="font-size:13px;font-weight:700;color:#166534;margin:0;">All items reviewed</p>
-        <p style="font-size:11px;color:#4ade80;margin:0;">Your review progress is saved automatically</p>
+    <!-- Progress status banner — updates dynamically via JS -->
+    <div id="progress-status-banner" style="margin-top:12px;">
+      {# Initial server-rendered state #}
+      {% if ready_for_final %}
+      <div style="display:flex;align-items:center;gap:10px;padding:11px 14px;
+                  background:#f0fdf4;border-radius:10px;border:1.5px solid #bbf7d0;">
+        <i class="fa-solid fa-circle-check" style="color:#22c55e;font-size:16px;"></i>
+        <div>
+          <p style="font-size:13px;font-weight:700;color:#166534;margin:0;">All criteria signed and approved</p>
+          <p style="font-size:11px;color:#4ade80;margin:0;">Scroll down to submit your final acknowledgement</p>
+        </div>
       </div>
+      {% elif ns.total_signed < ns.total_criteria %}
+      <div style="display:flex;align-items:center;gap:10px;padding:11px 14px;
+                  background:#eff6ff;border-radius:10px;border:1.5px solid #bfdbfe;">
+        <i class="fa-solid fa-hourglass-half" style="color:#2563eb;font-size:16px;flex-shrink:0;"></i>
+        <div>
+          <p style="font-size:13px;font-weight:700;color:#1d4ed8;margin:0;">
+            {{ ns.total_criteria - ns.total_signed }} criteria awaiting engineer sign-off
+          </p>
+          <p style="font-size:11px;color:#3b82f6;margin:0;">
+            Review the {{ ns.total_signed }} signed criteria now.
+            Final acknowledgement will be available after all {{ ns.total_criteria }} criteria are signed and approved.
+          </p>
+        </div>
+      </div>
+      {% elif ns.pending > 0 %}
+      <div style="display:flex;align-items:center;gap:10px;padding:11px 14px;
+                  background:#eff6ff;border-radius:10px;border:1.5px solid #bfdbfe;">
+        <i class="fa-solid fa-list-check" style="color:#2563eb;font-size:16px;flex-shrink:0;"></i>
+        <div>
+          <p style="font-size:13px;font-weight:700;color:#1d4ed8;margin:0;">{{ ns.pending }} item{{ 's' if ns.pending != 1 else '' }} ready for your review</p>
+          <p style="font-size:11px;color:#3b82f6;margin:0;">Review each item below. Final acknowledgement appears once all are approved.</p>
+        </div>
+      </div>
+      {% elif ns.concerns > 0 %}
+      <div style="display:flex;align-items:center;gap:10px;padding:11px 14px;
+                  background:#fffbeb;border-radius:10px;border:1.5px solid #fde68a;">
+        <i class="fa-solid fa-triangle-exclamation" style="color:#d97706;font-size:16px;flex-shrink:0;"></i>
+        <div>
+          <p style="font-size:13px;font-weight:700;color:#92400e;margin:0;">
+            {{ ns.concerns }} concern{{ 's' if ns.concerns != 1 else '' }} submitted
+          </p>
+          <p style="font-size:11px;color:#b45309;margin:0;">
+            The inspection team has been notified and will respond.
+            Final acknowledgement will be available once all concerns are resolved.
+          </p>
+        </div>
+      </div>
+      {% endif %}
     </div>
+    <!-- Legacy all-reviewed-banner (hidden — preserved for JS backward compat) -->
+    <div id="all-reviewed-banner" style="display:none;"></div>
 
     <!-- Cycle-completed banner (shown after cycle is approved, engineer can continue) -->
     {% if invite and invite.status == 'signed' and invite.signed_at %}
@@ -515,6 +566,65 @@
     </div>
     {% endif %}
   </div>
+
+  <!-- ─── ACTIVITY SUMMARY ────────────────────────────────────────────── -->
+  {% if defn.get('items') %}
+  <div style="background:white;border-radius:14px;border:1.5px solid #e2e8f0;
+              overflow:hidden;margin-bottom:14px;">
+    <div style="padding:12px 16px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;gap:8px;">
+      <i class="fa-solid fa-table-list" style="color:#475569;font-size:12px;"></i>
+      <span style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;">Activity Overview</span>
+    </div>
+    <div style="padding:8px 0;">
+      {% for item in defn.get('items', []) %}
+      {% set act_no   = item['no'] if item is mapping else item.no %}
+      {% set act_name = item['activity'] if item is mapping else item.activity %}
+      {% set criteria = item['criteria'] if item is mapping else item.criteria %}
+      {% set acns = namespace(signed=0, approved=0, concerns=0, total=criteria|length) %}
+      {% for _ci in range(criteria|length) %}
+        {% set _s = statuses.get((act_no|string, _ci)) %}
+        {% if _s and _s.lucas_complete %}
+          {% set acns.signed = acns.signed + 1 %}
+          {% if _s.client_reviewed %}
+            {% if _s.client_accepted %}{% set acns.approved = acns.approved + 1 %}
+            {% else %}{% set acns.concerns = acns.concerns + 1 %}{% endif %}
+          {% endif %}
+        {% endif %}
+      {% endfor %}
+      <div style="display:flex;align-items:center;gap:10px;padding:7px 16px;
+                  border-bottom:1px solid #f8fafc;{% if loop.last %}border-bottom:none;{% endif %}">
+        <span style="width:22px;height:22px;border-radius:6px;background:#e0e7ff;color:#4338ca;
+                     display:inline-flex;align-items:center;justify-content:center;
+                     font-size:9px;font-weight:800;flex-shrink:0;">{{ act_no }}</span>
+        <span style="font-size:12px;font-weight:600;color:#334155;flex:1;min-width:0;
+                     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ act_name }}</span>
+        <div style="display:flex;gap:5px;align-items:center;flex-shrink:0;">
+          {% if acns.approved == acns.total and acns.total > 0 %}
+            <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:5px;
+                         background:#dcfce7;color:#166534;">
+              <i class="fa-solid fa-check" style="margin-right:2px;"></i>Complete</span>
+          {% elif acns.concerns > 0 %}
+            <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:5px;
+                         background:#fffbeb;color:#92400e;">
+              <i class="fa-solid fa-triangle-exclamation" style="margin-right:2px;"></i>{{ acns.concerns }} concern{{ 's' if acns.concerns != 1 else '' }}</span>
+            <span style="font-size:10px;color:#94a3b8;">{{ acns.approved + acns.concerns }}/{{ acns.signed }} reviewed</span>
+          {% elif acns.signed > 0 %}
+            <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:5px;
+                         {% if acns.signed == acns.total %}background:#e0e7ff;color:#4338ca;
+                         {% else %}background:#f1f5f9;color:#64748b;{% endif %}">
+              {{ acns.signed }}/{{ acns.total }} signed</span>
+            {% if acns.approved > 0 or (acns.signed > 0 and acns.approved == 0 and acns.concerns == 0) %}
+            <span style="font-size:10px;color:#94a3b8;">{{ acns.approved }}/{{ acns.signed }} approved</span>
+            {% endif %}
+          {% else %}
+            <span style="font-size:10px;color:#cbd5e1;">Awaiting engineer</span>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
 
   <!-- ─── CHECKLIST ────────────────────────────────────────────────────── -->
   <div style="background:white;border-radius:18px;border:1.5px solid #e2e8f0;overflow:hidden;margin-bottom:16px;">
@@ -858,40 +968,63 @@
   <div id="sticky-completion-panel"
        style="position:fixed;bottom:0;left:0;right:0;z-index:900;
               background:white;border-top:2px solid #e2e8f0;
-              box-shadow:0 -4px 24px rgba(0,0,0,.10);padding:12px 16px;">
-    <div style="max-width:760px;margin:0 auto;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
-      <!-- Progress bar section -->
-      <div style="flex:1;min-width:160px;">
-        <div style="display:flex;justify-content:space-between;margin-bottom:5px;">
-          <span style="font-size:12px;font-weight:700;color:#475569;">
-            <span id="sticky-reviewed">{{ ns.reviewed }}</span> of <span id="sticky-total">{{ ns.total_signed }}</span> items reviewed
-          </span>
-          <span id="sticky-pct-label" style="font-size:12px;font-weight:700;color:#7c3aed;">{{ init_pct }}%</span>
-        </div>
-        <div style="background:#f1f5f9;border-radius:999px;height:8px;overflow:hidden;">
-          <div id="sticky-prog-bar"
-               style="height:100%;border-radius:999px;transition:width .5s ease;
-                      background:linear-gradient(90deg,#2563eb,#7c3aed);width:{{ init_pct }}%;"></div>
-        </div>
+              box-shadow:0 -4px 24px rgba(0,0,0,.10);padding:10px 16px;">
+    <div style="max-width:760px;margin:0 auto;">
+      <!-- Status message row (hidden when ready) -->
+      <div id="sticky-status-msg"
+           style="margin-bottom:8px;font-size:11px;font-weight:600;color:#64748b;
+                  {% if ready_for_final %}display:none;{% endif %}">
+        {% if ns.total_signed < ns.total_criteria %}
+          <i class="fa-solid fa-hourglass-half" style="margin-right:4px;color:#3b82f6;"></i>
+          <span id="sticky-msg-text">{{ ns.total_criteria - ns.total_signed }} of {{ ns.total_criteria }} criteria still awaiting engineer sign-off. Review signed items now.</span>
+        {% elif ns.pending > 0 %}
+          <i class="fa-solid fa-list-check" style="margin-right:4px;color:#7c3aed;"></i>
+          <span id="sticky-msg-text">{{ ns.pending }} item{{ 's' if ns.pending != 1 else '' }} still pending your review — scroll up to review them.</span>
+        {% elif ns.concerns > 0 %}
+          <i class="fa-solid fa-triangle-exclamation" style="margin-right:4px;color:#d97706;"></i>
+          <span id="sticky-msg-text">{{ ns.concerns }} concern{{ 's' if ns.concerns != 1 else '' }} raised — the inspection team will respond before final acknowledgement is available.</span>
+        {% else %}
+          <span id="sticky-msg-text"></span>
+        {% endif %}
       </div>
-      <!-- CTA button -->
-      <button id="sticky-complete-btn"
-              onclick="openCompletionModal()"
-              {% if ns.pending > 0 or ns.total_signed == 0 %}disabled{% endif %}
-              style="flex-shrink:0;padding:12px 22px;border-radius:12px;font-size:13px;font-weight:700;
-                     border:none;cursor:pointer;transition:all .15s;white-space:nowrap;
-                     {% if ns.pending == 0 and ns.total_signed > 0 %}
-                     background:linear-gradient(135deg,#1d4ed8,#2563eb);color:white;
-                     box-shadow:0 4px 16px rgba(37,99,235,.35);
-                     {% else %}
-                     background:#e2e8f0;color:#94a3b8;cursor:not-allowed;
-                     {% endif %}">
-        <i class="fa-solid fa-pen-nib" style="margin-right:6px;"></i>Save Review &amp; Complete Action
-      </button>
+      <!-- Progress bar + button row -->
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:160px;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:5px;">
+            <span style="font-size:12px;font-weight:700;color:#475569;">
+              <span id="sticky-reviewed">{{ ns.reviewed }}</span> of <span id="sticky-total">{{ ns.total_signed }}</span> reviewed
+              <span style="color:#94a3b8;font-weight:400;">
+                &middot; <span id="sticky-signed-of">{{ ns.total_signed }}</span>/<span id="sticky-total-crit">{{ ns.total_criteria }}</span> signed
+              </span>
+            </span>
+            <span id="sticky-pct-label" style="font-size:12px;font-weight:700;color:#7c3aed;">{{ init_pct }}%</span>
+          </div>
+          <div style="background:#f1f5f9;border-radius:999px;height:8px;overflow:hidden;">
+            <div id="sticky-prog-bar"
+                 style="height:100%;border-radius:999px;transition:width .5s ease;
+                        background:linear-gradient(90deg,#2563eb,#7c3aed);width:{{ init_pct }}%;"></div>
+          </div>
+        </div>
+        <!-- CTA button — only active when ALL criteria signed + reviewed + accepted -->
+        <button id="sticky-complete-btn"
+                onclick="openCompletionModal()"
+                {% if not ready_for_final %}disabled{% endif %}
+                style="flex-shrink:0;padding:12px 22px;border-radius:12px;font-size:13px;font-weight:700;
+                       border:none;cursor:pointer;transition:all .15s;white-space:nowrap;
+                       {% if ready_for_final %}
+                       background:linear-gradient(135deg,#1d4ed8,#2563eb);color:white;
+                       box-shadow:0 4px 16px rgba(37,99,235,.35);
+                       {% else %}
+                       background:#e2e8f0;color:#94a3b8;cursor:not-allowed;
+                       {% endif %}">
+          <i class="fa-solid fa-pen-nib" style="margin-right:6px;"></i>
+          {% if ready_for_final %}Final Acknowledgement{% else %}Complete Review{% endif %}
+        </button>
+      </div>
     </div>
   </div>
   <!-- Spacer so content isn't hidden behind sticky panel -->
-  <div style="height:80px;"></div>
+  <div style="height:90px;"></div>
 
   <!-- ─── COMPLETION CONFIRMATION MODAL ──────────────────────────────────── -->
   <div id="completion-modal-overlay"
@@ -907,8 +1040,13 @@
                     margin:0 auto 12px;">
           <i class="fa-solid fa-clipboard-check" style="font-size:24px;color:#2563eb;"></i>
         </div>
-        <h2 style="font-size:18px;font-weight:800;color:#0f172a;margin:0 0 6px;">Confirm Review Submission</h2>
-        <p style="font-size:13px;color:#64748b;margin:0;">Please review the summary below before submitting.</p>
+        <h2 style="font-size:18px;font-weight:800;color:#0f172a;margin:0 0 6px;">
+          {% if ready_for_final %}Final Acknowledgement &amp; Approval{% else %}Confirm Review Submission{% endif %}
+        </h2>
+        <p style="font-size:13px;color:#64748b;margin:0;">
+          {% if ready_for_final %}All criteria have been signed and approved. Sign below to record your final acknowledgement.
+          {% else %}Please review the summary below before submitting.{% endif %}
+        </p>
       </div>
 
       <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:14px;
@@ -1018,8 +1156,9 @@ function toggleEvidenceIndex() {
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────
-const TOKEN     = '{{ token }}';
-const FINALIZED = {{ 'true' if record and record.status in ('complete', 'client_commented') else 'false' }};
+const TOKEN          = '{{ token }}';
+const FINALIZED      = {{ 'true' if record and record.status in ('complete', 'client_commented') else 'false' }};
+const TOTAL_CRITERIA = {{ ns.total_criteria }};  // all criteria (signed + unsigned)
 
 // ── Activity accordion ─────────────────────────────────────────────────────
 function toggleAct(id) {
@@ -1354,6 +1493,11 @@ function setCritState(actNo, ci, state, comment, signature) {
 
 // ── Update progress panel ──────────────────────────────────────────────────
 function updateProgress(data) {
+  // Update chip counts
+  const cntSigned = document.getElementById('cnt-signed');
+  const cntTotalCrit = document.getElementById('cnt-total-crit');
+  if (cntSigned)    cntSigned.textContent    = data.total;
+  if (cntTotalCrit) cntTotalCrit.textContent = data.total_criteria || data.total;
   document.getElementById('cnt-accepted').textContent = data.accepted;
   document.getElementById('cnt-concern').textContent  = data.concerns;
   document.getElementById('cnt-pending').textContent  = data.pending;
@@ -1366,41 +1510,107 @@ function updateProgress(data) {
   const offset = 157 * (1 - pct / 100);
   document.getElementById('ring-fill').style.strokeDashoffset = offset;
 
-  const banner = document.getElementById('all-reviewed-banner');
-  if (banner) banner.style.display = data.all_reviewed ? 'flex' : 'none';
-
   // ── Area 3: Update sticky completion panel ────────────────────────────────
   const stickyPanel = document.getElementById('sticky-completion-panel');
   if (!stickyPanel) return;
-  const stickyReviewed = document.getElementById('sticky-reviewed');
-  const stickyTotal    = document.getElementById('sticky-total');
-  const stickyBar      = document.getElementById('sticky-prog-bar');
-  const stickyPctLbl   = document.getElementById('sticky-pct-label');
-  const stickyBtn      = document.getElementById('sticky-complete-btn');
-  if (stickyReviewed) stickyReviewed.textContent = data.reviewed;
-  if (stickyTotal)    stickyTotal.textContent    = data.total;
-  if (stickyBar)      stickyBar.style.width      = pct + '%';
-  if (stickyPctLbl)   stickyPctLbl.textContent   = pct + '%';
+  const stickyReviewed  = document.getElementById('sticky-reviewed');
+  const stickyTotal     = document.getElementById('sticky-total');
+  const stickySigned    = document.getElementById('sticky-signed-of');
+  const stickyTotalCrit = document.getElementById('sticky-total-crit');
+  const stickyBar       = document.getElementById('sticky-prog-bar');
+  const stickyPctLbl    = document.getElementById('sticky-pct-label');
+  const stickyBtn       = document.getElementById('sticky-complete-btn');
+  const stickyMsg       = document.getElementById('sticky-status-msg');
+  const stickyMsgText   = document.getElementById('sticky-msg-text');
+  if (stickyReviewed)  stickyReviewed.textContent  = data.reviewed;
+  if (stickyTotal)     stickyTotal.textContent     = data.total;
+  if (stickySigned)    stickySigned.textContent    = data.total;
+  if (stickyTotalCrit) stickyTotalCrit.textContent = data.total_criteria || data.total;
+  if (stickyBar)       stickyBar.style.width       = pct + '%';
+  if (stickyPctLbl)    stickyPctLbl.textContent    = pct + '%';
+
+  // ready_for_final: all criteria signed + reviewed + accepted (no concerns)
+  const readyForFinal = !!data.ready_for_final;
   if (stickyBtn) {
-    const allDone = data.all_reviewed && data.total > 0;
-    stickyBtn.disabled = !allDone;
-    if (allDone) {
+    stickyBtn.disabled = !readyForFinal;
+    if (readyForFinal) {
       stickyBtn.style.background = 'linear-gradient(135deg,#1d4ed8,#2563eb)';
       stickyBtn.style.color      = 'white';
       stickyBtn.style.cursor     = 'pointer';
       stickyBtn.style.boxShadow  = '0 4px 16px rgba(37,99,235,.35)';
+      stickyBtn.innerHTML        = '<i class="fa-solid fa-pen-nib" style="margin-right:6px;"></i>Final Acknowledgement';
     } else {
       stickyBtn.style.background = '#e2e8f0';
       stickyBtn.style.color      = '#94a3b8';
       stickyBtn.style.cursor     = 'not-allowed';
       stickyBtn.style.boxShadow  = 'none';
+      stickyBtn.innerHTML        = '<i class="fa-solid fa-pen-nib" style="margin-right:6px;"></i>Complete Review';
     }
-    // Also update modal counts
-    const mc = document.getElementById('modal-accepted-count');
-    const mcc = document.getElementById('modal-concern-count');
-    if (mc)  mc.textContent  = data.accepted;
-    if (mcc) mcc.textContent = data.concerns;
   }
+
+  // Update the status message
+  const totalCrit   = data.total_criteria || data.total;
+  const unsignedCnt = totalCrit - data.total;
+  if (stickyMsg && stickyMsgText) {
+    if (readyForFinal) {
+      stickyMsg.style.display = 'none';
+    } else {
+      stickyMsg.style.display = 'block';
+      if (unsignedCnt > 0) {
+        stickyMsgText.textContent = `${unsignedCnt} of ${totalCrit} criteria still awaiting engineer sign-off. Review signed items now.`;
+      } else if (data.pending > 0) {
+        stickyMsgText.textContent = `${data.pending} item${data.pending !== 1 ? 's' : ''} still pending your review — scroll up to review them.`;
+      } else if (data.concerns > 0) {
+        stickyMsgText.textContent = `${data.concerns} concern${data.concerns !== 1 ? 's' : ''} raised — the inspection team will respond before final acknowledgement is available.`;
+      }
+    }
+  }
+
+  // Update progress-status-banner
+  const psb = document.getElementById('progress-status-banner');
+  if (psb) {
+    let bannerHtml = '';
+    if (readyForFinal) {
+      bannerHtml = `<div style="display:flex;align-items:center;gap:10px;padding:11px 14px;
+                  background:#f0fdf4;border-radius:10px;border:1.5px solid #bbf7d0;">
+        <i class="fa-solid fa-circle-check" style="color:#22c55e;font-size:16px;"></i>
+        <div>
+          <p style="font-size:13px;font-weight:700;color:#166534;margin:0;">All criteria signed and approved</p>
+          <p style="font-size:11px;color:#4ade80;margin:0;">Scroll down to submit your final acknowledgement</p>
+        </div></div>`;
+    } else if (unsignedCnt > 0) {
+      bannerHtml = `<div style="display:flex;align-items:center;gap:10px;padding:11px 14px;
+                  background:#eff6ff;border-radius:10px;border:1.5px solid #bfdbfe;">
+        <i class="fa-solid fa-hourglass-half" style="color:#2563eb;font-size:16px;flex-shrink:0;"></i>
+        <div>
+          <p style="font-size:13px;font-weight:700;color:#1d4ed8;margin:0;">${unsignedCnt} criteria awaiting engineer sign-off</p>
+          <p style="font-size:11px;color:#3b82f6;margin:0;">Review the ${data.total} signed criteria now. Final acknowledgement will be available after all ${totalCrit} criteria are signed and approved.</p>
+        </div></div>`;
+    } else if (data.pending > 0) {
+      bannerHtml = `<div style="display:flex;align-items:center;gap:10px;padding:11px 14px;
+                  background:#eff6ff;border-radius:10px;border:1.5px solid #bfdbfe;">
+        <i class="fa-solid fa-list-check" style="color:#2563eb;font-size:16px;flex-shrink:0;"></i>
+        <div>
+          <p style="font-size:13px;font-weight:700;color:#1d4ed8;margin:0;">${data.pending} item${data.pending !== 1 ? 's' : ''} ready for your review</p>
+          <p style="font-size:11px;color:#3b82f6;margin:0;">Review each item below. Final acknowledgement appears once all are approved.</p>
+        </div></div>`;
+    } else if (data.concerns > 0) {
+      bannerHtml = `<div style="display:flex;align-items:center;gap:10px;padding:11px 14px;
+                  background:#fffbeb;border-radius:10px;border:1.5px solid #fde68a;">
+        <i class="fa-solid fa-triangle-exclamation" style="color:#d97706;font-size:16px;flex-shrink:0;"></i>
+        <div>
+          <p style="font-size:13px;font-weight:700;color:#92400e;margin:0;">${data.concerns} concern${data.concerns !== 1 ? 's' : ''} submitted</p>
+          <p style="font-size:11px;color:#b45309;margin:0;">The inspection team has been notified and will respond. Final acknowledgement will be available once all concerns are resolved.</p>
+        </div></div>`;
+    }
+    psb.innerHTML = bannerHtml + '<div id="all-reviewed-banner" style="display:none;"></div>';
+  }
+
+  // Also update modal counts
+  const mc  = document.getElementById('modal-accepted-count');
+  const mcc = document.getElementById('modal-concern-count');
+  if (mc)  mc.textContent  = data.accepted;
+  if (mcc) mcc.textContent = data.concerns;
 }
 
 // ── Area 3: Completion modal ──────────────────────────────────────────────
