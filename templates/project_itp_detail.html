@@ -682,6 +682,12 @@
                 <p style="font-size:12px;font-weight:700;color:#0f172a;margin:0;">{{ inv.name }}</p>
                 <span style="font-size:10px;padding:1px 7px;border-radius:99px;
                              background:{{ sc_bg }};color:{{ sc_color }};font-weight:700;">{{ sc_label }}</span>
+                {% if inv.item_scope_ids %}
+                <span style="font-size:10px;padding:1px 7px;border-radius:99px;
+                             background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe;font-weight:600;">
+                  {{ inv.item_scope_ids|length }} criteria
+                </span>
+                {% endif %}
               </div>
               <p style="font-size:11px;color:#94a3b8;margin:0;">
                 {{ inv.company }}{% if inv.email %} · {{ inv.email }}{% endif %}
@@ -1266,13 +1272,19 @@ async function submitNewPerson() {
     });
     const data = await res.json();
     if (res.status === 409) {
-      showToast('warning', 'Already invited', data.error); return;
+      if (data.already_covered) {
+        showToast('info', 'No new criteria', data.error);
+      } else {
+        showToast('warning', 'Already invited', data.error);
+      }
+      return;
     }
     if (!data.ok) { alert(data.error || 'Failed to add signatory.'); return; }
     cancelNewPerson();
     _appendInviteRow(data);
+    const scopeNote2 = data.item_scope_count ? ` for ${data.item_scope_count} criteria` : '';
     showToast('success', 'New signatory added',
-      data.email_sent ? `Project access and ITP invitation sent to ${data.email}.`
+      data.email_sent ? `Project access and ITP invitation sent to ${data.email}${scopeNote2}.`
                       : 'Signatory added. Copy and share the link manually.');
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-user-plus mr-1"></i>Add & Notify'; }
@@ -1294,17 +1306,23 @@ async function addInvite() {
     });
     const data = await res.json();
     if (res.status === 409) {
-      showToast('warning', 'Already notified', data.error + (data.invited_by ? ` (by ${data.invited_by})` : '')); return;
+      if (data.already_covered) {
+        showToast('info', 'No new criteria', data.error);
+      } else {
+        showToast('warning', 'Already invited', data.error + (data.invited_by ? ` (by ${data.invited_by})` : ''));
+      }
+      return;
     }
     if (!data.ok) { alert(data.error || 'Failed to notify signatory.'); return; }
     const noMsg = document.getElementById('no-invites-msg');
     if (noMsg) noMsg.remove();
     _appendInviteRow(data);
     clearSigSelection();
+    const scopeNote = data.item_scope_count ? ` (${data.item_scope_count} criteria)` : '';
     if (data.email_sent) {
-      showToast('success', 'Signatory has been notified', `Invitation email sent to ${data.email}.`);
+      showToast('success', 'Signatory has been notified', `Invitation email sent to ${data.email}${scopeNote}.`);
     } else if (data.notif_sent) {
-      showToast('success', 'Signatory has been notified', 'In-app notification sent.');
+      showToast('success', 'Signatory has been notified', `In-app notification sent${scopeNote}.`);
     } else {
       showToast('success', 'Signatory added', 'Use the copy-link button to share the signing link.');
     }
@@ -1334,12 +1352,19 @@ function buildInviteRow(inv) {
     signed:                 {bg:'#dcfce7',color:'#166534',label:'Signed'},
   };
   const sc = statusColors[inv.status] || {bg:'#f1f5f9',color:'#64748b',label:inv.status||'Pending'};
+  const scopeBadge = inv.item_scope_count
+    ? `<span style="font-size:10px;padding:1px 7px;border-radius:99px;
+                    background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe;font-weight:600;">
+         ${inv.item_scope_count} criteria
+       </span>`
+    : '';
   d.innerHTML = `
     <div style="flex:1;min-width:0;">
       <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px;">
         <p style="font-size:12px;font-weight:700;color:#0f172a;margin:0;">${inv.name}</p>
         <span style="font-size:10px;padding:1px 7px;border-radius:99px;
                      background:${sc.bg};color:${sc.color};font-weight:700;">${sc.label}</span>
+        ${scopeBadge}
       </div>
       <p style="font-size:11px;color:#94a3b8;margin:0;">
         ${inv.company || ''}${inv.email ? ' · ' + inv.email : ''}

@@ -435,6 +435,9 @@
   {% endfor %}
   {# ready_for_final: ALL criteria signed by engineer, ALL reviewed, ALL accepted, zero concerns #}
   {% set ready_for_final = (ns.total_criteria > 0 and ns.total_signed == ns.total_criteria and ns.pending == 0 and ns.concerns == 0) %}
+  {# Per-invite scope (Phase 2B): list of ITPItemStatus IDs this invite covers.          #}
+  {# Empty list = no scope filtering (legacy invite or no invite = all criteria visible). #}
+  {% set invite_scope_set = invite.item_scope_ids if invite else [] %}
   {% set init_pct = ((ns.reviewed / ns.total_signed * 100)|int) if ns.total_signed else 0 %}
   {% set init_offset = (157 * (1 - init_pct / 100))|round|int %}
 
@@ -566,6 +569,38 @@
     </div>
     {% endif %}
   </div>
+
+  <!-- ─── INVITE SCOPE BANNER (Phase 2B) ─────────────────────────────── -->
+  {% if invite_scope_set %}
+  {% set _scope_in_review   = invite_scope_set | length %}
+  {% set _scope_already_done = namespace(n=0) %}
+  {% for _sid in invite_scope_set %}
+    {% for _s in record.item_statuses %}
+      {% if _s.id == _sid and _s.client_reviewed and _s.client_accepted %}
+        {% set _scope_already_done.n = _scope_already_done.n + 1 %}
+      {% endif %}
+    {% endfor %}
+  {% endfor %}
+  {% set _scope_todo = _scope_in_review - _scope_already_done.n %}
+  <div style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:14px;
+              padding:12px 16px;margin-bottom:14px;display:flex;align-items:flex-start;gap:10px;">
+    <i class="fa-solid fa-crosshairs" style="color:#2563eb;font-size:14px;margin-top:2px;flex-shrink:0;"></i>
+    <div>
+      <p style="font-size:13px;font-weight:700;color:#1e40af;margin:0 0 3px;">
+        Your review scope: {{ _scope_in_review }} criteria
+      </p>
+      <p style="font-size:11px;color:#3b82f6;margin:0;">
+        {% if _scope_todo == 0 %}
+          All {{ _scope_in_review }} criteria in your scope are approved. Scroll down to submit your final acknowledgement.
+        {% elif _scope_already_done.n > 0 %}
+          {{ _scope_todo }} remaining &middot; {{ _scope_already_done.n }} already approved.
+        {% else %}
+          This invitation covers {{ _scope_in_review }} criteria — review and approve each below.
+        {% endif %}
+      </p>
+    </div>
+  </div>
+  {% endif %}
 
   <!-- ─── ACTIVITY SUMMARY ────────────────────────────────────────────── -->
   {% if defn.get('items') %}
@@ -737,10 +772,35 @@
               {% endif %}
 
               <!-- Criterion text -->
-              <p style="font-size:13px;line-height:1.6;margin:0 0 10px;
+              <p style="font-size:13px;line-height:1.6;margin:0 0 8px;
                  {% if s and s.lucas_complete %}color:#334155;{% else %}color:#94a3b8;{% endif %}">
                 {{ crit }}
               </p>
+
+              <!-- Scope badge (Phase 2B) — only visible when invite has a specific scope -->
+              {% if invite_scope_set %}
+              {% if s and s.id in invite_scope_set %}
+                {% if s.client_reviewed and s.client_accepted %}
+                <span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;
+                             padding:2px 8px;border-radius:5px;margin-bottom:8px;
+                             background:#dcfce7;color:#16a34a;border:1px solid #bbf7d0;font-weight:700;">
+                  <i class="fa-solid fa-check"></i>Approved
+                </span>
+                {% else %}
+                <span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;
+                             padding:2px 8px;border-radius:5px;margin-bottom:8px;
+                             background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe;font-weight:700;">
+                  <i class="fa-solid fa-crosshairs"></i>In your scope
+                </span>
+                {% endif %}
+              {% elif s and s.lucas_complete %}
+                <span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;
+                             padding:2px 8px;border-radius:5px;margin-bottom:8px;
+                             background:#f8fafc;color:#94a3b8;border:1px solid #e2e8f0;font-weight:600;">
+                  <i class="fa-solid fa-eye-slash"></i>Outside your scope
+                </span>
+              {% endif %}
+              {% endif %}
 
               <!-- Engineer sign-off preview -->
               {% if s and s.lucas_complete %}
