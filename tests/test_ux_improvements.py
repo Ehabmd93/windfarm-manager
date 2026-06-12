@@ -24,6 +24,7 @@ import json
 import os
 import sys
 import uuid
+from datetime import datetime, timezone, timedelta
 
 import pytest
 from werkzeug.security import generate_password_hash
@@ -343,3 +344,91 @@ class TestUnscopedITPTemplate:
         resp, d = _json_post(client, f"/projects/{proj.id}/itp/{t.id}/assign-scope",
                              {"scope_selection": []})
         assert resp.status_code == 400, d
+
+
+# ─── 4. Client review page render (UI redesign smoke tests) ─────────────────
+
+class TestClientSignPageRender:
+    """The redesigned itp_client_sign.html must render without template errors
+    in every major state. These are smoke tests for the Jinja layer — the
+    review/sign workflow itself is covered by test_itp_phase2.py."""
+
+    def _setup_full(self, client, db):
+        from models import ITPRecord, ITPItemStatus, ITPClientInvite
+        user   = _make_user(db)
+        proj   = _make_project(db)
+        member = _make_owner(db, proj, user)
+        el     = _make_element(db, proj.id)
+        t = _make_template(
+            db, proj.id, user.id,
+            scope=[{"type": "element", "id": el.id, "name": el.name}],
+            items=[{
+                "no": "1", "activity": "Earthworks",
+                "criteria": ["Surface compacted to spec", "Layer thickness verified"],
+                "rows": [{"inspection": "H", "frequency": "Each lot"},
+                         {"inspection": "W", "frequency": "Each lot"}],
+                "lucas_codes": [], "client_codes": [], "hold_witness": None,
+            }])
+        rec = ITPRecord(
+            wtg_id=el.id, itp_type=t.itp_type_key,
+            project_itp_template_id=t.id, status="in_progress",
+            client_token=uuid.uuid4().hex,
+            engineer_name=user.name, engineer_company=user.company,
+        )
+        db.session.add(rec)
+        db.session.flush()
+        s0 = ITPItemStatus(itp_record_id=rec.id, item_no="1", criterion_index=0,
+                           lucas_complete=True,
+                           lucas_signed_at=datetime.now(timezone.utc))
+        s1 = ITPItemStatus(itp_record_id=rec.id, item_no="1", criterion_index=1,
+                           lucas_complete=False)
+        db.session.add_all([s0, s1])
+        db.session.flush()
+        inv = ITPClientInvite(
+            record_id=rec.id, project_member_ac_id=member.id, user_id=user.id,
+            token=f"rtok-{_uid()}", name=user.name, email=user.email,
+            company=user.company, status="pending_review", is_revoked=False,
+            expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+        )
+        db.session.add(inv)
+        db.session.commit()
+        _inject_session(client, user.id)
+        return user, proj, el, t, rec, inv, (s0, s1)
+
+    def test_render_open_review(self, client, db):
+        """Open review state: checklist, progress panel, action buttons,
+        sticky submit bar, and both signed/unsigned criterion branches."""
+        *_, rec, inv, _ = self._setup_full(client, db)
+        resp = client.get(f"/itp/client/{inv.token}")
+        assert resp.status_code == 200
+        assert b"Inspection Checklist" in resp.data
+        assert b"Review Progress" in resp.data
+        assert b"Approve &amp; Sign" in resp.data
+        assert b"Awaiting engineer sign-off" in resp.data
+        assert b"sticky-complete-btn" in resp.data
+        assert b"completion-modal-overlay" in resp.data
+
+    def test_render_scoped_invite_banner(self, client, db):
+        """Scoped invite shows the scope banner and in/out-of-scope badges."""
+        *_, rec, inv, (s0, s1) = self._setup_full(client, db)
+        inv.item_scope_ids = [s0.id]
+        db.session.commit()
+        resp = client.get(f"/itp/client/{inv.token}")
+        assert resp.status_code == 200
+        assert b"Your review scope" in resp.data
+        assert b"In your scope" in resp.data
+
+    def test_render_complete_state(self, client, db):
+        """Completed ITP renders the approval banner without errors."""
+        from models import ITPRecord
+        *_, rec, inv, _ = self._setup_full(client, db)
+        rec2 = db.session.get(ITPRecord, rec.id)
+        rec2.status         = "complete"
+        rec2.client_name    = "Jane Client"
+        rec2.client_company = "ClientCo"
+        rec2.client_signed_at = datetime.now(timezone.utc)
+        db.session.commit()
+        resp = client.get(f"/itp/client/{inv.token}")
+        assert resp.status_code == 200
+        assert b"ITP Approved" in resp.data
+        assert b"Jane Client" in resp.data
