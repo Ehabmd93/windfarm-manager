@@ -517,11 +517,17 @@
     <div style="display:grid;gap:14px;">
       <div>
         <label class="form-label">Company Type <span style="color:#ef4444;">*</span></label>
-        <select id="c-type" class="form-input">
+        <select id="c-type" class="form-input" onchange="onCompanyTypeChange()">
           {% for key, label, icon, color in company_types %}
           <option value="{{ key }}">{{ label }}</option>
           {% endfor %}
+          <option value="other">Other…</option>
         </select>
+      </div>
+      <div id="c-type-custom-wrap" style="display:none;">
+        <label class="form-label">Custom Company Type <span style="color:#ef4444;">*</span></label>
+        <input id="c-type-custom" type="text" class="form-input" maxlength="30"
+               placeholder="e.g. Surveyor, Authority, Designer">
       </div>
       <div>
         <label class="form-label">Company Name <span style="color:#ef4444;">*</span></label>
@@ -707,22 +713,36 @@ function openAddCompany() {
 function closeAddCompany() {
   document.getElementById('add-company-modal').classList.remove('open');
 }
+function onCompanyTypeChange() {
+  const isOther = document.getElementById('c-type').value === 'other';
+  const wrap    = document.getElementById('c-type-custom-wrap');
+  wrap.style.display = isOther ? 'block' : 'none';
+  if (!isOther) document.getElementById('c-type-custom').value = '';
+  else document.getElementById('c-type-custom').focus();
+}
 async function submitAddCompany() {
   if (!_requireManage()) return;
   const name = document.getElementById('c-name').value.trim();
   if (!name) { alert('Company name is required'); return; }
-  const r = await fetch(`/projects/${PID}/companies`, {
-    method: 'POST',
-    headers: {'Content-Type':'application/json', 'X-CSRF-Token': CSRF_TOKEN},
-    body: JSON.stringify({
-      company_type:  document.getElementById('c-type').value,
+  const ctype = document.getElementById('c-type').value;
+  const body = {
+      company_type:  ctype,
       name,
       short_name:    document.getElementById('c-short').value.trim(),
       contact_name:  document.getElementById('c-contact').value.trim(),
       contact_email: document.getElementById('c-email').value.trim(),
       contact_phone: document.getElementById('c-phone').value.trim(),
       notes:         document.getElementById('c-notes').value.trim(),
-    }),
+  };
+  if (ctype === 'other') {
+    const custom = document.getElementById('c-type-custom').value.trim();
+    if (!custom) { alert('Please enter a custom company type'); return; }
+    body.custom_company_type = custom;
+  }
+  const r = await fetch(`/projects/${PID}/companies`, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json', 'X-CSRF-Token': CSRF_TOKEN},
+    body: JSON.stringify(body),
   });
   const d = await r.json();
   if (!d.ok) { alert(d.error); return; }

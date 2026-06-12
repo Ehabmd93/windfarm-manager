@@ -359,7 +359,45 @@
 
   <!-- LEFT: Element cards -->
   <div>
-    {% if elements %}
+    {% if needs_scope %}
+    <!-- Unscoped draft — template ready, execution blocked until scope assigned -->
+    <div style="text-align:center;padding:60px 20px;background:white;border:1.5px dashed #fcd34d;border-radius:18px;">
+      <div style="width:64px;height:64px;border-radius:18px;background:#fffbeb;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
+        <i class="fa-solid fa-link-slash" style="font-size:26px;color:#d97706;"></i>
+      </div>
+      <span style="display:inline-block;font-size:11px;font-weight:800;color:#b45309;background:#fffbeb;
+                   border:1px solid #fde68a;padding:3px 12px;border-radius:99px;margin-bottom:12px;">
+        Draft — no scope assigned
+      </span>
+      <p style="font-size:15px;font-weight:700;color:#334155;margin:0 0 6px;">
+        This ITP template is ready, but it is not linked to project hierarchy yet.
+      </p>
+      <p style="font-size:13px;color:#94a3b8;margin:0 0 20px;max-width:440px;margin-left:auto;margin-right:auto;">
+        Assign Groups, Work Packages, or Elements to start creating ITP records.
+        Until then the template can be edited and prepared, but records can't be
+        created, signed, or sent for client review.
+      </p>
+      <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+        {% if can_assign_scope and (groups or all_elements) %}
+        <button onclick="openAssignScope()"
+                style="display:inline-flex;align-items:center;gap:8px;padding:10px 20px;border:none;cursor:pointer;
+                       background:#7c3aed;color:white;border-radius:11px;font-weight:700;font-size:13px;">
+          <i class="fa-solid fa-link"></i> Assign Scope
+        </button>
+        {% elif can_assign_scope %}
+        <span style="font-size:12px;color:#94a3b8;align-self:center;">
+          Hierarchy is not ready yet — set it up first, then return here to assign scope.
+        </span>
+        {% endif %}
+        <a href="{{ url_for('project_hierarchy', pid=proj.id) }}"
+           style="display:inline-flex;align-items:center;gap:8px;padding:10px 20px;
+                  background:#f1f5f9;color:#475569;border:1.5px solid #e2e8f0;
+                  border-radius:11px;font-weight:700;font-size:13px;text-decoration:none;">
+          <i class="fa-solid fa-sitemap"></i> Go to Project Hierarchy
+        </a>
+      </div>
+    </div>
+    {% elif elements %}
     <div class="flex items-center gap-3 mb-4">
       <h3 class="font-bold text-slate-700 text-sm uppercase tracking-wider">
         <i class="fa-solid fa-layer-group mr-2 text-violet-500"></i>Applicable Elements ({{ elements|length }})
@@ -490,10 +528,29 @@
         <div style="display:flex;flex-wrap:wrap;gap:6px;">
           {% for s in scope %}
           <span class="scope-chip">
-            <i class="fa-solid fa-location-dot" style="font-size:9px;"></i>{{ s }}
+            <i class="fa-solid fa-location-dot" style="font-size:9px;"></i>{{ s.name if s.name is defined else s }}
           </span>
           {% endfor %}
         </div>
+      </div>
+    </div>
+    {% else %}
+    <div class="info-panel">
+      <div class="info-panel-head" style="background:#b45309;color:white;">
+        <i class="fa-solid fa-link-slash"></i> Applicable Scope
+      </div>
+      <div class="info-panel-body">
+        <p style="font-size:12px;color:#92400e;font-weight:700;margin:0 0 4px;">Draft — no scope assigned</p>
+        <p style="font-size:11px;color:#94a3b8;margin:0 0 10px;">
+          Template ready, execution blocked until scope is assigned.
+        </p>
+        {% if can_assign_scope and (groups or all_elements) %}
+        <button onclick="openAssignScope()"
+                style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border:none;cursor:pointer;
+                       background:#7c3aed;color:white;border-radius:9px;font-weight:700;font-size:11px;">
+          <i class="fa-solid fa-link"></i> Assign Scope
+        </button>
+        {% endif %}
       </div>
     </div>
     {% endif %}
@@ -587,4 +644,112 @@
 
   </div><!-- right -->
 </div>
+
+{% if can_assign_scope %}
+<!-- ── Assign Scope Modal ──────────────────────────────────────────────── -->
+<div id="assign-scope-overlay"
+     style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.45);"
+     onclick="if(event.target===this)closeAssignScope()">
+  <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+              background:white;border-radius:18px;padding:24px;
+              max-width:520px;width:calc(100% - 32px);max-height:80vh;overflow-y:auto;
+              box-shadow:0 20px 60px rgba(0,0,0,.25);">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;">
+      <div style="width:40px;height:40px;border-radius:12px;background:#f5f3ff;
+                  display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <i class="fa-solid fa-link" style="color:#7c3aed;font-size:16px;"></i>
+      </div>
+      <div>
+        <h3 style="font-size:16px;font-weight:900;color:#0f172a;margin:0;">Assign Scope</h3>
+        <p style="font-size:12px;color:#94a3b8;margin:0;">Where does this ITP apply? Tick Groups, Work Packages or Elements.</p>
+      </div>
+    </div>
+    <p style="font-size:11px;color:#64748b;background:#f8fafc;border-radius:9px;padding:8px 12px;margin:12px 0;border-left:3px solid #0ea5e9;">
+      Selecting a <strong>Group</strong> covers all its elements; a <strong>Work Package</strong> covers that WP's elements.
+    </p>
+
+    <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:16px;">
+      {% for g in groups %}
+      <label style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:9px;cursor:pointer;background:#f8fafc;">
+        <input type="checkbox" class="as-cb" data-type="group" data-id="{{ g.id }}" data-name="{{ g.name }}"
+               style="width:15px;height:15px;accent-color:#7c3aed;">
+        <span style="width:9px;height:9px;border-radius:50%;background:{{ g.color }};flex-shrink:0;"></span>
+        <span style="font-size:13px;font-weight:800;color:#1e293b;">{{ g.name }}</span>
+        <span style="font-size:10px;color:#94a3b8;font-weight:700;">GROUP</span>
+      </label>
+      {% endfor %}
+      {% for wp in work_packages %}
+      <label style="display:flex;align-items:center;gap:10px;padding:7px 10px 7px 26px;border-radius:9px;cursor:pointer;">
+        <input type="checkbox" class="as-cb" data-type="wp" data-id="{{ wp.id }}" data-name="{{ wp.name }}"
+               style="width:15px;height:15px;accent-color:#7c3aed;">
+        <span style="font-size:12px;font-weight:700;color:#334155;">{{ wp.name }}</span>
+        <span style="font-size:10px;color:#94a3b8;font-weight:700;">WORK PACKAGE</span>
+      </label>
+      {% endfor %}
+      {% for el in all_elements %}
+      <label style="display:flex;align-items:center;gap:10px;padding:6px 10px 6px 26px;border-radius:9px;cursor:pointer;">
+        <input type="checkbox" class="as-cb" data-type="element" data-id="{{ el.id }}" data-name="{{ el.name }}"
+               style="width:15px;height:15px;accent-color:#7c3aed;">
+        <i class="fa-solid fa-tower-broadcast" style="color:#94a3b8;font-size:10px;"></i>
+        <span style="font-size:12px;font-weight:600;color:#475569;">{{ el.name }}</span>
+      </label>
+      {% endfor %}
+      {% if not groups and not work_packages and not all_elements %}
+      <p style="font-size:12px;color:#94a3b8;text-align:center;padding:16px;">
+        No hierarchy yet — set up Groups or Elements first.
+      </p>
+      {% endif %}
+    </div>
+
+    <div style="display:flex;gap:10px;justify-content:flex-end;">
+      <button onclick="closeAssignScope()"
+              style="padding:9px 18px;background:#f1f5f9;border:none;border-radius:10px;
+                     font-size:13px;font-weight:700;color:#64748b;cursor:pointer;">Cancel</button>
+      <button id="as-save-btn" onclick="submitAssignScope()"
+              style="display:inline-flex;align-items:center;gap:7px;padding:9px 20px;border:none;cursor:pointer;
+                     background:#7c3aed;color:white;border-radius:10px;font-size:13px;font-weight:800;">
+        <i class="fa-solid fa-check"></i> Save Scope
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+function openAssignScope() {
+  document.getElementById('assign-scope-overlay').style.display = 'block';
+}
+function closeAssignScope() {
+  document.getElementById('assign-scope-overlay').style.display = 'none';
+}
+async function submitAssignScope() {
+  const selection = [...document.querySelectorAll('.as-cb:checked')].map(cb => ({
+    type: cb.dataset.type,
+    id:   parseInt(cb.dataset.id),
+    name: cb.dataset.name,
+  }));
+  if (!selection.length) { alert('Select at least one Group, Work Package, or Element.'); return; }
+  const btn = document.getElementById('as-save-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving…';
+  try {
+    const r = await fetch('{{ url_for("api_project_itp_assign_scope", pid=proj.id, tid=template.id) }}', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-CSRF-Token': '{{ csrf_token() }}'},
+      body: JSON.stringify({scope_selection: selection}),
+    });
+    const d = await r.json();
+    if (d.ok) { window.location.reload(); }
+    else {
+      alert(d.error || 'Failed to save scope.');
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa-solid fa-check"></i> Save Scope';
+    }
+  } catch(e) {
+    alert('Network error. Please try again.');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fa-solid fa-check"></i> Save Scope';
+  }
+}
+</script>
+{% endif %}
 {% endblock %}

@@ -176,6 +176,7 @@ PROJECT_STATUSES = [
     ('archived',   'Archived',   '#94a3b8'),
 ]
 ALL_FEATURES = [
+    ('map',              'Map & Geofencing',   'fa-map-location-dot',  '#34d399'),
     ('proof_rolling',    'Proof Rolling',      'fa-file-circle-check', '#22c55e'),
     ('geo_testing',      'Geo Testing Records','fa-microscope',        '#6ee7b7'),
     ('itp',              'ITPs',               'fa-clipboard-list',    '#a78bfa'),

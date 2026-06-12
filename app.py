@@ -2937,9 +2937,18 @@ def api_add_company(pid):
     name = (data.get('name') or '').strip()
     if not name:
         return jsonify({'error': 'Company name is required'}), 400
+    # Company type — predefined key, or a free-text custom type via "Other".
+    # company_type column is String(30); type_label/type_color/type_icon fall
+    # back gracefully for values outside COMPANY_TYPES.
+    ctype = (data.get('company_type') or 'client').strip()[:30] or 'client'
+    if ctype == 'other':
+        custom = (data.get('custom_company_type') or '').strip()[:30]
+        if not custom:
+            return jsonify({'error': 'Custom company type is required when "Other" is selected'}), 400
+        ctype = custom
     c = ProjectCompany(
         project_id    = pid,
-        company_type  = data.get('company_type', 'client'),
+        company_type  = ctype,
         name          = name,
         short_name    = (data.get('short_name') or '').strip(),
         contact_name  = (data.get('contact_name') or '').strip(),
@@ -4703,6 +4712,14 @@ def map_view():
 @login_required
 def project_map(pid):
     proj     = Project.query.get_or_404(pid)
+    # Map & Geofencing is an optional module — feature_enabled defaults to True
+    # when no row exists, so projects created before the flag keep their map.
+    if not proj.feature_enabled('map'):
+        flash('Map & Geofencing is not enabled for this project. '
+              'You can enable it any time from Project Settings.', 'info')
+        return redirect(url_for('project_settings', pid=pid)
+                        if current_user.role == 'admin' or _user_can_manage_project(pid)
+                        else url_for('dashboard'))
     from flask import session as fsession
     fsession['active_project_id'] = pid   # switch active project when visiting map
     wtgs     = WTG.query.filter_by(project_id=pid).order_by(WTG.name).all()
@@ -5125,11 +5142,14 @@ def project_itp_index(pid):
     groups        = WTGGroup.query.filter_by(project_id=pid).order_by(WTGGroup.sort_order, WTGGroup.name).all()
     work_packages = WorkPackage.query.filter_by(project_id=pid).order_by(WorkPackage.sort_order, WorkPackage.name).all()
 
-    # Build per-template filtered element lists based on applicable_scope
+    # Build per-template filtered element lists based on applicable_scope.
+    # Empty scope = unscoped draft ("Needs scope") — template is authored but
+    # not yet linked to hierarchy, so it has NO applicable elements and cannot
+    # generate ITP records until scope is assigned.
     def _scope_elements(tmpl, all_els):
         scope = tmpl.applicable_scope  # [{type, id, name}]
         if not scope:
-            return all_els
+            return []
         eids = set()
         for s in scope:
             stype = s.get('type')
@@ -5249,6 +5269,16 @@ def project_itp_detail(pid, tid, eid):
         abort(403)
     template = ProjectITPTemplate.query.filter_by(id=tid, project_id=pid).first_or_404()
     wtg      = WTG.query.filter_by(id=eid, project_id=pid).first_or_404()
+
+    # Unscoped draft guard — a template with no applicable_scope is authoring-only.
+    # It must not create ITPRecords, be signed, receive evidence, or send invites
+    # until scope is assigned. (Signing/invite/evidence routes all require an
+    # existing ITPRecord, so blocking record creation here blocks them all.)
+    if not template.applicable_scope:
+        flash('This ITP template has no scope assigned yet. '
+              'Assign Groups, Work Packages, or Elements before creating ITP records.', 'warning')
+        return redirect(url_for('project_itp_template_view', pid=pid, tid=tid))
+
     defn     = template.to_dict()
     itp_type = template.itp_type_key
 
@@ -5886,10 +5916,11 @@ def project_itp_template_view(pid, tid):
     itp_type = template.itp_type_key
     scope    = template.applicable_scope   # [{type, id, name}]
 
-    # Collect applicable elements (respects element / wp / group scope types)
+    # Collect applicable elements (respects element / wp / group scope types).
+    # Empty scope = unscoped draft — no applicable elements until scope assigned.
     all_elements = WTG.query.filter_by(project_id=pid).order_by(WTG.name).all()
     if not scope:
-        elements = all_elements
+        elements = []
     else:
         eids = set()
         for s in scope:
@@ -5913,13 +5944,86 @@ def project_itp_template_view(pid, tid):
     for r in records:
         status_counts[r.status] = status_counts.get(r.status, 0) + 1
 
+    # Unscoped draft support — hierarchy data for the Assign Scope modal
+    needs_scope      = not scope
+    can_assign_scope = user_can(pid, 'can_create_itp')
+    groups           = WTGGroup.query.filter_by(project_id=pid).order_by(WTGGroup.sort_order, WTGGroup.name).all()
+    work_packages    = WorkPackage.query.filter_by(project_id=pid).order_by(WorkPackage.sort_order, WorkPackage.name).all()
+
     return render_template('project_itp_template_view.html',
                            proj=proj, template=template,
                            elements=elements, by_eid=by_eid,
                            pid=pid, tid=tid,
                            ac_can_delete=ac_can_delete,
                            linked_record_count=len(records),
-                           status_counts=status_counts)
+                           status_counts=status_counts,
+                           needs_scope=needs_scope,
+                           can_assign_scope=can_assign_scope,
+                           all_elements=all_elements,
+                           groups=groups, work_packages=work_packages)
+
+
+@app.route('/projects/<int:pid>/itp/<int:tid>/assign-scope', methods=['POST'])
+@login_required
+def api_project_itp_assign_scope(pid, tid):
+    """AJAX — assign (or update) applicable scope on an ITP template.
+
+    Lets an unscoped draft template be linked to hierarchy once it exists.
+    Requires can_create_itp. Scope must be non-empty — clearing scope on a
+    template is not allowed (records may already depend on it).
+    """
+    if not _validate_csrf_token():
+        return jsonify({'error': 'Invalid or missing CSRF token.'}), 403
+    if not user_can(pid, 'can_create_itp'):
+        return jsonify({'error': 'You do not have permission to edit ITP templates.'}), 403
+    template = ProjectITPTemplate.query.filter_by(id=tid, project_id=pid).first_or_404()
+
+    data      = request.get_json(silent=True) or {}
+    selection = data.get('scope_selection') or []
+    if not isinstance(selection, list) or not selection:
+        return jsonify({'error': 'Select at least one Group, Work Package, or Element.'}), 400
+
+    # Validate every entry: known type + id belongs to THIS project
+    valid_group_ids = {g.id for g in WTGGroup.query.filter_by(project_id=pid).all()}
+    valid_wp_ids    = {w.id for w in WorkPackage.query.filter_by(project_id=pid).all()}
+    valid_el_ids    = {e.id for e in WTG.query.filter_by(project_id=pid).all()}
+    _name_lkp = {}
+    for g in WTGGroup.query.filter_by(project_id=pid).all():
+        _name_lkp[('group', g.id)] = g.name
+    for w in WorkPackage.query.filter_by(project_id=pid).all():
+        _name_lkp[('wp', w.id)] = w.name
+    for e in WTG.query.filter_by(project_id=pid).all():
+        _name_lkp[('element', e.id)] = e.name
+
+    cleaned = []
+    for s in selection:
+        stype = (s.get('type') or '').strip()
+        try:
+            sid = int(s.get('id'))
+        except (TypeError, ValueError):
+            return jsonify({'error': 'Invalid scope entry.'}), 400
+        if stype == 'group'   and sid in valid_group_ids:
+            pass
+        elif stype == 'wp'    and sid in valid_wp_ids:
+            pass
+        elif stype == 'element' and sid in valid_el_ids:
+            pass
+        else:
+            return jsonify({'error': 'Scope entry does not belong to this project.'}), 400
+        cleaned.append({'type': stype, 'id': sid,
+                        'name': _name_lkp.get((stype, sid), s.get('name') or '')})
+
+    was_unscoped = not template.applicable_scope
+    template.applicable_scope = cleaned
+    log_audit('itp_template_scope_assigned',
+              project_id=pid, actor=current_user,
+              entity_type='itp_template', entity_id=template.id,
+              entity_label=f'ITP #{template.itp_number} — {template.name}',
+              detail={'was_unscoped': was_unscoped,
+                      'scope_count': len(cleaned),
+                      'scope': [f"{c['type']}:{c['name']}" for c in cleaned]})
+    db.session.commit()
+    return jsonify({'ok': True, 'scope_count': len(cleaned)})
 
 
 @app.route('/projects/<int:pid>/itp/<int:tid>/delete', methods=['POST'])

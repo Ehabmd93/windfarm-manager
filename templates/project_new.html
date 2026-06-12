@@ -232,7 +232,7 @@
             </div>
             <span style="font-size:10px;font-weight:800;color:#16a34a;text-transform:uppercase;letter-spacing:.08em;">Core Platform — Always Included</span>
           </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
 
             <div style="background:white;border-radius:12px;padding:13px 14px;border:1px solid #bbf7d0;display:flex;gap:11px;align-items:flex-start;">
               <div style="width:38px;height:38px;border-radius:11px;background:#dcfce7;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
@@ -251,16 +251,6 @@
               <div>
                 <div style="font-size:12px;font-weight:800;color:#0f172a;">Team &amp; Access</div>
                 <div style="font-size:11px;color:#64748b;margin-top:2px;line-height:1.45;">Invite members, assign roles, and control access from owner to client.</div>
-              </div>
-            </div>
-
-            <div style="background:white;border-radius:12px;padding:13px 14px;border:1px solid #bbf7d0;display:flex;gap:11px;align-items:flex-start;">
-              <div style="width:38px;height:38px;border-radius:11px;background:#dcfce7;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                <i class="fa-solid fa-map-location-dot" style="color:#16a34a;font-size:16px;"></i>
-              </div>
-              <div>
-                <div style="font-size:12px;font-weight:800;color:#0f172a;">Map &amp; Geofencing</div>
-                <div style="font-size:11px;color:#64748b;margin-top:2px;line-height:1.45;">Place assets on an interactive map and define geofenced project zones.</div>
               </div>
             </div>
 
@@ -287,6 +277,7 @@
         </div>
 
         {% set feat_descs = {
+          'map':              'Place assets on an interactive map and define geofenced project zones. Can be enabled later from Project Settings.',
           'proof_rolling':    'Record, review, and sign off proof roll test passes with automatic status tracking.',
           'geo_testing':      'DCP, compaction, and geo test records with auto-generated charts and acceptance criteria.',
           'itp':              'Inspection Test Plans with hold points, checklists, and multi-party client sign-off workflows.',
@@ -299,7 +290,7 @@
         } %}
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:11px;">
-          {% set wind_defaults = ['proof_rolling','geo_testing','itp','foundation','progress_tracker','documents'] %}
+          {% set wind_defaults = ['map','proof_rolling','geo_testing','itp','foundation','progress_tracker','documents'] %}
         {% for key, label, icon, color in ALL_FEATURES %}
           {% set default_on = key in wind_defaults %}
           <div class="feat-card {% if default_on %}on{% endif %}" id="ft-{{ key }}"

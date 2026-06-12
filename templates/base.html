@@ -192,7 +192,7 @@
         <i class="fa-solid fa-house" style="width:16px;color:#60a5fa;"></i>
         <span>Home</span>
       </a>
-      {% if active_project %}
+      {% if active_project and active_project.feature_enabled('map') %}
       <a href="{{ url_for('project_map', pid=active_project.id) }}"
          class="sidebar-link {% if request.endpoint=='project_map' %}active{% endif %}" style="margin-top:3px;">
         <i class="fa-solid fa-map" style="width:16px;color:#34d399;"></i>

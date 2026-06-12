@@ -283,6 +283,7 @@
                 transition:all .2s;">
         <i class="fa-solid fa-sliders"></i> Configure Setup
       </a>
+      {% if proj.feature_enabled('map') %}
       <a href="{{ url_for('project_map', pid=proj.id) }}"
          style="display:inline-flex;align-items:center;gap:8px;padding:10px 18px;
                 background:rgba(255,255,255,.06);color:rgba(255,255,255,.6);
@@ -291,6 +292,7 @@
                 transition:all .2s;">
         <i class="fa-solid fa-map-location-dot"></i> Project Map
       </a>
+      {% endif %}
     </div>
   </div>
 </div>
