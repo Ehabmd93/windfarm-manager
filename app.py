@@ -6449,9 +6449,15 @@ def api_client_review_item(token, item_no, ci):
                                             eid=record.wtg.id)
             except Exception:
                 pass
-            _cn_title   = f'Client concern raised — {wtg_name} item {item_no}.{int(ci)+1}'
-            _cn_message = (f'{_author_name} ({_author_company}) raised a '
-                           f'{s.client_action.replace("_"," ")} on {wtg_name} '
+            _action_titles = {
+                'rejected':              'Client rejected an item',
+                'request_changes':       'Client requested changes',
+                'request_clarification': 'Client requested clarification',
+            }
+            _cn_title   = (f'{_action_titles.get(s.client_action, "Client concern raised")} '
+                           f'— {wtg_name} item {item_no}.{int(ci)+1}')
+            _cn_message = (f'{_author_name}{(" (" + _author_company + ")") if _author_company else ""} '
+                           f'raised "{s.client_action.replace("_"," ")}" on {wtg_name} '
                            f'item {item_no}.{int(ci)+1}: {_note_text[:160]}')
             _notified_ids = set()
             # Notify invite sender
@@ -6507,7 +6513,10 @@ def api_client_review_item(token, item_no, ci):
         len(concerns) == 0
     )
 
-    # current_scope_ready: only the criteria in THIS invite's scope need to be reviewed.
+    # current_scope_ready: every criterion in THIS invite's scope has a REVIEW
+    # DECISION (approved OR a concern). Reject / request_changes /
+    # request_clarification are completed decisions — they do NOT block the
+    # current review cycle from being submitted. Only un-reviewed items block it.
     # For scoped invites (Phase 2B): check only items in invite.item_scope_ids.
     # For legacy/no-scope invites: equivalent to all-pending = 0.
     if invite and invite.item_scope_ids:
@@ -6518,16 +6527,15 @@ def api_client_review_item(token, item_no, ci):
         _scope_pend = [x for x in _scope_sts  if not x.client_reviewed]
         current_scope_ready = (
             len(_scope_sts) > 0 and
-            len(_scope_pend) == 0 and
-            len(_scope_con) == 0
+            len(_scope_pend) == 0       # concerns allowed — only un-reviewed blocks
         )
-        scope_pending_cnt = len(_scope_pend)
+        scope_pending_cnt  = len(_scope_pend)
+        scope_concerns_cnt = len(_scope_con)
     else:
         # Legacy / no-scope invite: scope == all engineer-signed criteria
-        current_scope_ready = (len(signed_items) > 0 and
-                               len(pending) == 0 and
-                               len(concerns) == 0)
+        current_scope_ready = (len(signed_items) > 0 and len(pending) == 0)
         scope_pending_cnt   = len(pending)
+        scope_concerns_cnt  = len(concerns)
 
     return jsonify({
         'ok':                  True,
@@ -6542,6 +6550,7 @@ def api_client_review_item(token, item_no, ci):
         'ready_for_final':     ready_for_final,
         'current_scope_ready': current_scope_ready,
         'scope_pending':       scope_pending_cnt,
+        'scope_concerns':      scope_concerns_cnt,
     })
 
 
@@ -6933,6 +6942,18 @@ def itp_client_sign(token):
             if _itp_proj_id and not user_can(_itp_proj_id, 'can_sign_client_itp'):
                 flash('You do not have permission to sign this ITP.', 'danger')
                 return redirect(url_for('itp_client_sign', token=token))
+            # Duplicate-submission guard — a signed invite or completed review
+            # cycle is final. Show the read-only submitted state instead of
+            # re-processing the signature.
+            if invite and invite.status == 'signed':
+                flash('Your review has already been submitted. '
+                      'The inspection team has been notified.', 'success')
+                return redirect(url_for('itp_client_sign', token=token))
+            if invite and invite.review_cycle_id:
+                _existing_cycle = ITPReviewCycle.query.get(invite.review_cycle_id)
+                if _existing_cycle and _existing_cycle.status in ('completed', 'superseded'):
+                    flash('This review cycle has already been completed.', 'info')
+                    return redirect(url_for('itp_client_sign', token=token))
             sig             = request.form.get('client_signature', '').strip()
             submission_type = request.form.get('submission_type', 'current_scope')  # 'final_ack' or 'current_scope'
             if not sig:
@@ -6961,9 +6982,6 @@ def itp_client_sign(token):
                 _sign_now = datetime.now(timezone.utc)
                 record.client_signature = sig
                 record.client_signed_at = _sign_now
-                # Derive status from actual data — completing a review CYCLE does
-                # NOT lock the whole ITP record (it may still have unsigned criteria).
-                record.status           = _compute_itp_status(record)
 
                 # Mark the invite as signed and lock in signer identity
                 _signer_name    = (current_user.name
@@ -7013,6 +7031,13 @@ def itp_client_sign(token):
                                       detail={'record_id': record.id,
                                               'cycle_id': _cycle.id,
                                               'superseded_count': len(_other_invites)})
+
+                # Derive status from actual data — computed AFTER the cycle is
+                # marked completed and the invite signed, so _compute_itp_status
+                # sees the closed cycle. Completing a review CYCLE does NOT lock
+                # the whole ITP (it may still have unsigned criteria); concerns
+                # resolve to 'action_required', full approval to 'complete'.
+                record.status = _compute_itp_status(record)
 
                 # Audit: client signed the ITP
                 log_audit(

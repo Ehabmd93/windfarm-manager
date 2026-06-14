@@ -185,6 +185,76 @@
   </div>
 </div>
 
+<!-- ── ACTION REQUIRED BANNER (client concerns awaiting engineer response) ── -->
+{% set concern_items = [] %}
+{% for _cs in record.item_statuses %}
+  {% if _cs.lucas_complete and _cs.client_reviewed and not _cs.client_accepted %}
+    {% set _ = concern_items.append(_cs) %}
+  {% endif %}
+{% endfor %}
+{% if concern_items %}
+<div id="action-required-banner"
+     style="border-radius:18px;margin-bottom:20px;overflow:hidden;
+            border:1.5px solid #fed7aa;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.05);">
+  <div style="display:flex;align-items:center;gap:12px;padding:15px 20px;
+              background:linear-gradient(135deg,#fff7ed,#fffbeb);border-bottom:1px solid #fed7aa;">
+    <div style="width:38px;height:38px;border-radius:11px;flex-shrink:0;
+                background:linear-gradient(135deg,#ea580c,#f59e0b);
+                display:flex;align-items:center;justify-content:center;
+                box-shadow:0 6px 16px rgba(234,88,12,.28);">
+      <i class="fa-solid fa-triangle-exclamation" style="color:#fff;font-size:16px;"></i>
+    </div>
+    <div style="flex:1;min-width:0;">
+      <p style="font-size:14px;font-weight:900;color:#9a3412;margin:0;">
+        Action required: {{ concern_items|length }} client concern{{ 's' if concern_items|length != 1 else '' }} need{{ 's' if concern_items|length == 1 else '' }} response
+      </p>
+      <p style="font-size:12px;color:#b45309;margin:1px 0 0;">
+        Reply to each item below or attach evidence to resolve it. The ITP stays in <strong>Action Required</strong> until all concerns are cleared.
+      </p>
+    </div>
+  </div>
+  <div style="padding:8px 12px;display:flex;flex-direction:column;gap:6px;">
+    {% for cs in concern_items %}
+    {% set _ca = cs.client_action if cs.client_action else 'request_changes' %}
+    {% set _cl = cs.client_signed_by_name or (latest_signed_invite.signer_name if latest_signed_invite else (record.client_name or 'Client')) %}
+    {% set _co = cs.client_signed_by_company or (latest_signed_invite.signer_company if latest_signed_invite else (record.client_company or '')) %}
+    <a href="#crit-row-{{ cs.item_no }}-{{ cs.criterion_index }}"
+       onclick="document.getElementById('crit-row-{{ cs.item_no }}-{{ cs.criterion_index }}').scrollIntoView({behavior:'smooth',block:'center'});"
+       style="display:flex;align-items:flex-start;gap:11px;padding:11px 13px;border-radius:11px;
+              text-decoration:none;border:1px solid #f1f5f9;background:#fbfcfe;transition:background .15s;
+              border-left:4px solid {% if _ca=='rejected' %}#dc2626{% elif _ca=='request_clarification' %}#2563eb{% else %}#ea580c{% endif %};"
+       onmouseover="this.style.background='#f8fafc';" onmouseout="this.style.background='#fbfcfe';">
+      <span style="flex-shrink:0;font-size:11px;font-weight:900;padding:3px 9px;border-radius:7px;white-space:nowrap;
+        {% if _ca=='rejected' %}background:#fef2f2;color:#dc2626;
+        {% elif _ca=='request_clarification' %}background:#eff6ff;color:#2563eb;
+        {% else %}background:#fff7ed;color:#ea580c;{% endif %}">
+        {{ cs.item_no }}.{{ cs.criterion_index + 1 }}
+      </span>
+      <div style="flex:1;min-width:0;">
+        <p style="font-size:12.5px;font-weight:800;margin:0 0 1px;
+          {% if _ca=='rejected' %}color:#dc2626{% elif _ca=='request_clarification' %}color:#2563eb{% else %}color:#c2410c{% endif %};">
+          {% if _ca=='rejected' %}<i class="fa-solid fa-times-circle" style="margin-right:5px;"></i>Rejected
+          {% elif _ca=='request_clarification' %}<i class="fa-solid fa-question-circle" style="margin-right:5px;"></i>Clarification Requested
+          {% else %}<i class="fa-solid fa-pencil" style="margin-right:5px;"></i>Changes Requested{% endif %}
+          <span style="color:#94a3b8;font-weight:600;">· {{ _cl }}{% if _co %} ({{ _co }}){% endif %}</span>
+        </p>
+        {% if cs.client_comments %}
+        <p style="font-size:12px;color:#475569;margin:0;line-height:1.5;
+                  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ cs.client_comments }}</p>
+        {% endif %}
+        {% if cs.client_signed_at %}
+        <p style="font-size:10.5px;color:#94a3b8;margin:2px 0 0;">
+          <i class="fa-solid fa-clock" style="margin-right:3px;"></i>{{ cs.client_signed_at.strftime('%d %b %Y %H:%M') }}
+        </p>
+        {% endif %}
+      </div>
+      <i class="fa-solid fa-arrow-down" style="color:#cbd5e1;font-size:11px;flex-shrink:0;margin-top:3px;"></i>
+    </a>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
 <!-- Main layout -->
 <div class="itp-layout">
 

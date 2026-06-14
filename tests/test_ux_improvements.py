@@ -432,3 +432,39 @@ class TestClientSignPageRender:
         assert resp.status_code == 200
         assert b"ITP Approved" in resp.data
         assert b"Jane Client" in resp.data
+
+    def test_render_submitted_readonly_state(self, client, db):
+        """After the invite is signed, the client page shows the read-only
+        'Review Submitted' confirmation and hides the sticky submit panel."""
+        from models import ITPClientInvite
+        *_, rec, inv, _ = self._setup_full(client, db)
+        i2 = db.session.get(ITPClientInvite, inv.id)
+        i2.status    = "signed"
+        i2.signed_at = datetime.now(timezone.utc)
+        db.session.commit()
+        resp = client.get(f"/itp/client/{inv.token}")
+        assert resp.status_code == 200
+        assert b"Review Submitted" in resp.data
+        # Sticky submit panel HTML is not rendered once the review is locked.
+        # (The string lives only in the gated HTML block, not the always-on JS.)
+        assert b"STICKY COMPLETION PANEL" not in resp.data
+
+    def test_internal_detail_shows_action_required_banner(self, client, db):
+        """project_itp_detail renders the action-required banner and the client
+        comment when a criterion has an unresolved concern."""
+        user, proj, el, t, rec, inv, (s0, s1) = self._setup_full(client, db)
+        s0b = db.session.get(type(s0), s0.id)
+        s0b.client_reviewed = True
+        s0b.client_accepted = False
+        s0b.client_action   = "request_changes"
+        s0b.client_comments = "Fix the weld joint per drawing Rev C"
+        s0b.client_signed_by_name    = "Jane Client"
+        s0b.client_signed_by_company = "ClientCo"
+        db.session.commit()
+        _inject_session(client, user.id)
+
+        resp = client.get(f"/projects/{proj.id}/itp/{t.id}/element/{el.id}")
+        assert resp.status_code == 200
+        assert b"Action required" in resp.data
+        assert b"Fix the weld joint per drawing Rev C" in resp.data
+        assert b"Changes Requested" in resp.data

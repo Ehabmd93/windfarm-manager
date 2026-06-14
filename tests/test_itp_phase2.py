@@ -696,3 +696,152 @@ class TestProgressiveReviewSubmission:
             f"ready_for_final should be True when all criteria are signed+accepted, "
             f"got {data2!r}"
         )
+
+
+# ─── Phase 2E: Concern decisions count as a completed review ────────────────
+
+class TestConcernReviewSubmission:
+    """Reject / Request Changes / Request Clarification are completed review
+    DECISIONS — a scoped cycle is submittable once every scoped item has a
+    decision, even if some are concerns. They must NOT block submission, but
+    they MUST keep the whole ITP out of 'complete' (status action_required)."""
+
+    def _scoped_two_signed(self, db):
+        proj   = _make_project(db)
+        wtg    = _make_wtg(db, proj.id)
+        record = _make_itp_record(db, wtg)
+        s1 = _make_item_status(db, record, item_no="1", ci=0, signed=True)
+        s2 = _make_item_status(db, record, item_no="1", ci=1, signed=True)
+        user   = _make_user(db)
+        member = _make_member_ac(db, proj, user)
+        _add_sign_perm(db, member)
+        invite = _make_invite(db, record, member, user,
+                              status="pending_review",
+                              item_scope_ids=[s1.id, s2.id])
+        return proj, wtg, record, s1, s2, user, member, invite
+
+    def test_scope_ready_true_with_one_concern(self, client, db):
+        """One approved + one request_changes → current_scope_ready True,
+        ready_for_final False, scope_concerns 1, scope_pending 0."""
+        proj, wtg, record, s1, s2, user, member, invite = self._scoped_two_signed(db)
+        db.session.commit()
+        _inject_session(client, user.id)
+
+        resp1, data1 = _post_review(client, invite.token, "1", 0, action="accept")
+        assert resp1.status_code == 200, data1
+        resp2, data2 = _post_review(client, invite.token, "1", 1,
+                                    action="request_changes", comment="Fix rebar spacing")
+        assert resp2.status_code == 200, data2
+        assert data2.get("current_scope_ready") is True, data2
+        assert data2.get("ready_for_final") is False, data2
+        assert data2.get("scope_concerns") == 1, data2
+        assert data2.get("scope_pending") == 0, data2
+
+    def test_reject_and_clarification_count_as_reviewed(self, client, db):
+        """Reject + request_clarification are reviewed decisions → scope ready."""
+        proj, wtg, record, s1, s2, user, member, invite = self._scoped_two_signed(db)
+        db.session.commit()
+        _inject_session(client, user.id)
+
+        _post_review(client, invite.token, "1", 0, action="rejected", comment="Not to spec")
+        resp, data = _post_review(client, invite.token, "1", 1,
+                                  action="request_clarification", comment="Which drawing rev?")
+        assert resp.status_code == 200, data
+        assert data.get("current_scope_ready") is True, data
+        assert data.get("scope_pending") == 0, data
+        assert data.get("scope_concerns") == 2, data
+
+    def test_submit_with_concern_completes_cycle_and_sets_action_required(self, client, db):
+        """Submitting a scope with a concern completes the cycle, marks the invite
+        signed, and derives ITP status = action_required (NOT complete)."""
+        from models import ITPRecord, ITPClientInvite, ITPReviewCycle, AuditEvent
+
+        proj   = _make_project(db)
+        wtg    = _make_wtg(db, proj.id)
+        record = _make_itp_record(db, wtg)
+        s1 = _make_item_status(db, record, item_no="1", ci=0, signed=True)
+        s2 = _make_item_status(db, record, item_no="1", ci=1, signed=True)
+        user   = _make_user(db)
+        member = _make_member_ac(db, proj, user)
+        _add_sign_perm(db, member)
+        cycle = ITPReviewCycle(record_id=record.id, cycle_number=1, revision=0, status="open")
+        db.session.add(cycle)
+        db.session.flush()
+        invite = _make_invite(db, record, member, user, status="pending_review",
+                              review_cycle_id=cycle.id, item_scope_ids=[s1.id, s2.id])
+        db.session.commit()
+        _inject_session(client, user.id)
+
+        _post_review(client, invite.token, "1", 0, action="accept")
+        _post_review(client, invite.token, "1", 1, action="request_changes", comment="Fix weld")
+
+        resp = client.post(
+            f"/itp/client/{invite.token}",
+            data={"action": "client_sign", "client_signature": SIG,
+                  "submission_type": "current_scope"},
+            follow_redirects=False,
+        )
+        assert resp.status_code in (302, 303), resp.status_code
+
+        db.session.expire_all()
+        assert db.session.get(ITPClientInvite, invite.id).status == "signed"
+        assert db.session.get(ITPReviewCycle, cycle.id).status == "completed"
+        assert db.session.get(ITPRecord, record.id).status == "action_required"
+        # Audit: completed-with-concerns event recorded
+        assert AuditEvent.query.filter_by(
+            event_type="itp_review_completed_with_concerns").count() >= 1
+
+    def test_duplicate_submission_blocked(self, client, db):
+        """A second submit of an already-signed invite is rejected (read-only),
+        and the per-item review API is locked too."""
+        from models import ITPClientInvite
+
+        proj, wtg, record, s1, s2, user, member, invite = self._scoped_two_signed(db)
+        db.session.commit()
+        _inject_session(client, user.id)
+
+        _post_review(client, invite.token, "1", 0, action="accept")
+        _post_review(client, invite.token, "1", 1, action="request_changes", comment="Fix")
+
+        r1 = client.post(f"/itp/client/{invite.token}",
+                         data={"action": "client_sign", "client_signature": SIG,
+                               "submission_type": "current_scope"})
+        assert r1.status_code in (302, 303)
+
+        r2 = client.post(f"/itp/client/{invite.token}",
+                         data={"action": "client_sign", "client_signature": SIG,
+                               "submission_type": "current_scope"})
+        assert r2.status_code in (302, 303)
+
+        db.session.expire_all()
+        assert db.session.get(ITPClientInvite, invite.id).status == "signed"
+        # Per-item edits blocked after submission
+        resp, data = _post_review(client, invite.token, "1", 0, action="accept")
+        assert resp.status_code == 400, data
+
+    def test_concern_creates_notification_and_audit(self, client, db):
+        """A concern action notifies the invite sender and writes an audit row."""
+        from models import Notification, AuditEvent
+
+        proj   = _make_project(db)
+        wtg    = _make_wtg(db, proj.id)
+        record = _make_itp_record(db, wtg)
+        s1 = _make_item_status(db, record, item_no="1", ci=0, signed=True)
+        sender = _make_user(db, company="AcmeCorp")
+        user   = _make_user(db, company="ClientCo")
+        member = _make_member_ac(db, proj, user)
+        invite = _make_invite(db, record, member, user, status="pending_review",
+                              item_scope_ids=[s1.id])
+        invite.invited_by_id      = sender.id
+        invite.invited_by_company = sender.company
+        db.session.commit()
+        _inject_session(client, user.id)
+
+        resp, data = _post_review(client, invite.token, "1", 0,
+                                  action="request_changes", comment="Please fix the weld")
+        assert resp.status_code == 200, data
+
+        notes = Notification.query.filter_by(user_id=sender.id, type="itp_concern").all()
+        assert len(notes) >= 1, "Inviter should receive a concern notification"
+        assert AuditEvent.query.filter_by(
+            event_type="itp_item_client_reviewed").count() >= 1

@@ -644,6 +644,8 @@
   {# current_scope_ready_to_submit: all items in THIS INVITE'S SCOPE reviewed + accepted #}
   {# Enables "Submit Current Review" — does NOT require entire ITP to be complete.       #}
   {# For legacy/no-scope: equivalent to all signed criteria reviewed (pre-Phase-2 logic) #}
+  {# A review cycle is complete when every scoped criterion has a DECISION       #}
+  {# (approve OR concern). Concerns do NOT block submission — only un-reviewed.   #}
   {% if invite_scope_set %}
     {% set scs = namespace(reviewed=0, concerns=0) %}
     {% for _s in record.item_statuses %}
@@ -654,14 +656,16 @@
         {% endif %}
       {% endif %}
     {% endfor %}
-    {% set scope_total   = invite_scope_set | length %}
-    {% set scope_pending = scope_total - scs.reviewed %}
-    {% set current_scope_ready_to_submit = (scope_total > 0 and scope_pending == 0 and scs.concerns == 0) %}
+    {% set scope_total    = invite_scope_set | length %}
+    {% set scope_pending  = scope_total - scs.reviewed %}
+    {% set scope_concerns = scs.concerns %}
+    {% set current_scope_ready_to_submit = (scope_total > 0 and scope_pending == 0) %}
   {% else %}
     {# Legacy/no-scope: scope = all engineer-signed criteria #}
-    {% set scope_total   = ns.total_signed %}
-    {% set scope_pending = ns.pending %}
-    {% set current_scope_ready_to_submit = (ns.total_signed > 0 and ns.pending == 0 and ns.concerns == 0) %}
+    {% set scope_total    = ns.total_signed %}
+    {% set scope_pending  = ns.pending %}
+    {% set scope_concerns = ns.concerns %}
+    {% set current_scope_ready_to_submit = (ns.total_signed > 0 and ns.pending == 0) %}
   {% endif %}
 
   {% set init_pct = ((ns.reviewed / ns.total_signed * 100)|int) if ns.total_signed else 0 %}
@@ -784,9 +788,41 @@
     {% endif %}
   </div>
 
-  <!-- ─── HOW IT WORKS (only while review is open) ────────────────────── -->
+  {# ── Lock state ──────────────────────────────────────────────────────── #}
+  {# is_finalized  : whole record closed (complete / commented)              #}
+  {# invite_submitted : THIS invite already submitted its review cycle       #}
+  {# review_locked : no further client edits allowed on this page            #}
   {% set is_finalized = record.status in ('complete', 'client_commented') %}
-  {% if not is_finalized %}
+  {% set invite_submitted = (invite and invite.status == 'signed') %}
+  {% set review_locked = is_finalized or invite_submitted %}
+
+  <!-- ─── REVIEW SUBMITTED (read-only confirmation) ───────────────────── -->
+  {% if invite_submitted and not is_finalized %}
+  <div class="card rise" style="margin-bottom:14px;border-color:var(--green-line);
+              background:linear-gradient(135deg,#f0fdf4,#ffffff);padding:18px 20px;
+              display:flex;align-items:flex-start;gap:14px;">
+    <div style="width:40px;height:40px;border-radius:12px;flex-shrink:0;
+                background:linear-gradient(135deg,#16a34a,#22c55e);
+                display:flex;align-items:center;justify-content:center;
+                box-shadow:0 6px 16px rgba(34,197,94,.30);">
+      <i class="fa-solid fa-paper-plane" style="color:white;font-size:16px;"></i>
+    </div>
+    <div>
+      <p style="font-size:14px;font-weight:900;color:var(--green-ink);margin:0 0 3px;">Review Submitted</p>
+      <p style="font-size:12.5px;color:#16a34a;margin:0;line-height:1.55;">
+        {% if scope_concerns and scope_concerns > 0 %}
+          Your review has been submitted with {{ scope_concerns }} concern{{ 's' if scope_concerns != 1 else '' }}.
+          The inspection team has been notified and will respond.
+        {% else %}
+          Your review has been submitted. The inspection team has been notified.
+        {% endif %}
+      </p>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ─── HOW IT WORKS (only while review is open) ────────────────────── -->
+  {% if not review_locked %}
   <div class="steps-strip rise" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;margin-bottom:14px;">
     <div style="display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.7);
                 border:1px solid var(--line);border-radius:var(--r-md);padding:11px 13px;">
@@ -1122,7 +1158,7 @@
                   <span class="badge-accepted">
                     <i class="fa-solid fa-check-circle"></i> Approved &amp; Signed
                   </span>
-                  {% if not is_finalized %}
+                  {% if not review_locked %}
                   <button class="btn-undo" onclick="undoReview('{{ act_no }}', {{ ci }})">
                     <i class="fa-solid fa-rotate-left"></i> Undo
                   </button>
@@ -1142,7 +1178,7 @@
                     {% else %}
                     <span class="badge-changes"><i class="fa-solid fa-pencil"></i> Changes Requested</span>
                     {% endif %}
-                    {% if not is_finalized %}
+                    {% if not review_locked %}
                     <button class="btn-undo" onclick="undoReview('{{ act_no }}', {{ ci }})">
                       <i class="fa-solid fa-rotate-left"></i> Undo
                     </button>
@@ -1156,7 +1192,7 @@
                   {% endif %}
                 </div>
 
-                {% elif not is_finalized %}
+                {% elif not review_locked %}
                 <!-- PENDING — show action buttons -->
                 <div>
                   <!-- Primary action: Approve & Sign -->
@@ -1261,7 +1297,7 @@
   </div>
 
 
-  {% if not is_finalized and not link_error %}
+  {% if not review_locked and not link_error %}
   <!-- ─── AREA 3: STICKY COMPLETION PANEL ───────────────────────────────── -->
   <div id="sticky-completion-panel">
     <div class="sticky-inner">
@@ -1270,13 +1306,10 @@
            style="margin-bottom:9px;font-size:11.5px;font-weight:600;color:var(--ink-3);
                   {% if ready_for_final or current_scope_ready_to_submit %}display:none;{% endif %}">
         {% if invite_scope_set %}
-          {# Scoped invite: show scope-specific pending count #}
+          {# Scoped invite: every scoped item needs a DECISION (approve or concern) #}
           {% if scope_pending > 0 %}
             <i class="fa-solid fa-list-check" style="margin-right:4px;color:var(--violet);"></i>
-            <span id="sticky-msg-text">{{ scope_pending }} item{{ 's' if scope_pending != 1 else '' }} in this invitation still need{{ 's' if scope_pending == 1 else '' }} your review.</span>
-          {% elif scs.concerns > 0 %}
-            <i class="fa-solid fa-triangle-exclamation" style="margin-right:4px;color:var(--amber);"></i>
-            <span id="sticky-msg-text">{{ scs.concerns }} concern{{ 's' if scs.concerns != 1 else '' }} raised — the inspection team will respond before you can submit.</span>
+            <span id="sticky-msg-text">{{ scope_pending }} item{{ 's' if scope_pending != 1 else '' }} still need{{ 's' if scope_pending == 1 else '' }} your decision.</span>
           {% else %}
             <span id="sticky-msg-text"></span>
           {% endif %}
@@ -1287,10 +1320,7 @@
             <span id="sticky-msg-text">{{ ns.total_criteria - ns.total_signed }} of {{ ns.total_criteria }} criteria still awaiting engineer sign-off. Review signed items now.</span>
           {% elif ns.pending > 0 %}
             <i class="fa-solid fa-list-check" style="margin-right:4px;color:var(--violet);"></i>
-            <span id="sticky-msg-text">{{ ns.pending }} item{{ 's' if ns.pending != 1 else '' }} still pending your review — scroll up to review them.</span>
-          {% elif ns.concerns > 0 %}
-            <i class="fa-solid fa-triangle-exclamation" style="margin-right:4px;color:var(--amber);"></i>
-            <span id="sticky-msg-text">{{ ns.concerns }} concern{{ 's' if ns.concerns != 1 else '' }} raised — the inspection team will respond before final acknowledgement is available.</span>
+            <span id="sticky-msg-text">{{ ns.pending }} item{{ 's' if ns.pending != 1 else '' }} still need{{ 's' if ns.pending == 1 else '' }} your decision.</span>
           {% else %}
             <span id="sticky-msg-text"></span>
           {% endif %}
@@ -1332,6 +1362,7 @@
                        {% endif %}">
           <i class="fa-solid fa-pen-nib" style="margin-right:6px;"></i>
           {% if ready_for_final %}Final Acknowledgement
+          {% elif current_scope_ready_to_submit and scope_concerns and scope_concerns > 0 %}Submit Review with {{ scope_concerns }} Concern{{ 's' if scope_concerns != 1 else '' }}
           {% elif current_scope_ready_to_submit %}Submit Current Review
           {% else %}Complete Review{% endif %}
         </button>
@@ -1422,7 +1453,7 @@
       </div>
     </div>
   </div>
-  {% endif %}{# end not is_finalized #}
+  {% endif %}{# end not review_locked (sticky panel + completion modal) #}
 
   {% endif %}{# end superseded_state else #}
 
@@ -1870,7 +1901,11 @@ function updateProgress(data) {
       stickyBtn.style.cursor     = 'pointer';
       stickyBtn.style.boxShadow  = '0 4px 16px rgba(37,99,235,.35)';
       stickyBtn.style.animation  = 'none';
-      stickyBtn.innerHTML        = '<i class="fa-solid fa-pen-nib" style="margin-right:6px;"></i>Submit Current Review';
+      // Reviewed all scoped items — concerns allowed. Reflect concern count.
+      const _scopeCon = (data.scope_concerns !== undefined ? data.scope_concerns : data.concerns) || 0;
+      stickyBtn.innerHTML = _scopeCon > 0
+        ? `<i class="fa-solid fa-pen-nib" style="margin-right:6px;"></i>Submit Review with ${_scopeCon} Concern${_scopeCon !== 1 ? 's' : ''}`
+        : '<i class="fa-solid fa-pen-nib" style="margin-right:6px;"></i>Submit Current Review';
     } else {
       stickyBtn.disabled         = true;
       stickyBtn.style.background = '#e9eef5';
@@ -1892,20 +1927,16 @@ function updateProgress(data) {
     } else {
       stickyMsg.style.display = 'block';
       if (INVITE_SCOPE_SIZE > 0) {
-        // Scoped invite: use scope-specific counts
+        // Scoped invite: only un-reviewed items block submission (concerns allowed)
         if (scopePendCnt > 0) {
-          stickyMsgText.textContent = `${scopePendCnt} item${scopePendCnt !== 1 ? 's' : ''} in this invitation still need${scopePendCnt === 1 ? 's' : ''} your review.`;
-        } else if (data.concerns > 0) {
-          stickyMsgText.textContent = `${data.concerns} concern${data.concerns !== 1 ? 's' : ''} raised — the inspection team will respond before you can submit.`;
+          stickyMsgText.textContent = `${scopePendCnt} item${scopePendCnt !== 1 ? 's' : ''} still need${scopePendCnt === 1 ? 's' : ''} your decision.`;
         }
       } else {
         // Legacy / no-scope: global counts
         if (unsignedCnt > 0) {
           stickyMsgText.textContent = `${unsignedCnt} of ${totalCrit} criteria still awaiting engineer sign-off. Review signed items now.`;
         } else if (data.pending > 0) {
-          stickyMsgText.textContent = `${data.pending} item${data.pending !== 1 ? 's' : ''} still pending your review — scroll up to review them.`;
-        } else if (data.concerns > 0) {
-          stickyMsgText.textContent = `${data.concerns} concern${data.concerns !== 1 ? 's' : ''} raised — the inspection team will respond before final acknowledgement is available.`;
+          stickyMsgText.textContent = `${data.pending} item${data.pending !== 1 ? 's' : ''} still need${data.pending === 1 ? 's' : ''} your decision.`;
         }
       }
     }
