@@ -845,3 +845,249 @@ class TestConcernReviewSubmission:
         assert len(notes) >= 1, "Inviter should receive a concern notification"
         assert AuditEvent.query.filter_by(
             event_type="itp_item_client_reviewed").count() >= 1
+
+
+# ─── Phase 2F: Concern → response → re-review issue-thread workflow ──────────
+
+import io as _io
+
+
+def _grant(db, member, *keys):
+    """Grant extra ProjectMemberAC permissions to a member."""
+    from models import ProjectMemberPermission
+    for k in keys:
+        db.session.add(ProjectMemberPermission(member_id=member.id,
+                                               permission_key=k, value=True))
+    db.session.flush()
+
+
+def _set_concern(db, s, action="request_changes", comment="Fix the weld",
+                 reviewer=None, when=None):
+    """Mark an item status as an open client concern (raised at `when`)."""
+    s.client_reviewed  = True
+    s.client_accepted  = False
+    s.client_action    = action
+    s.client_comments  = comment
+    s.client_signed_at = when or datetime.now(timezone.utc)
+    if reviewer is not None:
+        s.client_signed_by_id      = reviewer.id
+        s.client_signed_by_name    = reviewer.name
+        s.client_signed_by_company = reviewer.company
+    db.session.flush()
+    return s
+
+
+def _add_internal_note(db, record, s, author, text="Re-done per Rev C", when=None):
+    from models import ITPCriterionNote
+    n = ITPCriterionNote(
+        itp_record_id   = record.id,
+        item_status_id  = s.id,
+        item_no         = s.item_no,
+        criterion_index = s.criterion_index,
+        author_user_id  = author.id,
+        author_name     = author.name,
+        author_company  = author.company,
+        party           = "internal",
+        note_text       = text,
+        created_at      = when or datetime.now(timezone.utc),
+    )
+    db.session.add(n)
+    db.session.flush()
+    return n
+
+
+class TestConcernResponseWorkflow:
+    """Concern → engineer response → re-review → approval issue thread."""
+
+    # ---- Derived state helper (deterministic, no HTTP timing) ----
+
+    def test_request_changes_is_open_issue_action_required(self, db):
+        from app import is_open_client_issue, criterion_issue_state
+        proj   = _make_project(db)
+        wtg    = _make_wtg(db, proj.id)
+        record = _make_itp_record(db, wtg)
+        s = _make_item_status(db, record, item_no="1", ci=0, signed=True)
+        _set_concern(db, s, action="request_changes")
+        db.session.commit()
+        assert is_open_client_issue(s) is True
+        assert criterion_issue_state(record, s) == "action_required"
+
+    def test_engineer_note_moves_to_response_sent(self, db):
+        from app import criterion_issue_state
+        proj   = _make_project(db)
+        wtg    = _make_wtg(db, proj.id)
+        record = _make_itp_record(db, wtg)
+        eng    = _make_user(db)
+        s = _make_item_status(db, record, item_no="1", ci=0, signed=True)
+        t0 = datetime.now(timezone.utc)
+        _set_concern(db, s, when=t0)
+        _add_internal_note(db, record, s, eng, when=t0 + timedelta(minutes=1))
+        db.session.commit()
+        # Responded, and not in any active invite → 'response_sent'
+        assert criterion_issue_state(record, s) == "response_sent"
+
+    def test_response_with_active_invite_is_awaiting_re_review(self, db):
+        from app import criterion_issue_state
+        proj   = _make_project(db)
+        wtg    = _make_wtg(db, proj.id)
+        record = _make_itp_record(db, wtg)
+        eng    = _make_user(db)
+        user   = _make_user(db)
+        member = _make_member_ac(db, proj, user)
+        s = _make_item_status(db, record, item_no="1", ci=0, signed=True)
+        t0 = datetime.now(timezone.utc)
+        _set_concern(db, s, when=t0)
+        _add_internal_note(db, record, s, eng, when=t0 + timedelta(minutes=1))
+        # Active invite covering the item → awaiting re-review
+        _make_invite(db, record, member, user, status="pending_review",
+                     item_scope_ids=[s.id])
+        db.session.commit()
+        assert criterion_issue_state(record, s) == "awaiting_re_review"
+
+    # ---- Re-invite eligibility ----
+
+    def test_reinvite_excludes_unresponded_concern_includes_responded(self, db):
+        from app import get_reviewable_criteria_for_invitee
+        proj   = _make_project(db)
+        wtg    = _make_wtg(db, proj.id)
+        record = _make_itp_record(db, wtg)
+        eng    = _make_user(db)
+        user   = _make_user(db)
+        s1 = _make_item_status(db, record, item_no="1", ci=0, signed=True)  # concern, no response
+        s2 = _make_item_status(db, record, item_no="1", ci=1, signed=True)  # concern, responded
+        t0 = datetime.now(timezone.utc)
+        _set_concern(db, s1, when=t0)
+        _set_concern(db, s2, when=t0)
+        _add_internal_note(db, record, s2, eng, when=t0 + timedelta(minutes=1))
+        db.session.commit()
+
+        ids = {x.id for x in get_reviewable_criteria_for_invitee(record, user.email)}
+        assert s2.id in ids, "Responded concern should be re-reviewable"
+        assert s1.id not in ids, "Un-responded concern must NOT be re-sent yet"
+
+    # ---- HTTP: engineer reply notifies client + audits ----
+
+    def test_engineer_reply_notifies_client_and_audits(self, client, db):
+        from models import Notification, AuditEvent
+        proj   = _make_project(db)
+        wtg    = _make_wtg(db, proj.id)
+        record = _make_itp_record(db, wtg)
+        clientu = _make_user(db, company="ClientCo")
+        member  = _make_member_ac(db, proj, clientu)
+        eng     = _make_user(db, company="AcmeCorp")
+        eng_m   = _make_member_ac(db, proj, eng)
+        s = _make_item_status(db, record, item_no="1", ci=0, signed=True)
+        _set_concern(db, s, reviewer=clientu)
+        db.session.commit()
+
+        _inject_session(client, eng.id)
+        resp = client.post(
+            f"/api/itp/{record.id}/criterion/1/0/notes",
+            json={"note_text": "Weld re-done and re-tested per Rev C", "party": "internal"},
+            headers={"X-CSRF-Token": CSRF},
+        )
+        assert resp.status_code == 200, resp.get_json(silent=True)
+        assert AuditEvent.query.filter_by(event_type="itp_engineer_replied").count() >= 1
+        assert Notification.query.filter_by(
+            user_id=clientu.id, type="itp_engineer_response").count() >= 1
+
+    # ---- HTTP: response evidence upload notifies client + audits ----
+
+    def test_response_evidence_upload_notifies_and_audits(self, client, db):
+        from models import Notification, AuditEvent
+        proj   = _make_project(db)
+        wtg    = _make_wtg(db, proj.id)
+        record = _make_itp_record(db, wtg)
+        clientu = _make_user(db, company="ClientCo")
+        member  = _make_member_ac(db, proj, clientu)
+        eng     = _make_user(db, company="AcmeCorp")
+        eng_m   = _make_member_ac(db, proj, eng)
+        _grant(db, eng_m, "can_attach_itp_docs")
+        s = _make_item_status(db, record, item_no="1", ci=0, signed=True)
+        _set_concern(db, s, reviewer=clientu)
+        db.session.commit()
+
+        _inject_session(client, eng.id)
+        resp = client.post(
+            f"/api/itp/{record.id}/item/1/0/upload",
+            data={"file": (_io.BytesIO(b"%PDF-1.4 test"), "response.pdf")},
+            content_type="multipart/form-data",
+            headers={"X-CSRF-Token": CSRF},
+        )
+        assert resp.status_code == 200, resp.get_json(silent=True)
+        assert resp.get_json()["response_to_issue"] is True
+        assert AuditEvent.query.filter_by(
+            event_type="itp_response_evidence_uploaded").count() >= 1
+        assert Notification.query.filter_by(
+            user_id=clientu.id, type="itp_response_evidence").count() >= 1
+
+    # ---- HTTP: client approves after response ----
+
+    def test_client_approves_after_response_audits(self, client, db):
+        from models import AuditEvent, ITPItemStatus
+        proj   = _make_project(db)
+        wtg    = _make_wtg(db, proj.id)
+        record = _make_itp_record(db, wtg)
+        user   = _make_user(db)
+        member = _make_member_ac(db, proj, user)
+        s = _make_item_status(db, record, item_no="1", ci=0, signed=True)
+        t0 = datetime.now(timezone.utc)
+        _set_concern(db, s, reviewer=user, when=t0)
+        _add_internal_note(db, record, s, user, when=t0 + timedelta(minutes=1))
+        invite = _make_invite(db, record, member, user, status="pending_review",
+                              item_scope_ids=[s.id])
+        db.session.commit()
+
+        _inject_session(client, user.id)
+        resp, data = _post_review(client, invite.token, "1", 0, action="accept")
+        assert resp.status_code == 200, data
+
+        db.session.expire_all()
+        s2 = db.session.get(ITPItemStatus, s.id)
+        assert s2.client_accepted is True
+        assert AuditEvent.query.filter_by(
+            event_type="itp_client_approved_after_response").count() >= 1
+
+    # ---- Security: scoped invite cannot review out-of-scope item ----
+
+    def test_scoped_invite_cannot_review_out_of_scope_item(self, client, db):
+        proj   = _make_project(db)
+        wtg    = _make_wtg(db, proj.id)
+        record = _make_itp_record(db, wtg)
+        user   = _make_user(db)
+        member = _make_member_ac(db, proj, user)
+        s1 = _make_item_status(db, record, item_no="1", ci=0, signed=True)
+        s2 = _make_item_status(db, record, item_no="1", ci=1, signed=True)
+        invite = _make_invite(db, record, member, user, status="pending_review",
+                              item_scope_ids=[s1.id])   # only s1 in scope
+        db.session.commit()
+
+        _inject_session(client, user.id)
+        # s2 is out of scope — direct API call must be rejected
+        resp, data = _post_review(client, invite.token, "1", 1, action="accept")
+        assert resp.status_code == 403, data
+        # s1 is in scope — allowed
+        resp2, data2 = _post_review(client, invite.token, "1", 0, action="accept")
+        assert resp2.status_code == 200, data2
+
+    # ---- Final acknowledgement stays blocked until concern approved ----
+
+    def test_final_ack_blocked_until_concern_approved(self, client, db):
+        proj   = _make_project(db)
+        wtg    = _make_wtg(db, proj.id)
+        record = _make_itp_record(db, wtg)
+        user   = _make_user(db)
+        member = _make_member_ac(db, proj, user)
+        s1 = _make_item_status(db, record, item_no="1", ci=0, signed=True)
+        s2 = _make_item_status(db, record, item_no="1", ci=1, signed=True,
+                               client_reviewed=True, client_accepted=True)
+        _set_concern(db, s1, reviewer=user)
+        invite = _make_invite(db, record, member, user, status="pending_review",
+                              item_scope_ids=[s1.id])
+        db.session.commit()
+
+        _inject_session(client, user.id)
+        # Approve the open concern (after a notional response) → whole ITP done
+        resp, data = _post_review(client, invite.token, "1", 0, action="accept")
+        assert resp.status_code == 200, data
+        assert data.get("ready_for_final") is True, data

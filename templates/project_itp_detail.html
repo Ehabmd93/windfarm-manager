@@ -187,9 +187,13 @@
 
 <!-- ── ACTION REQUIRED BANNER (client concerns awaiting engineer response) ── -->
 {% set concern_items = [] %}
+{% set _ar_ns = namespace(pending=0, responded=0) %}
 {% for _cs in record.item_statuses %}
-  {% if _cs.lucas_complete and _cs.client_reviewed and not _cs.client_accepted %}
+  {% set _cst = issue_states.get((_cs.item_no, _cs.criterion_index)) if issue_states else None %}
+  {% if _cst %}
     {% set _ = concern_items.append(_cs) %}
+    {% if _cst == 'action_required' %}{% set _ar_ns.pending = _ar_ns.pending + 1 %}
+    {% else %}{% set _ar_ns.responded = _ar_ns.responded + 1 %}{% endif %}
   {% endif %}
 {% endfor %}
 {% if concern_items %}
@@ -205,17 +209,27 @@
       <i class="fa-solid fa-triangle-exclamation" style="color:#fff;font-size:16px;"></i>
     </div>
     <div style="flex:1;min-width:0;">
+      {% if _ar_ns.pending > 0 %}
       <p style="font-size:14px;font-weight:900;color:#9a3412;margin:0;">
-        Action required: {{ concern_items|length }} client concern{{ 's' if concern_items|length != 1 else '' }} need{{ 's' if concern_items|length == 1 else '' }} response
+        Action required: {{ _ar_ns.pending }} client concern{{ 's' if _ar_ns.pending != 1 else '' }} need{{ 's' if _ar_ns.pending == 1 else '' }} your response
       </p>
       <p style="font-size:12px;color:#b45309;margin:1px 0 0;">
-        Reply to each item below or attach evidence to resolve it. The ITP stays in <strong>Action Required</strong> until all concerns are cleared.
+        Reply to the client or attach response evidence on each item below.{% if _ar_ns.responded %} {{ _ar_ns.responded }} already responded.{% endif %} The ITP stays <strong>Action Required</strong> until all concerns are approved.
       </p>
+      {% else %}
+      <p style="font-size:14px;font-weight:900;color:#1d4ed8;margin:0;">
+        {{ _ar_ns.responded }} issue{{ 's' if _ar_ns.responded != 1 else '' }} responded — ready to send back for re-review
+      </p>
+      <p style="font-size:12px;color:#3b82f6;margin:1px 0 0;">
+        Use <strong>Invite Client</strong> to send your response back. The ITP stays open until the client approves.
+      </p>
+      {% endif %}
     </div>
   </div>
   <div style="padding:8px 12px;display:flex;flex-direction:column;gap:6px;">
     {% for cs in concern_items %}
     {% set _ca = cs.client_action if cs.client_action else 'request_changes' %}
+    {% set _rstate = issue_states.get((cs.item_no, cs.criterion_index)) if issue_states else 'action_required' %}
     {% set _cl = cs.client_signed_by_name or (latest_signed_invite.signer_name if latest_signed_invite else (record.client_name or 'Client')) %}
     {% set _co = cs.client_signed_by_company or (latest_signed_invite.signer_company if latest_signed_invite else (record.client_company or '')) %}
     <a href="#crit-row-{{ cs.item_no }}-{{ cs.criterion_index }}"
@@ -237,6 +251,13 @@
           {% elif _ca=='request_clarification' %}<i class="fa-solid fa-question-circle" style="margin-right:5px;"></i>Clarification Requested
           {% else %}<i class="fa-solid fa-pencil" style="margin-right:5px;"></i>Changes Requested{% endif %}
           <span style="color:#94a3b8;font-weight:600;">· {{ _cl }}{% if _co %} ({{ _co }}){% endif %}</span>
+          {% if _rstate == 'action_required' %}
+          <span style="margin-left:6px;font-size:9.5px;font-weight:800;padding:1px 7px;border-radius:9999px;background:#fef3c7;color:#b45309;">NEEDS RESPONSE</span>
+          {% elif _rstate == 'response_sent' %}
+          <span style="margin-left:6px;font-size:9.5px;font-weight:800;padding:1px 7px;border-radius:9999px;background:#dbeafe;color:#1d4ed8;">RESPONDED</span>
+          {% elif _rstate == 'awaiting_re_review' %}
+          <span style="margin-left:6px;font-size:9.5px;font-weight:800;padding:1px 7px;border-radius:9999px;background:#ede9fe;color:#6d28d9;">AWAITING RE-REVIEW</span>
+          {% endif %}
         </p>
         {% if cs.client_comments %}
         <p style="font-size:12px;color:#475569;margin:0;line-height:1.5;
@@ -473,22 +494,89 @@
           </div>
           {% endif %}
 
-          <!-- Action Required banner for unresolved client concerns -->
-          {% if s and s.client_reviewed and not s.client_accepted %}
-          <div style="margin-top:8px;padding:8px 12px;background:#fffbeb;border:2px solid #fde68a;
-                      border-radius:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-            <span style="background:#fef3c7;color:#d97706;padding:3px 10px;border-radius:9999px;
-                         font-size:11px;font-weight:800;white-space:nowrap;">
-              <i class="fa-solid fa-triangle-exclamation" style="margin-right:4px;"></i>Action Required
-            </span>
-            <span style="font-size:12px;color:#92400e;flex:1;">
-              Client raised a concern — reply below or attach evidence to address it.
-            </span>
-            <button onclick="showAddNoteForm('{{ item['no'] }}', {{ ci }})"
-                    style="padding:4px 12px;border-radius:8px;font-size:11px;font-weight:700;
-                           background:#d97706;color:white;border:none;cursor:pointer;">
-              <i class="fa-solid fa-comment-dots" style="margin-right:4px;"></i>Reply
-            </button>
+          <!-- ── CLIENT ISSUE CARD — official issue thread for open concerns ── -->
+          {% set _istate = issue_states.get((item['no'], ci)) if issue_states else None %}
+          {% if _istate %}
+          {% set _ca = s.client_action if s.client_action else 'request_changes' %}
+          {% set _issue_color = '#dc2626' if _ca == 'rejected' else ('#2563eb' if _ca == 'request_clarification' else '#ea580c') %}
+          {% set _issue_bg    = '#fef2f2' if _ca == 'rejected' else ('#eff6ff' if _ca == 'request_clarification' else '#fff7ed') %}
+          {% set _issue_label = 'Rejected' if _ca == 'rejected' else ('Clarification Requested' if _ca == 'request_clarification' else ('Not Accepted (Legacy)' if _ca == 'not_accepted' else 'Changes Requested')) %}
+          {% set _issue_icon  = 'fa-times-circle' if _ca == 'rejected' else ('fa-question-circle' if _ca == 'request_clarification' else 'fa-pencil') %}
+          {% set _cl_name = s.client_signed_by_name or (latest_signed_invite.signer_name if latest_signed_invite else (record.client_name or 'Client')) %}
+          {% set _cl_co   = s.client_signed_by_company or (latest_signed_invite.signer_company if latest_signed_invite else (record.client_company or '')) %}
+          <div id="issue-card-{{ item['no'] }}-{{ ci }}"
+               style="margin-top:10px;border-radius:13px;overflow:hidden;
+                      border:1.5px solid {{ _issue_color }}44;box-shadow:0 1px 4px rgba(0,0,0,.05);">
+            <!-- Header: issue type + workflow state -->
+            <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:10px 14px;background:{{ _issue_bg }};">
+              <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:800;
+                           color:{{ _issue_color }};white-space:nowrap;">
+                <i class="fa-solid {{ _issue_icon }}"></i>{{ _issue_label }}
+              </span>
+              <span style="width:1px;height:13px;background:{{ _issue_color }}33;"></span>
+              {% if _istate == 'action_required' %}
+              <span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;
+                           padding:3px 10px;border-radius:9999px;background:#fef3c7;color:#b45309;white-space:nowrap;">
+                <i class="fa-solid fa-triangle-exclamation"></i>Action Required — respond to client
+              </span>
+              {% elif _istate == 'response_sent' %}
+              <span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;
+                           padding:3px 10px;border-radius:9999px;background:#dbeafe;color:#1d4ed8;white-space:nowrap;">
+                <i class="fa-solid fa-reply"></i>Response Sent — ready to re-invite
+              </span>
+              {% elif _istate == 'awaiting_re_review' %}
+              <span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;
+                           padding:3px 10px;border-radius:9999px;background:#ede9fe;color:#6d28d9;white-space:nowrap;">
+                <i class="fa-solid fa-hourglass-half"></i>Awaiting Client Re-review
+              </span>
+              {% endif %}
+              <span style="margin-left:auto;font-size:10.5px;color:#94a3b8;white-space:nowrap;">
+                {{ _cl_name }}{% if _cl_co %} · {{ _cl_co }}{% endif %}
+                {% if s.client_signed_at %} · <i class="fa-solid fa-clock" style="margin-right:2px;"></i>{{ s.client_signed_at.strftime('%d %b %Y %H:%M') }}{% endif %}
+              </span>
+            </div>
+            <!-- Body: client comment + CTAs -->
+            <div style="padding:12px 14px;background:white;">
+              {% if s.client_comments %}
+              <div style="display:flex;gap:9px;align-items:flex-start;margin-bottom:11px;">
+                <div style="width:26px;height:26px;border-radius:50%;flex-shrink:0;background:#e0f2fe;
+                            display:flex;align-items:center;justify-content:center;">
+                  <i class="fa-solid fa-user" style="color:#0891b2;font-size:11px;"></i>
+                </div>
+                <div style="flex:1;min-width:0;">
+                  <p style="font-size:10px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin:0 0 2px;">Client raised</p>
+                  <p style="font-size:13px;color:#334155;line-height:1.55;margin:0;">{{ s.client_comments }}</p>
+                </div>
+              </div>
+              {% endif %}
+              {% if _istate == 'action_required' %}
+              <p style="font-size:11.5px;color:#92400e;margin:0 0 10px;">
+                <i class="fa-solid fa-circle-info" style="margin-right:5px;"></i>Reply to the client and/or attach response evidence. The item then becomes ready to send back for re-review.
+              </p>
+              {% else %}
+              <p style="font-size:11.5px;color:#1d4ed8;margin:0 0 10px;">
+                <i class="fa-solid fa-circle-check" style="margin-right:5px;"></i>You have responded to this issue.{% if _istate == 'response_sent' %} Use “Invite Client” to send it back for re-review.{% else %} The client has been re-invited to review your response.{% endif %}
+              </p>
+              {% endif %}
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                {% if ac_can_view_panel %}
+                <button onclick="showAddNoteForm('{{ item['no'] }}', {{ ci }})"
+                        style="display:inline-flex;align-items:center;gap:6px;padding:7px 15px;border-radius:9px;
+                               font-size:12px;font-weight:800;border:none;cursor:pointer;
+                               background:{{ _issue_color }};color:white;">
+                  <i class="fa-solid fa-reply"></i>Reply to Client
+                </button>
+                {% endif %}
+                {% if ac_can_attach %}
+                <button onclick="toggleDocs('{{ item['no'] }}', {{ ci }})"
+                        style="display:inline-flex;align-items:center;gap:6px;padding:7px 15px;border-radius:9px;
+                               font-size:12px;font-weight:800;cursor:pointer;
+                               background:white;color:#475569;border:1.5px solid #e2e8f0;">
+                  <i class="fa-solid fa-paperclip"></i>Attach Response Evidence
+                </button>
+                {% endif %}
+              </div>
+            </div>
           </div>
           {% endif %}
 

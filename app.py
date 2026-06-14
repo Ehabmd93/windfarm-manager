@@ -823,12 +823,91 @@ def get_reviewable_criteria_for_invitee(record, email):
                     s.id for s in record.item_statuses if s.lucas_complete
                 )
 
+    # An OPEN client issue (concern with no engineer response yet) is NOT ready
+    # to send back to the client — the engineer must respond first. Such items
+    # are excluded until a reply or response-evidence is added. Brand-new signed
+    # items (never reviewed) and responded-to concerns remain eligible.
     return [
         s for s in record.item_statuses
         if s.lucas_complete
         and s.id not in already_approved_ids
         and s.id not in in_active_invite_ids
+        and not (is_open_client_issue(s) and not _engineer_responded_after_concern(s))
     ]
+
+
+# ─── Client-concern issue workflow helpers ───────────────────────────────────
+# These derive an official "issue thread" state for a criterion entirely from
+# existing data (client_action/reviewed/accepted, ITPCriterionNote, evidence
+# timestamps) — no schema migration required.
+
+def is_open_client_issue(s):
+    """True when a criterion has a live client concern (not yet re-approved)."""
+    return bool(
+        s.lucas_complete and s.client_reviewed and s.client_accepted is False
+        and s.client_action in ('rejected', 'request_changes',
+                                'request_clarification', 'not_accepted')
+    )
+
+
+def _engineer_responded_after_concern(s):
+    """True if an internal note or evidence was added AFTER the client's concern.
+
+    The client's concern timestamp is s.client_signed_at (set when the concern
+    was raised). Any internal note or uploaded document newer than that counts
+    as an engineer response. Falls back to 'any internal note exists' when the
+    concern has no timestamp (legacy rows).
+    """
+    concern_at = _ensure_utc(s.client_signed_at) if s.client_signed_at else None
+    if concern_at is None:
+        return any(n.party == 'internal' for n in s.notes)
+    for n in s.notes:
+        if n.party == 'internal' and n.created_at and _ensure_utc(n.created_at) > concern_at:
+            return True
+    for d in s.documents:
+        if d.uploaded_at and _ensure_utc(d.uploaded_at) > concern_at:
+            return True
+    return False
+
+
+def _item_in_active_invite(record, s):
+    """True if this criterion is covered by an active (pending) non-revoked invite."""
+    _pending = {'pending', 'pending_project_access', 'pending_review', 'viewed'}
+    for inv in record.client_invites:
+        if inv.is_revoked or inv.status not in _pending:
+            continue
+        scope = inv.item_scope_ids
+        if scope:
+            if s.id in scope:
+                return True
+        elif s.lucas_complete:
+            return True   # legacy invite covers all signed criteria
+    return False
+
+
+def criterion_issue_state(record, s):
+    """Derive the issue workflow state for one criterion.
+
+    Returns one of:
+      None                 — no open issue (never-concerned, or already approved)
+      'action_required'    — client raised an issue, engineer has not responded
+      'response_sent'      — engineer replied / attached evidence, not yet re-sent
+      'awaiting_re_review' — response exists and item is in an active invite
+    'Approved' is represented by client_accepted=True (handled by callers).
+    """
+    if not is_open_client_issue(s):
+        return None
+    if not _engineer_responded_after_concern(s):
+        return 'action_required'
+    return 'awaiting_re_review' if _item_in_active_invite(record, s) else 'response_sent'
+
+
+def build_issue_state_map(record):
+    """Map (item_no, criterion_index) → issue state string for template use."""
+    return {
+        (s.item_no, s.criterion_index): criterion_issue_state(record, s)
+        for s in record.item_statuses
+    }
 
 
 # ─── Auth ────────────────────────────────────────────────────────────────────
@@ -5407,7 +5486,8 @@ def project_itp_detail(pid, tid, eid):
                            ac_can_view_panel=ac_can_view_panel,
                            member_company=member_company,
                            member_suggestions=member_suggestions,
-                           latest_signed_invite=latest_signed_invite)
+                           latest_signed_invite=latest_signed_invite,
+                           issue_states=build_issue_state_map(record))
 
 
 @app.route('/projects/<int:pid>/itp/<int:tid>/element/<int:eid>/save-meta', methods=['POST'])
@@ -5700,6 +5780,28 @@ def api_project_itp_add_invite(pid, tid, eid):
     )
     db.session.add(invite)
     db.session.flush()   # get invite.id
+
+    # ── Audit: items being SENT FOR RE-REVIEW (previously raised concerns) ────
+    # Any criterion in this invite's scope that the client previously flagged is
+    # going back for another look after the engineer's response.
+    _re_review_rows = [
+        s for s in _invitee_scope_rows
+        if s.client_reviewed and s.client_accepted is False
+        and s.client_action in ('rejected', 'request_changes',
+                                'request_clarification', 'not_accepted')
+    ]
+    if _re_review_rows:
+        log_audit(
+            'itp_items_sent_for_re_review',
+            project_id   = record.wtg.project_id if record.wtg else None,
+            actor        = current_user,
+            entity_type  = 'itp_record',
+            entity_id    = record.id,
+            entity_label = f'{wtg.name if wtg else ""} — re-review',
+            detail       = {'record_id': record.id, 'invite_id': invite.id,
+                            'item_nos': sorted(f'{s.item_no}.{s.criterion_index + 1}'
+                                               for s in _re_review_rows)},
+        )
 
     sign_url = url_for('itp_client_sign_entry', token=invite_token, _external=True)
 
@@ -6329,8 +6431,20 @@ def api_client_review_item(token, item_no, ci):
     if not s.lucas_complete:
         return jsonify({'error': 'Item has not been signed by the engineer yet.'}), 400
 
+    # ── Scoped-invite boundary enforcement ───────────────────────────────────
+    # A scoped invite may ONLY act on items in its item_scope_ids. This blocks a
+    # crafted/manual API call from reviewing an out-of-scope criterion. Legacy /
+    # no-scope invites (item_scope_ids == []) are unaffected.
+    if invite and invite.item_scope_ids and s.id not in set(invite.item_scope_ids):
+        return jsonify({'error': 'This item is outside your review scope.'}), 403
+
     data   = request.get_json(silent=True) or {}
     action = data.get('action', '')
+
+    # Remember the prior decision so we can detect "approved after engineer
+    # response" (concern → resolved) for audit + notification below.
+    _prev_action   = s.client_action
+    _was_concern   = is_open_client_issue(s)
 
     # --- Approved / Accept (requires signature) ---
     if action in ('accept', 'approved'):
@@ -6406,6 +6520,45 @@ def api_client_review_item(token, item_no, ci):
         detail       = {'action': action, 'record_id': record.id,
                         'item_no': item_no, 'ci': ci},
     )
+
+    # ── Client approved an item that previously had a (responded-to) concern ──
+    # Records the resolution of an issue thread and notifies the engineer who
+    # responded, so the loop concern → response → approval is fully audited.
+    if action in ('accept', 'approved') and _was_concern:
+        log_audit(
+            'itp_client_approved_after_response',
+            project_id   = project_id,
+            actor        = current_user,
+            entity_type  = 'itp_item',
+            entity_id    = s.id,
+            entity_label = f'{wtg_name} · {s.item_no}.{s.criterion_index + 1}',
+            detail       = {'record_id': record.id, 'item_no': item_no, 'ci': ci,
+                            'previous_action': _prev_action},
+        )
+        # Notify the engineer(s) who responded to this concern (internal note authors)
+        _resolved_url = ''
+        try:
+            if record.project_itp_template_id and record.wtg:
+                _resolved_url = url_for('project_itp_detail',
+                                        pid=record.wtg.project_id,
+                                        tid=record.project_itp_template_id,
+                                        eid=record.wtg.id)
+        except Exception:
+            pass
+        _notify_engineers = set()
+        for _n in s.notes:
+            if _n.party == 'internal' and _n.author_user_id:
+                _notify_engineers.add(_n.author_user_id)
+        _approver = current_user.name if current_user.is_authenticated else (record.client_name or 'Client')
+        for _eng_uid in _notify_engineers:
+            db.session.add(Notification(
+                user_id = _eng_uid,
+                type    = 'itp_concern_resolved',
+                title   = f'Concern resolved — {wtg_name} item {item_no}.{int(ci)+1}',
+                message = (f'{_approver} approved item {item_no}.{int(ci)+1} on {wtg_name} '
+                           f'after your response. The concern is now resolved.'),
+                url     = _resolved_url,
+            ))
 
     # Attach note: for concern actions the comment IS the note_text; for approve use optional note_text
     _note_text = (data.get('note_text') or data.get('comment') or '').strip()
@@ -7189,7 +7342,8 @@ def itp_client_sign(token):
                            statuses=statuses, proj_name=proj_name,
                            token=token, invite=invite,
                            link_error=None,
-                           today=date.today().isoformat())
+                           today=date.today().isoformat(),
+                           issue_states=build_issue_state_map(record))
 
 
 # ─── Client ITP Action Inbox ─────────────────────────────────────────────────
@@ -7429,6 +7583,8 @@ def api_itp_item_upload(record_id, item_no, crit_idx):
     s = ITPItemStatus.query.filter_by(
         itp_record_id=record_id, item_no=item_no, criterion_index=crit_idx
     ).first_or_404()
+    # Is this evidence answering an open client concern? (state before upload)
+    _resp_to_issue = is_open_client_issue(s)
     f = request.files.get('file')
     if not f or f.filename == '':
         return jsonify({'error': 'No file'}), 400
@@ -7460,8 +7616,51 @@ def api_itp_item_upload(record_id, item_no, crit_idx):
         detail      = {'record_id': record_id, 'item_no': item_no, 'ci': crit_idx,
                        'filename': fname, 'doc_type': dtype},
     )
+
+    # ── Response evidence for an open client concern ─────────────────────────
+    # When evidence is attached to a criterion that has a live client issue, it
+    # counts as the engineer's response: audit it and notify the reviewer who
+    # raised the concern so they know new evidence is ready for re-review.
+    if _resp_to_issue:
+        log_audit(
+            'itp_response_evidence_uploaded',
+            project_id  = project_id,
+            actor       = current_user,
+            entity_type = 'itp_document',
+            entity_id   = doc.id,
+            entity_label= f.filename,
+            detail      = {'record_id': record_id, 'item_no': item_no, 'ci': crit_idx,
+                           'client_action': s.client_action},
+        )
+        _ev_url = ''
+        try:
+            if record.project_itp_template_id and record.wtg:
+                _ev_url = url_for('project_itp_detail',
+                                  pid=record.wtg.project_id,
+                                  tid=record.project_itp_template_id,
+                                  eid=record.wtg.id)
+        except Exception:
+            pass
+        _client_uid = s.client_signed_by_id
+        if not _client_uid:
+            _cnote = (ITPCriterionNote.query
+                      .filter_by(itp_record_id=record_id, item_status_id=s.id, party='client')
+                      .order_by(ITPCriterionNote.created_at.desc()).first())
+            _client_uid = _cnote.author_user_id if _cnote else None
+        if _client_uid and _client_uid != current_user.id:
+            db.session.add(Notification(
+                user_id = _client_uid,
+                type    = 'itp_response_evidence',
+                title   = f'New evidence attached for item {item_no}.{int(crit_idx)+1}',
+                message = (f'{current_user.name} attached response evidence for '
+                           f'{record.wtg.name if record.wtg else "the ITP"} '
+                           f'item {item_no}.{int(crit_idx)+1}. Please review and re-assess.'),
+                url     = _ev_url,
+            ))
+
     db.session.commit()
-    return jsonify({'id': doc.id, 'name': doc.original_name, 'url': doc.url, 'type': doc.doc_type})
+    return jsonify({'id': doc.id, 'name': doc.original_name, 'url': doc.url, 'type': doc.doc_type,
+                    'response_to_issue': _resp_to_issue})
 
 
 @app.route('/api/itp/item-doc/<int:doc_id>/delete', methods=['POST'])
@@ -7638,19 +7837,23 @@ def api_itp_criterion_notes_post(record_id, item_no, ci):
                         'author_name': author_name},
     )
 
+    # Build the internal ITP detail URL once (used by reply notifications)
+    _reply_url = ''
+    try:
+        if record.project_itp_template_id and record.wtg:
+            _reply_url = url_for('project_itp_detail',
+                                 pid=record.wtg.project_id,
+                                 tid=record.project_itp_template_id,
+                                 eid=record.wtg.id)
+    except Exception:
+        pass
+
+    _internal_reply_notified = set()
+
     # Notification: internal reply → notify the client who wrote the parent note
     if parent_note_id and party == 'internal':
         _reply_parent = ITPCriterionNote.query.get(int(parent_note_id))
         if _reply_parent and _reply_parent.party == 'client' and _reply_parent.author_user_id:
-            _reply_url = ''
-            try:
-                if record.project_itp_template_id and record.wtg:
-                    _reply_url = url_for('project_itp_detail',
-                                         pid=record.wtg.project_id,
-                                         tid=record.project_itp_template_id,
-                                         eid=record.wtg.id)
-            except Exception:
-                pass
             db.session.add(Notification(
                 user_id = _reply_parent.author_user_id,
                 type    = 'itp_note_reply',
@@ -7659,6 +7862,44 @@ def api_itp_criterion_notes_post(record_id, item_no, ci):
                            f'item {item_no}.{ci + 1}: {note_text[:120]}'),
                 url     = _reply_url,
             ))
+            _internal_reply_notified.add(_reply_parent.author_user_id)
+
+    # Notification + audit: engineer replied to an OPEN client issue.
+    # Fires for any internal note on a criterion with a live concern (whether or
+    # not it was threaded as a reply), so the reviewer is told a response exists.
+    if party == 'internal' and s and is_open_client_issue(s):
+        _action_word = {
+            'rejected':              'rejection',
+            'request_changes':       'requested change',
+            'request_clarification': 'requested clarification',
+        }.get(s.client_action, 'concern')
+        log_audit(
+            'itp_engineer_replied',
+            project_id   = project_id,
+            actor        = current_user if current_user.is_authenticated else None,
+            entity_type  = 'itp_item',
+            entity_id    = s.id,
+            entity_label = f'{wtg_name} · {item_no}.{ci + 1}',
+            detail       = {'record_id': record.id, 'item_no': item_no, 'ci': ci,
+                            'client_action': s.client_action},
+        )
+        _issue_client_uid = s.client_signed_by_id
+        if not _issue_client_uid:
+            _cn_q = (ITPCriterionNote.query
+                     .filter_by(itp_record_id=record.id, item_status_id=s.id, party='client')
+                     .order_by(ITPCriterionNote.created_at.desc()).first())
+            _issue_client_uid = _cn_q.author_user_id if _cn_q else None
+        if (_issue_client_uid and _issue_client_uid != author_user_id
+                and _issue_client_uid not in _internal_reply_notified):
+            db.session.add(Notification(
+                user_id = _issue_client_uid,
+                type    = 'itp_engineer_response',
+                title   = f'Engineer responded to your {_action_word}',
+                message = (f'{author_name} responded on {wtg_name} item {item_no}.{ci + 1}: '
+                           f'{note_text[:120]}'),
+                url     = _reply_url,
+            ))
+            _internal_reply_notified.add(_issue_client_uid)
 
     # Notification: client raises concern → notify invite sender + same-company teammates
     if party == 'client' and related_action in ('rejected', 'request_changes', 'request_clarification'):

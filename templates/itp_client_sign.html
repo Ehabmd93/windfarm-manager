@@ -821,6 +821,38 @@
   </div>
   {% endif %}
 
+  <!-- ─── ENGINEER RESPONDED BANNER (items back for re-review) ────────── -->
+  {% if not review_locked and issue_states %}
+  {% set _resp_ns = namespace(n=0) %}
+  {% for _rs in record.item_statuses %}
+    {% if issue_states.get((_rs.item_no, _rs.criterion_index)) == 'awaiting_re_review' %}
+      {% set _resp_ns.n = _resp_ns.n + 1 %}
+    {% endif %}
+  {% endfor %}
+  {% if _resp_ns.n > 0 %}
+  <div class="card rise" style="margin-bottom:14px;border-color:var(--blue-line);
+              background:linear-gradient(135deg,#eff6ff,#f5f8ff);padding:15px 18px;
+              display:flex;align-items:flex-start;gap:13px;">
+    <div style="width:38px;height:38px;border-radius:11px;flex-shrink:0;
+                background:linear-gradient(135deg,#1d4ed8,#3b82f6);
+                display:flex;align-items:center;justify-content:center;
+                box-shadow:0 6px 16px rgba(37,99,235,.30);">
+      <i class="fa-solid fa-reply-all" style="color:white;font-size:15px;"></i>
+    </div>
+    <div>
+      <p style="font-size:13.5px;font-weight:900;color:#1d4ed8;margin:0 0 2px;">
+        The inspection team has responded
+      </p>
+      <p style="font-size:12px;color:#3b82f6;margin:0;line-height:1.5;">
+        {{ _resp_ns.n }} item{{ 's' if _resp_ns.n != 1 else '' }} you raised
+        {{ 'have' if _resp_ns.n != 1 else 'has' }} a reply and/or new evidence.
+        Please review the response and attached evidence under each item, then approve or raise a further issue.
+      </p>
+    </div>
+  </div>
+  {% endif %}
+  {% endif %}
+
   <!-- ─── HOW IT WORKS (only while review is open) ────────────────────── -->
   {% if not review_locked %}
   <div class="steps-strip rise" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;margin-bottom:14px;">
@@ -1188,6 +1220,23 @@
                   <div style="background:#f8fafc;border:1.5px solid var(--line);border-radius:var(--r-sm);
                               padding:10px 14px;font-size:13px;color:var(--ink-2);line-height:1.55;">
                     <i class="fa-solid fa-comment-dots" style="margin-right:6px;color:var(--ink-4);"></i>{{ s.client_comments }}
+                  </div>
+                  {% endif %}
+                  {# Engineer has responded to this concern and it's back in scope — offer re-review #}
+                  {% set _cl_state = issue_states.get((act_no, ci)) if issue_states else None %}
+                  {% if not review_locked and _cl_state == 'awaiting_re_review' %}
+                  <div style="margin-top:10px;background:linear-gradient(135deg,#eff6ff,#f5f8ff);
+                              border:1.5px solid var(--blue-line);border-radius:var(--r-md);padding:12px 14px;">
+                    <p style="font-size:12.5px;font-weight:800;color:#1d4ed8;margin:0 0 4px;">
+                      <i class="fa-solid fa-reply" style="margin-right:6px;"></i>The inspection team has responded
+                    </p>
+                    <p style="font-size:11.5px;color:#3b82f6;margin:0 0 10px;line-height:1.5;">
+                      Review their reply and any new evidence above, then approve this item or raise a further issue.
+                    </p>
+                    <button class="btn-accept" style="padding:9px 18px;"
+                            onclick="startReReview('{{ act_no }}', {{ ci }})">
+                      <i class="fa-solid fa-rotate-right"></i> Re-review this item
+                    </button>
                   </div>
                   {% endif %}
                 </div>
@@ -1691,6 +1740,15 @@ async function undoReview(actNo, ci) {
   } else {
     alert(res.error || 'Could not reset. Please try again.');
   }
+}
+
+// Re-review after an engineer response: swap the criterion to the decision UI
+// WITHOUT touching the server (the prior concern stays until the client acts).
+// Approving or raising a new issue then overwrites it via the normal API.
+function startReReview(actNo, ci) {
+  setCritState(actNo, ci, 'pending', '', '');
+  const row = document.getElementById(`crit-row-${actNo}-${ci}`);
+  if (row) row.scrollIntoView({behavior:'smooth', block:'center'});
 }
 
 // Initialize all server-rendered pending canvases on page load
