@@ -580,12 +580,13 @@
           </div>
           {% endif %}
 
-          <!-- Criterion notes display -->
+          <!-- Criterion notes display (collapsible — rendered by JS) -->
           <div id="notes-{{ item['no'] }}-{{ ci }}"
                style="margin-top:8px;"
                data-record="{{ record.id }}"
                data-itemno="{{ item['no'] }}"
-               data-ci="{{ ci }}">
+               data-ci="{{ ci }}"
+               data-issue-state="{{ (issue_states.get((item['no'], ci)) or '') if issue_states else '' }}">
           </div>
           <!-- Add Note form (hidden by default) -->
           <div id="add-note-form-{{ item['no'] }}-{{ ci }}"
@@ -1691,6 +1692,33 @@ function renderNoteHtml(n, isReply) {
   </div>`;
 }
 
+// Discussions are collapsed by default; remember which the user opened so a
+// re-render (after add/reply) keeps their expanded state.
+const _expandedDisc = new Set();
+
+function _discKey(itemNo, ci) { return `${itemNo}-${ci}`; }
+
+function toggleDiscussion(itemNo, ci) {
+  const key  = _discKey(itemNo, ci);
+  const body = document.getElementById(`disc-body-${key}`);
+  const chev = document.getElementById(`disc-chev-${key}`);
+  if (!body) return;
+  const open = body.style.display !== 'none';
+  body.style.display = open ? 'none' : 'block';
+  if (chev) chev.style.transform = open ? '' : 'rotate(180deg)';
+  if (open) _expandedDisc.delete(key); else _expandedDisc.add(key);
+}
+
+// Flatten notes + nested replies into one list (for counts and latest time).
+function _flattenNotes(notes) {
+  const out = [];
+  (notes || []).forEach(n => {
+    out.push(n);
+    if (n.replies && n.replies.length) out.push(..._flattenNotes(n.replies));
+  });
+  return out;
+}
+
 async function loadCriterionNotes(container, recordId, itemNo, ci) {
   try {
     const res = await fetch(`/api/itp/${recordId}/criterion/${itemNo}/${ci}/notes`, {
@@ -1698,15 +1726,52 @@ async function loadCriterionNotes(container, recordId, itemNo, ci) {
     });
     if (!res.ok) return;
     const data = await res.json();
-    if (!data.notes || data.notes.length === 0) return;
+    if (!data.notes || data.notes.length === 0) { container.innerHTML = ''; return; }
     // Store item_no / criterion_index on notes for reply function
     data.notes.forEach(n => { n.item_no = itemNo; n.criterion_index = ci; });
-    container.innerHTML = `<div style="margin-top:10px;">
-      <p style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">
-        <i class="fa-solid fa-comments" style="margin-right:4px;"></i>Discussion (${data.notes.length} note${data.notes.length!==1?'s':''})
-      </p>
-      ${data.notes.map(n => renderNoteHtml(n, false)).join('')}
-    </div>`;
+
+    const key       = _discKey(itemNo, ci);
+    const isOpen     = _expandedDisc.has(key);
+    const all        = _flattenNotes(data.notes);
+    const totalCount = all.length;
+    // Latest activity = max created_iso across all notes/replies
+    let latest = null;
+    all.forEach(n => {
+      if (n.created_iso && (!latest || n.created_iso > latest.created_iso)) latest = n;
+    });
+    const latestLabel = latest && latest.created_at ? latest.created_at : '';
+
+    // Issue warning badge derived from the criterion's workflow state
+    const istate = container.dataset.issueState || '';
+    let badge = '';
+    if (istate === 'action_required') {
+      badge = `<span style="display:inline-flex;align-items:center;gap:4px;font-size:9.5px;font-weight:800;
+                 padding:2px 8px;border-radius:9999px;background:#fef3c7;color:#b45309;white-space:nowrap;">
+                 <i class="fa-solid fa-triangle-exclamation"></i>Unresolved issue</span>`;
+    } else if (istate === 'response_sent' || istate === 'awaiting_re_review') {
+      badge = `<span style="display:inline-flex;align-items:center;gap:4px;font-size:9.5px;font-weight:800;
+                 padding:2px 8px;border-radius:9999px;background:#dbeafe;color:#1d4ed8;white-space:nowrap;">
+                 <i class="fa-solid fa-reply"></i>Open issue · responded</span>`;
+    }
+
+    container.innerHTML = `
+      <div style="margin-top:10px;border:1px solid #eef2f7;border-radius:11px;overflow:hidden;background:#fff;">
+        <button type="button" onclick="toggleDiscussion('${itemNo}','${ci}')"
+                style="width:100%;display:flex;align-items:center;gap:9px;padding:10px 13px;
+                       background:#f8fafc;border:none;cursor:pointer;text-align:left;">
+          <i class="fa-solid fa-comments" style="color:#7c3aed;font-size:12px;flex-shrink:0;"></i>
+          <span style="font-size:12px;font-weight:800;color:#475569;">Discussion</span>
+          <span style="font-size:11px;font-weight:700;color:#94a3b8;">${totalCount} note${totalCount!==1?'s':''}</span>
+          ${latestLabel ? `<span style="font-size:10.5px;color:#cbd5e1;white-space:nowrap;">· latest ${escN(latestLabel)}</span>` : ''}
+          ${badge}
+          <i id="disc-chev-${key}" class="fa-solid fa-chevron-down"
+             style="margin-left:auto;color:#94a3b8;font-size:10px;transition:transform .25s;
+                    ${isOpen ? 'transform:rotate(180deg);' : ''}"></i>
+        </button>
+        <div id="disc-body-${key}" style="display:${isOpen ? 'block' : 'none'};padding:4px 13px 12px;">
+          ${data.notes.map(n => renderNoteHtml(n, false)).join('')}
+        </div>
+      </div>`;
   } catch(e) { /* silently ignore */ }
 }
 
@@ -1741,6 +1806,7 @@ async function submitAddNote(itemNo, ci) {
     const data = await res.json();
     if (res.ok && data.ok) {
       cancelAddNote(itemNo, ci);
+      _expandedDisc.add(_discKey(itemNo, ci));   // keep discussion open to show the new note
       const container = document.getElementById(`notes-${itemNo}-${ci}`);
       if (container) loadCriterionNotes(container, RECORD_ID, itemNo, ci);
       showToast('success', 'Note added', 'Your note has been saved.');
@@ -1774,6 +1840,7 @@ async function submitReply(itemNo, ci, parentNoteId) {
     });
     const data = await res.json();
     if (res.ok && data.ok) {
+      _expandedDisc.add(_discKey(itemNo, ci));   // keep discussion open to show the reply
       const container = document.getElementById(`notes-${itemNo}-${ci}`);
       if (container) loadCriterionNotes(container, RECORD_ID, itemNo, ci);
       showToast('success', 'Reply added', 'Your reply has been saved.');
