@@ -5,36 +5,68 @@
 
 {% block head %}
 <style>
+  /* ════════════════════════════════════════════════════════════════════
+     ITP Record — engineer workspace design system
+     ════════════════════════════════════════════════════════════════════ */
+
   /* ── Layout ── */
   .itp-layout { display:grid; grid-template-columns:1fr 320px; gap:20px; align-items:start; }
   @media(max-width:1100px){ .itp-layout { grid-template-columns:1fr; } }
 
+  /* ── Hero (status-aware) ── */
+  .itp-hero {
+    position:relative; overflow:hidden; color:white;
+    border-radius:20px; padding:22px 26px; margin-bottom:20px;
+    display:flex; align-items:center; gap:22px;
+    box-shadow:0 16px 40px -16px rgba(15,23,42,.35);
+  }
+  .itp-hero-dots {
+    position:absolute; inset:0; opacity:.45; pointer-events:none;
+    background-image:radial-gradient(rgba(255,255,255,.13) 1px, transparent 1.4px);
+    background-size:20px 20px;
+  }
+  @media(max-width:640px){ .itp-hero { flex-wrap:wrap; padding:18px; } }
+
   /* ── Activity group ── */
-  .activity-group { margin-bottom:14px; border:1.5px solid #e2e8f0; border-radius:16px; overflow:hidden; }
+  .activity-group {
+    margin-bottom:16px; border:1px solid #e6ebf2; border-radius:18px; overflow:hidden;
+    background:white;
+    box-shadow:0 1px 2px rgba(15,23,42,.04), 0 10px 28px -18px rgba(15,23,42,.12);
+  }
   .activity-header {
-    background:#f8fafc; padding:12px 18px;
+    background:#f8fafc; padding:13px 18px;
     display:flex; align-items:center; gap:10px; cursor:pointer;
-    border-bottom:1px solid #e2e8f0;
+    border-bottom:1px solid #eef2f7; user-select:none;
+    transition:background .15s;
   }
   .activity-header:hover { background:#f1f5f9; }
   .activity-body { background:white; }
 
   /* ── Criterion row ── */
-  .crit-row { border-bottom:1px solid #f1f5f9; transition:background 0.2s; }
+  .crit-row { position:relative; border-bottom:1px solid #f4f7fb; transition:background .18s; }
   .crit-row:last-child { border-bottom:none; }
-  .crit-row.is-signed { background:#f0fdf4; }
-  .crit-row-inner { padding:12px 14px; display:flex; align-items:flex-start; gap:10px; }
+  .crit-row:hover { background:#fbfdff; }
+  .crit-row.is-signed { background:#f6fdf8; }
+  .crit-row.is-signed:hover { background:#f0fbf4; }
+  .crit-row.is-signed::before {
+    content:''; position:absolute; left:0; top:8px; bottom:8px; width:3px;
+    border-radius:0 4px 4px 0; background:linear-gradient(180deg,#22c55e,#16a34a);
+  }
+  .crit-row-inner { padding:13px 15px; display:flex; align-items:flex-start; gap:11px; }
 
   /* ── Checkbox / sign button ── */
   .crit-check {
-    width:30px; height:30px; border-radius:8px; border:2px solid #cbd5e1;
+    width:31px; height:31px; border-radius:9px; border:2px solid #cbd5e1;
     display:flex; align-items:center; justify-content:center;
-    cursor:pointer; flex-shrink:0; transition:all 0.2s; margin-top:2px;
+    cursor:pointer; flex-shrink:0; transition:all .18s; margin-top:2px;
     background:white;
   }
-  .crit-check:hover  { border-color:#7c3aed; background:#f5f3ff; }
+  .crit-check:hover  { border-color:#7c3aed; background:#f5f3ff; transform:scale(1.06); }
   .crit-check.pending{ border-color:#f59e0b; background:#fffbeb; }
-  .crit-check.signed { border-color:#22c55e; background:#22c55e; }
+  .crit-check.signed {
+    border-color:#22c55e; background:linear-gradient(135deg,#16a34a,#22c55e);
+    box-shadow:0 3px 10px rgba(34,197,94,.35);
+  }
 
   /* ── Attach doc button ── */
   .btn-attach {
@@ -78,8 +110,12 @@
   .sig-dt-input:focus { border-color:#7c3aed; }
   .btn-clear  { padding:6px 12px; border:1.5px solid #e2e8f0; border-radius:8px; font-size:12px; font-weight:700; background:white; cursor:pointer; color:#64748b; }
   .btn-clear:hover { background:#f1f5f9; }
-  .btn-sign   { padding:6px 16px; border-radius:8px; font-size:12px; font-weight:700; background:#7c3aed; color:white; cursor:pointer; border:none; }
-  .btn-sign:hover { background:#6d28d9; }
+  .btn-sign   {
+    padding:6px 18px; border-radius:8px; font-size:12px; font-weight:800;
+    background:linear-gradient(135deg,#6d28d9,#7c3aed); color:white; cursor:pointer; border:none;
+    box-shadow:0 3px 10px rgba(124,58,237,.3); transition:all .15s;
+  }
+  .btn-sign:hover { box-shadow:0 6px 16px rgba(124,58,237,.4); transform:translateY(-1px); }
   .btn-cancel { padding:6px 12px; border:1.5px solid #e2e8f0; border-radius:8px; font-size:12px; font-weight:600; background:white; cursor:pointer; color:#94a3b8; }
 
   /* ── Signature preview ── */
@@ -111,12 +147,19 @@
   .item-upload-zone:hover,.item-upload-zone.drag-over { border-color:#3b82f6; background:#eff6ff; }
 
   /* ── Right panel ── */
-  .panel { background:white; border:1.5px solid #e2e8f0; border-radius:18px; overflow:hidden; margin-bottom:16px; }
-  .panel-hdr { background:#7c3aed; color:white; padding:12px 18px; font-size:13px; font-weight:700; display:flex; align-items:center; gap:8px; }
-  .panel-hdr.blue  { background:#2563eb; }
-  .panel-hdr.green { background:#16a34a; }
-  .panel-hdr.slate { background:#475569; }
-  .panel-hdr.orange{ background:#ea580c; }
+  .panel {
+    background:white; border:1px solid #e6ebf2; border-radius:18px; overflow:hidden; margin-bottom:16px;
+    box-shadow:0 1px 2px rgba(15,23,42,.04), 0 10px 28px -18px rgba(15,23,42,.12);
+  }
+  .panel-hdr {
+    background:linear-gradient(130deg,#5b21b6,#7c3aed); color:white; padding:13px 18px;
+    font-size:13px; font-weight:800; display:flex; align-items:center; gap:9px;
+    letter-spacing:-.01em;
+  }
+  .panel-hdr.blue  { background:linear-gradient(130deg,#1e40af,#2563eb); }
+  .panel-hdr.green { background:linear-gradient(130deg,#15803d,#16a34a); }
+  .panel-hdr.slate { background:linear-gradient(130deg,#334155,#475569); }
+  .panel-hdr.orange{ background:linear-gradient(130deg,#c2410c,#ea580c); }
   .panel-body { padding:16px; }
 
   .form-label { display:block; font-size:11px; font-weight:700; color:#64748b; margin-bottom:5px; text-transform:uppercase; letter-spacing:0.05em; }
@@ -149,39 +192,63 @@
   </div>
 </div>
 
-<!-- Status Banner -->
+<!-- Status Banner — driven by COMPUTED status (single source of truth), not the raw column -->
 {% set done  = record.items_complete_count %}
 {% set total = record.items_total_count %}
 {% set pct   = (done / total * 100)|int if total else 0 %}
+{% set cstat = computed_status if computed_status is defined else record.status %}
 
-<div class="rounded-2xl p-5 mb-5 flex items-center gap-5
-  {% if record.status == 'complete' %}bg-gradient-to-r from-green-700 to-green-500
-  {% elif record.status in ('client_invited',) %}bg-gradient-to-r from-blue-700 to-blue-500
-  {% else %}bg-gradient-to-r from-violet-800 to-violet-600{% endif %} text-white">
-  <div class="flex-1">
-    <p class="text-xs font-semibold uppercase tracking-wider opacity-70 mb-0.5">
-      {{ wtg.name }} · {{ proj.name }}
-    </p>
-    <h2 class="text-lg font-bold">{{ defn['name'] }}</h2>
-    <p class="text-sm opacity-75 mt-0.5">
+{% if cstat == 'complete' %}
+  {% set hero_grad = 'linear-gradient(130deg,#14532d 0%,#166534 45%,#16a34a 100%)' %}
+  {% set hero_pill_bg = 'rgba(134,239,172,.25)' %}{% set hero_pill_ic = 'fa-circle-check' %}{% set hero_pill_tx = 'COMPLETE' %}
+{% elif cstat == 'action_required' %}
+  {% set hero_grad = 'linear-gradient(130deg,#7c2d12 0%,#c2410c 50%,#ea580c 100%)' %}
+  {% set hero_pill_bg = 'rgba(254,215,170,.28)' %}{% set hero_pill_ic = 'fa-triangle-exclamation' %}{% set hero_pill_tx = 'ACTION REQUIRED' %}
+{% elif cstat == 'under_review' %}
+  {% set hero_grad = 'linear-gradient(130deg,#0f2942 0%,#1e40af 55%,#2563eb 100%)' %}
+  {% set hero_pill_bg = 'rgba(191,219,254,.25)' %}{% set hero_pill_ic = 'fa-magnifying-glass' %}{% set hero_pill_tx = 'UNDER CLIENT REVIEW' %}
+{% elif cstat == 'draft' %}
+  {% set hero_grad = 'linear-gradient(130deg,#334155 0%,#475569 55%,#64748b 100%)' %}
+  {% set hero_pill_bg = 'rgba(226,232,240,.22)' %}{% set hero_pill_ic = 'fa-file-pen' %}{% set hero_pill_tx = 'DRAFT' %}
+{% else %}
+  {% set hero_grad = 'linear-gradient(130deg,#2e1065 0%,#5b21b6 50%,#7c3aed 100%)' %}
+  {% set hero_pill_bg = 'rgba(221,214,254,.25)' %}{% set hero_pill_ic = 'fa-pen-nib' %}{% set hero_pill_tx = 'IN PROGRESS' %}
+{% endif %}
+
+<div class="itp-hero" style="background:{{ hero_grad }};">
+  <div class="itp-hero-dots"></div>
+  <div style="position:relative;flex:1;min-width:0;">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:7px;">
+      <span style="display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:800;
+                   letter-spacing:.1em;color:rgba(255,255,255,.92);background:{{ hero_pill_bg }};
+                   border:1px solid rgba(255,255,255,.22);padding:4px 12px;border-radius:99px;">
+        <i class="fa-solid {{ hero_pill_ic }}" style="font-size:10px;"></i>{{ hero_pill_tx }}
+      </span>
+      <span style="font-size:10.5px;font-weight:700;letter-spacing:.08em;color:rgba(255,255,255,.55);text-transform:uppercase;">
+        {{ wtg.name }} · {{ proj.name }}
+      </span>
+    </div>
+    <h2 style="font-size:20px;font-weight:900;margin:0 0 3px;letter-spacing:-.01em;color:white;">{{ defn['name'] }}</h2>
+    <p style="font-size:12.5px;color:rgba(255,255,255,.7);margin:0;">
       ITP #{{ defn['itp_number'] }} · Spec: {{ defn['spec'] }} · Rev {{ defn['revision'] }} · {{ defn['date'] }}
     </p>
-    <div class="mt-3 flex items-center gap-3">
-      <div class="flex-1 max-w-xs">
-        <div class="progress-bar-wrap" style="background:rgba(255,255,255,0.2)">
-          <div class="progress-bar-fill" style="width:{{ pct }}%;background:white" id="main-bar"></div>
+    <div class="mt-3 flex items-center gap-3" style="margin-top:14px;display:flex;align-items:center;gap:12px;">
+      <div style="flex:1;max-width:300px;">
+        <div class="progress-bar-wrap" style="background:rgba(255,255,255,0.18);">
+          <div class="progress-bar-fill" style="width:{{ pct }}%;background:white;" id="main-bar"></div>
         </div>
       </div>
-      <span class="text-sm font-bold" id="main-progress-text">{{ done }}/{{ total }} criteria signed</span>
+      <span style="font-size:13px;font-weight:800;color:white;" id="main-progress-text">{{ done }}/{{ total }} criteria signed</span>
     </div>
   </div>
-  <div class="relative flex-shrink-0 w-20 h-20">
-    <svg viewBox="0 0 36 36" class="w-20 h-20 -rotate-90">
-      <circle cx="18" cy="18" r="15.9" fill="none" stroke="rgba(255,255,255,0.25)" stroke-width="3"/>
+  <div style="position:relative;flex-shrink:0;width:82px;height:82px;">
+    <svg viewBox="0 0 36 36" style="width:82px;height:82px;transform:rotate(-90deg);">
+      <circle cx="18" cy="18" r="15.9" fill="none" stroke="rgba(255,255,255,0.22)" stroke-width="3"/>
       <circle cx="18" cy="18" r="15.9" fill="none" stroke="white" stroke-width="3"
         stroke-dasharray="{{ pct }},100" stroke-linecap="round" id="main-ring"/>
     </svg>
-    <span class="absolute inset-0 flex items-center justify-center text-white font-bold text-lg" id="main-pct">{{ pct }}%</span>
+    <span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+                 color:white;font-weight:900;font-size:18px;" id="main-pct">{{ pct }}%</span>
   </div>
 </div>
 
@@ -813,83 +880,170 @@
       <div class="panel-hdr blue"><i class="fa-solid fa-users"></i> Client Signatories</div>
       <div class="panel-body">
 
-        <!-- Signatories list — each invitee has their own signing link -->
-        <div id="invites-list" style="display:flex;flex-direction:column;gap:6px;{% if record.client_invites %}margin-bottom:14px;{% endif %}">
-          {% set active_invites = record.client_invites | selectattr('is_revoked', 'equalto', false) | list %}
-          {% for inv in active_invites %}
-          {% set inv_sign_url = url_for('itp_client_sign_entry', token=inv.token, _external=True) %}
-          {% set inv_status = inv.status or 'pending_review' %}
-          {% if inv_status == 'pending' %}{% set inv_status = 'pending_review' %}{% endif %}
-          {% if inv_status == 'pending_project_access' %}
-            {% set sc_bg = '#fef9c3' %}{% set sc_color = '#854d0e' %}{% set sc_label = 'Waiting for project access' %}
-          {% elif inv_status == 'pending_review' %}
-            {% set sc_bg = '#eff6ff' %}{% set sc_color = '#1d4ed8' %}{% set sc_label = 'Awaiting review' %}
-          {% elif inv_status == 'viewed' %}
-            {% set sc_bg = '#eef2ff' %}{% set sc_color = '#4338ca' %}{% set sc_label = 'Viewed' %}
-          {% elif inv_status == 'signed' %}
-            {% set sc_bg = '#dcfce7' %}{% set sc_color = '#166534' %}{% set sc_label = 'Signed' %}
-          {% elif inv_status == 'revoked' %}
-            {% set sc_bg = '#fef2f2' %}{% set sc_color = '#dc2626' %}{% set sc_label = 'Revoked' %}
-          {% else %}
-            {% set sc_bg = '#f1f5f9' %}{% set sc_color = '#64748b' %}{% set sc_label = 'Expired' %}
+        <!-- Signatories list — grouped by person; each invite keeps its own signing link -->
+        {% macro inv_status_pill(inv) %}
+          {%- set inv_status = inv.status or 'pending_review' -%}
+          {%- if inv_status == 'pending' %}{% set inv_status = 'pending_review' %}{% endif -%}
+          {%- if inv_status == 'pending_project_access' -%}
+            {%- set sc_bg = '#fef9c3' %}{% set sc_color = '#854d0e' %}{% set sc_label = 'Waiting for project access' -%}
+          {%- elif inv_status == 'pending_review' -%}
+            {%- set sc_bg = '#eff6ff' %}{% set sc_color = '#1d4ed8' %}{% set sc_label = 'Awaiting review' -%}
+          {%- elif inv_status == 'viewed' -%}
+            {%- set sc_bg = '#eef2ff' %}{% set sc_color = '#4338ca' %}{% set sc_label = 'Viewed' -%}
+          {%- elif inv_status == 'signed' -%}
+            {%- set sc_bg = '#dcfce7' %}{% set sc_color = '#166534' %}{% set sc_label = 'Signed' -%}
+          {%- elif inv_status == 'superseded' -%}
+            {%- set sc_bg = '#f5f3ff' %}{% set sc_color = '#6d28d9' %}{% set sc_label = 'Superseded' -%}
+          {%- elif inv_status == 'revoked' -%}
+            {%- set sc_bg = '#fef2f2' %}{% set sc_color = '#dc2626' %}{% set sc_label = 'Revoked' -%}
+          {%- else -%}
+            {%- set sc_bg = '#f1f5f9' %}{% set sc_color = '#64748b' %}{% set sc_label = 'Expired' -%}
+          {%- endif -%}
+          <span style="font-size:10px;padding:1px 7px;border-radius:99px;
+                       background:{{ sc_bg }};color:{{ sc_color }};font-weight:700;white-space:nowrap;">{{ sc_label }}</span>
+        {%- endmacro %}
+
+        {% macro inv_actions(inv, small=false) %}
+          {%- set pad = '3px 7px' if small else '5px 8px' -%}
+          <button onclick="toggleInviteLink({{ inv.id }})" title="Copy signing link"
+                  style="padding:{{ pad }};border-radius:7px;border:1px solid #bae6fd;
+                         background:white;color:#0369a1;font-size:11px;cursor:pointer;">
+            <i class="fa-solid fa-link"></i>
+          </button>
+          {% if ac_can_send_invite %}
+          <button onclick="resendInvite({{ inv.id }})" title="Resend invitation"
+                  style="padding:{{ pad }};border-radius:7px;border:1px solid #d1fae5;
+                         background:white;color:#059669;font-size:11px;cursor:pointer;">
+            <i class="fa-solid fa-paper-plane"></i>
+          </button>
+          <button onclick="removeInvite({{ inv.id }})" title="Revoke"
+                  style="padding:{{ pad }};border-radius:7px;border:1px solid #fecaca;
+                         background:white;color:#ef4444;font-size:11px;cursor:pointer;">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
           {% endif %}
-          <div id="inv-row-{{ inv.id }}"
-               style="display:flex;align-items:flex-start;gap:8px;padding:10px 12px;
-                      background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
-            <div style="flex:1;min-width:0;">
-              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px;">
-                <p style="font-size:12px;font-weight:700;color:#0f172a;margin:0;">{{ inv.name }}</p>
-                <span style="font-size:10px;padding:1px 7px;border-radius:99px;
-                             background:{{ sc_bg }};color:{{ sc_color }};font-weight:700;">{{ sc_label }}</span>
-                {% if inv.item_scope_ids %}
-                <span style="font-size:10px;padding:1px 7px;border-radius:99px;
-                             background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe;font-weight:600;">
-                  {{ inv.item_scope_ids|length }} criteria
-                </span>
-                {% endif %}
-              </div>
-              <p style="font-size:11px;color:#94a3b8;margin:0;">
-                {{ inv.company }}{% if inv.email %} · {{ inv.email }}{% endif %}
-                {% if inv.invited_by_name %} · Invited by {{ inv.invited_by_name }}{% endif %}
-                {% if inv.invited_at %} · {{ inv.invited_at.strftime('%d %b') }}{% endif %}
-              </p>
-              <!-- Per-invitee link (collapsed by default) -->
-              <div id="inv-link-{{ inv.id }}" style="display:none;margin-top:6px;">
-                <div style="display:flex;gap:5px;">
-                  <input type="text" readonly value="{{ inv_sign_url }}"
-                         style="flex:1;font-size:10px;padding:5px 8px;border:1px solid #bae6fd;
-                                border-radius:7px;background:white;color:#0369a1;min-width:0;"/>
-                  <button onclick="copyInviteLink('{{ inv_sign_url }}')"
-                          style="padding:5px 8px;border-radius:7px;border:1px solid #bae6fd;
-                                 background:white;color:#0369a1;font-size:11px;cursor:pointer;white-space:nowrap;">
-                    <i class="fa-solid fa-copy"></i>
-                  </button>
-                </div>
-              </div>
+        {%- endmacro %}
+
+        {% macro inv_link_box(inv) %}
+          {%- set inv_sign_url = url_for('itp_client_sign_entry', token=inv.token, _external=True) -%}
+          <div id="inv-link-{{ inv.id }}" style="display:none;margin-top:6px;">
+            <div style="display:flex;gap:5px;">
+              <input type="text" readonly value="{{ inv_sign_url }}"
+                     style="flex:1;font-size:10px;padding:5px 8px;border:1px solid #bae6fd;
+                            border-radius:7px;background:white;color:#0369a1;min-width:0;"/>
+              <button onclick="copyInviteLink('{{ inv_sign_url }}')"
+                      style="padding:5px 8px;border-radius:7px;border:1px solid #bae6fd;
+                             background:white;color:#0369a1;font-size:11px;cursor:pointer;white-space:nowrap;">
+                <i class="fa-solid fa-copy"></i>
+              </button>
             </div>
-            <button onclick="toggleInviteLink({{ inv.id }})" title="Copy signing link"
-                    style="padding:5px 8px;border-radius:7px;border:1px solid #bae6fd;
-                           background:white;color:#0369a1;font-size:11px;cursor:pointer;">
-              <i class="fa-solid fa-link"></i>
-            </button>
-            {% if ac_can_send_invite %}
-            <button onclick="resendInvite({{ inv.id }})" title="Resend invitation"
-                    style="padding:5px 8px;border-radius:7px;border:1px solid #d1fae5;
-                           background:white;color:#059669;font-size:11px;cursor:pointer;">
-              <i class="fa-solid fa-paper-plane"></i>
-            </button>
-            <button onclick="removeInvite({{ inv.id }})" title="Revoke"
-                    style="padding:5px 8px;border-radius:7px;border:1px solid #fecaca;
-                           background:white;color:#ef4444;font-size:11px;cursor:pointer;">
-              <i class="fa-solid fa-xmark"></i>
-            </button>
-            {% endif %}{# ac_can_send_invite #}
           </div>
+        {%- endmacro %}
+
+        <div id="invites-list" style="display:flex;flex-direction:column;gap:8px;{% if record.client_invites %}margin-bottom:14px;{% endif %}">
+          {% set active_invites = record.client_invites | selectattr('is_revoked', 'equalto', false) | list %}
+          {% if active_invites %}
+          {# Group by person: normalized email (fallback name), newest invite first #}
+          {% set inv_sorted = active_invites | sort(attribute='id', reverse=True) %}
+          {% set pk = namespace(keys=[]) %}
+          {% for inv in inv_sorted %}
+            {% set k = ((inv.email or inv.name) or '') | trim | lower %}
+            {% if k not in pk.keys %}{% set pk.keys = pk.keys + [k] %}{% endif %}
+          {% endfor %}
+          {% for k in pk.keys %}
+            {% set person_invites = [] %}
+            {% for inv in inv_sorted %}
+              {% if (((inv.email or inv.name) or '') | trim | lower) == k %}
+                {% set _ = person_invites.append(inv) %}
+              {% endif %}
+            {% endfor %}
+            {% set latest  = person_invites[0] %}
+            {% set history = person_invites[1:] %}
+            {% set tot = namespace(criteria=0, signed=0) %}
+            {% for inv in person_invites %}
+              {% set tot.criteria = tot.criteria + (inv.item_scope_ids | length) %}
+              {% if inv.status == 'signed' %}{% set tot.signed = tot.signed + 1 %}{% endif %}
+            {% endfor %}
+
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:11px;overflow:hidden;">
+              <!-- Latest invite (primary row) -->
+              <div id="inv-row-{{ latest.id }}"
+                   style="display:flex;align-items:flex-start;gap:8px;padding:10px 12px;">
+                <div style="width:28px;height:28px;border-radius:50%;flex-shrink:0;margin-top:1px;
+                            background:linear-gradient(135deg,#60a5fa,#a78bfa);
+                            display:flex;align-items:center;justify-content:center;
+                            font-size:10px;font-weight:900;color:white;">
+                  {{ (latest.name or 'C')[:1] | upper }}
+                </div>
+                <div style="flex:1;min-width:0;">
+                  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px;">
+                    <p style="font-size:12px;font-weight:700;color:#0f172a;margin:0;">{{ latest.name }}</p>
+                    {{ inv_status_pill(latest) }}
+                    {% if latest.item_scope_ids %}
+                    <span style="font-size:10px;padding:1px 7px;border-radius:99px;
+                                 background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe;font-weight:600;">
+                      {{ latest.item_scope_ids|length }} criteria
+                    </span>
+                    {% endif %}
+                  </div>
+                  <p style="font-size:11px;color:#94a3b8;margin:0;">
+                    {{ latest.company }}{% if latest.email %} · {{ latest.email }}{% endif %}
+                    {% if latest.invited_by_name %} · Invited by {{ latest.invited_by_name }}{% endif %}
+                    {% if latest.invited_at %} · {{ latest.invited_at.strftime('%d %b') }}{% endif %}
+                  </p>
+                  {{ inv_link_box(latest) }}
+                </div>
+                {{ inv_actions(latest) }}
+              </div>
+
+              {% if history %}
+              <!-- Invite history for this person (collapsed by default) -->
+              <button type="button" onclick="togglePersonHistory({{ latest.id }})"
+                      style="width:100%;display:flex;align-items:center;gap:7px;padding:7px 12px;
+                             background:#f1f5f9;border:none;border-top:1px solid #e8edf3;
+                             cursor:pointer;text-align:left;">
+                <i class="fa-solid fa-clock-rotate-left" style="color:#94a3b8;font-size:10px;"></i>
+                <span style="font-size:10.5px;font-weight:700;color:#64748b;">
+                  {{ history|length }} previous invite{{ 's' if history|length != 1 else '' }}
+                  · {{ tot.criteria }} criteria total · {{ tot.signed }} signed
+                </span>
+                <i id="inv-hist-chev-{{ latest.id }}" class="fa-solid fa-chevron-down"
+                   style="margin-left:auto;color:#cbd5e1;font-size:9px;transition:transform .25s;"></i>
+              </button>
+              <div id="inv-history-{{ latest.id }}" style="display:none;background:#fbfcfe;
+                          border-top:1px solid #eef2f7;padding:4px 0;">
+                {% for inv in history %}
+                <div id="inv-row-{{ inv.id }}"
+                     style="display:flex;align-items:flex-start;gap:8px;padding:7px 12px 7px 22px;
+                            {% if not loop.last %}border-bottom:1px solid #f4f7fb;{% endif %}">
+                  <div style="flex:1;min-width:0;">
+                    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                      {{ inv_status_pill(inv) }}
+                      {% if inv.item_scope_ids %}
+                      <span style="font-size:10px;color:#64748b;font-weight:600;">
+                        {{ inv.item_scope_ids|length }} criteria</span>
+                      {% endif %}
+                      {% if inv.invited_at %}
+                      <span style="font-size:10px;color:#94a3b8;">· {{ inv.invited_at.strftime('%d %b %Y') }}</span>
+                      {% endif %}
+                      {% if inv.signed_at %}
+                      <span style="font-size:10px;color:#16a34a;">· signed {{ inv.signed_at.strftime('%d %b') }}</span>
+                      {% endif %}
+                    </div>
+                    {{ inv_link_box(inv) }}
+                  </div>
+                  {{ inv_actions(inv, small=true) }}
+                </div>
+                {% endfor %}
+              </div>
+              {% endif %}
+            </div>
+          {% endfor %}
           {% else %}
           <p id="no-invites-msg" style="font-size:12px;color:#94a3b8;text-align:center;padding:6px 0;margin:0;">
             No active signatories yet.
           </p>
-          {% endfor %}
+          {% endif %}
         </div>
 
         {% if ac_can_send_invite %}
@@ -1575,12 +1729,25 @@ function toggleInviteLink(invId) {
   if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
 }
 
+function togglePersonHistory(latestInvId) {
+  const body = document.getElementById(`inv-history-${latestInvId}`);
+  const chev = document.getElementById(`inv-hist-chev-${latestInvId}`);
+  if (!body) return;
+  const open = body.style.display !== 'none';
+  body.style.display = open ? 'none' : 'block';
+  if (chev) chev.style.transform = open ? '' : 'rotate(180deg)';
+}
+
 async function removeInvite(invId) {
   if (!confirm('Remove this signatory? Their signing link will stop working.')) return;
   const res = await fetch(`/projects/{{ proj.id }}/itp/{{ template.id }}/element/{{ wtg.id }}/remove-invite/${invId}`, {method: 'POST', headers:{'X-CSRF-Token': CSRF_TOKEN}});
   const data = await res.json();
   if (data.ok) {
-    document.getElementById(`inv-row-${invId}`)?.remove();
+    const row  = document.getElementById(`inv-row-${invId}`);
+    // Person-card wrapper: remove it too if this was its last remaining invite row
+    const card = row ? row.parentElement.closest('#invites-list > div') || row.parentElement : null;
+    row?.remove();
+    if (card && !card.querySelector('[id^="inv-row-"]')) card.remove();
     const list = document.getElementById('invites-list');
     if (!list.querySelector('[id^="inv-row-"]')) {
       const p = document.createElement('p');

@@ -468,3 +468,33 @@ class TestClientSignPageRender:
         assert b"Action required" in resp.data
         assert b"Fix the weld joint per drawing Rev C" in resp.data
         assert b"Changes Requested" in resp.data
+        # Hero banner uses COMPUTED status, not the raw record.status column
+        assert b"ACTION REQUIRED" in resp.data
+
+    def test_internal_detail_groups_duplicate_invites(self, client, db):
+        """Multiple invites for the same person render as ONE card with an
+        expandable invite history, not a stack of duplicate cards."""
+        from models import ITPClientInvite
+        user, proj, el, t, rec, inv, _ = self._setup_full(client, db)
+        # Second invite for the SAME person (same email) — e.g. a re-review cycle
+        inv2 = ITPClientInvite(
+            record_id=rec.id, project_member_ac_id=inv.project_member_ac_id,
+            user_id=user.id, token=f"rtok2-{_uid()}", name=user.name,
+            email=user.email, company=user.company, status="signed",
+            is_revoked=False,
+            expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+        )
+        db.session.add(inv2)
+        db.session.commit()
+        _inject_session(client, user.id)
+
+        resp = client.get(f"/projects/{proj.id}/itp/{t.id}/element/{el.id}")
+        assert resp.status_code == 200
+        assert b"previous invite" in resp.data, (
+            "Duplicate invites for one person should collapse into history"
+        )
+
+        # Template view renders with the deterministic element palette
+        resp2 = client.get(f"/projects/{proj.id}/itp/{t.id}")
+        assert resp2.status_code == 200
+        assert b"fa-cube" in resp2.data or b"fa-road" in resp2.data or b"fa-wind" in resp2.data

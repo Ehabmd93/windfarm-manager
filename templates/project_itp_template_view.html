@@ -424,15 +424,16 @@
         {% set skey = 'draft' %}{% set slabel = 'Not Started' %}{% set sicon = 'circle-dot' %}
       {% endif %}
 
+      {% set el_color = ['#7c3aed','#2563eb','#0891b2','#16a34a','#ea580c','#e11d48'][loop.index0 % 6] %}
       <a href="{{ url_for('project_itp_detail', pid=proj.id, tid=template.id, eid=el.id) }}"
          class="el-card" style="text-decoration:none;color:inherit;">
         <div class="el-card-head">
-          <div class="el-icon" style="background:{{ el.color }}20;">
-            <i class="fa-solid {{ el.type_icon or 'fa-cube' }}" style="color:{{ el.color }};"></i>
+          <div class="el-icon" style="background:{{ el_color }}20;">
+            <i class="fa-solid {{ el.type_icon or 'fa-cube' }}" style="color:{{ el_color }};"></i>
           </div>
           <div class="flex-1 min-w-0">
             <p class="font-bold text-slate-800 text-sm truncate">{{ el.name }}</p>
-            <p class="text-xs text-slate-400 truncate">{{ el.type or 'Element' }}</p>
+            <p class="text-xs text-slate-400 truncate">{{ el.element_type_label or 'Element' }}</p>
           </div>
           <span class="status-pill pill-{{ skey }}">
             <i class="fa-solid fa-{{ sicon }}"></i>{{ slabel }}

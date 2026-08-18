@@ -5507,7 +5507,8 @@ def project_itp_detail(pid, tid, eid):
                            member_company=member_company,
                            member_suggestions=member_suggestions,
                            latest_signed_invite=latest_signed_invite,
-                           issue_states=build_issue_state_map(record))
+                           issue_states=build_issue_state_map(record),
+                           computed_status=_compute_itp_status(record))
 
 
 @app.route('/projects/<int:pid>/itp/<int:tid>/element/<int:eid>/save-meta', methods=['POST'])

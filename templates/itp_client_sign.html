@@ -1317,13 +1317,14 @@
 
               </div>{# /crit-state #}
 
-              <!-- ── Criterion notes display (read-only for client) ──────── -->
+              <!-- ── Criterion notes display (read-only for client, collapsible) ── -->
               <div id="client-notes-{{ act_no }}-{{ ci }}"
                    style="margin-top:10px;"
                    data-record="{{ record.id }}"
                    data-itemno="{{ act_no }}"
                    data-ci="{{ ci }}"
-                   data-token="{{ invite.token if invite else '' }}">
+                   data-token="{{ invite.token if invite else '' }}"
+                   data-issue-state="{{ (issue_states.get((act_no, ci)) or '') if issue_states is defined and issue_states else '' }}">
               </div>
 
               {% else %}
@@ -2172,14 +2173,86 @@ function escHtml(s) {
   return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// Discussions are collapsed by default to keep the review page calm.
+// Auto-expanded when the inspection team has responded to this item's concern
+// (awaiting_re_review) so the reviewer cannot miss the reply.
+const _clientExpandedDisc = new Set();
+
+function _clientFlattenNotes(notes) {
+  const out = [];
+  (notes || []).forEach(n => {
+    out.push(n);
+    if (n.replies && n.replies.length) out.push(..._clientFlattenNotes(n.replies));
+  });
+  return out;
+}
+
+function toggleClientDiscussion(itemNo, ci) {
+  const key  = `${itemNo}-${ci}`;
+  const body = document.getElementById(`cdisc-body-${key}`);
+  const chev = document.getElementById(`cdisc-chev-${key}`);
+  if (!body) return;
+  const open = body.style.display !== 'none';
+  body.style.display = open ? 'none' : 'block';
+  if (chev) chev.style.transform = open ? '' : 'rotate(180deg)';
+  if (open) _clientExpandedDisc.delete(key); else _clientExpandedDisc.add(key);
+}
+
 async function loadClientCriterionNotes(container, recordId, itemNo, ci, token) {
   try {
     const qs  = token ? `?token=${encodeURIComponent(token)}` : '';
     const res = await fetch(`/api/itp/${recordId}/criterion/${itemNo}/${ci}/notes${qs}`);
     if (!res.ok) return;
     const data = await res.json();
-    if (!data.notes || data.notes.length === 0) return;
-    container.innerHTML = renderClientNotesList(data.notes);
+    if (!data.notes || data.notes.length === 0) { container.innerHTML = ''; return; }
+
+    const key    = `${itemNo}-${ci}`;
+    const istate = container.dataset.issueState || '';
+    // Engineer responded → open by default so the reply is impossible to miss
+    if (istate === 'awaiting_re_review' && !container.dataset.discInit) {
+      _clientExpandedDisc.add(key);
+    }
+    container.dataset.discInit = '1';
+    const isOpen = _clientExpandedDisc.has(key);
+
+    const all        = _clientFlattenNotes(data.notes);
+    const totalCount = all.length;
+    let latest = null;
+    all.forEach(n => {
+      if (n.created_iso && (!latest || n.created_iso > latest.created_iso)) latest = n;
+    });
+    const latestLabel = latest && latest.created_at ? latest.created_at : '';
+    const hasInternal = all.some(n => n.party === 'internal');
+
+    let badge = '';
+    if (istate === 'awaiting_re_review' || (istate && hasInternal)) {
+      badge = `<span style="display:inline-flex;align-items:center;gap:4px;font-size:9.5px;font-weight:800;
+                 padding:2px 8px;border-radius:9999px;background:#dbeafe;color:#1d4ed8;white-space:nowrap;">
+                 <i class="fa-solid fa-reply"></i>Team responded</span>`;
+    } else if (istate === 'action_required') {
+      badge = `<span style="display:inline-flex;align-items:center;gap:4px;font-size:9.5px;font-weight:800;
+                 padding:2px 8px;border-radius:9999px;background:#fef3c7;color:#b45309;white-space:nowrap;">
+                 <i class="fa-solid fa-triangle-exclamation"></i>Open issue</span>`;
+    }
+
+    container.innerHTML = `
+      <div style="border:1px solid var(--line-soft);border-radius:12px;overflow:hidden;background:#fff;">
+        <button type="button" onclick="toggleClientDiscussion('${itemNo}','${ci}')"
+                style="width:100%;display:flex;align-items:center;gap:9px;padding:10px 13px;
+                       background:#f8fafc;border:none;cursor:pointer;text-align:left;font-family:inherit;">
+          <i class="fa-solid fa-comments" style="color:var(--violet);font-size:12px;flex-shrink:0;"></i>
+          <span style="font-size:12px;font-weight:800;color:var(--ink-2);">Discussion</span>
+          <span style="font-size:11px;font-weight:700;color:var(--ink-4);">${totalCount} note${totalCount!==1?'s':''}</span>
+          ${latestLabel ? `<span style="font-size:10.5px;color:#cbd5e1;white-space:nowrap;">· latest ${escHtml(latestLabel)}</span>` : ''}
+          ${badge}
+          <i id="cdisc-chev-${key}" class="fa-solid fa-chevron-down"
+             style="margin-left:auto;color:var(--ink-4);font-size:10px;transition:transform .25s;
+                    ${isOpen ? 'transform:rotate(180deg);' : ''}"></i>
+        </button>
+        <div id="cdisc-body-${key}" style="display:${isOpen ? 'block' : 'none'};padding:2px 13px 12px;">
+          ${renderClientNotesList(data.notes)}
+        </div>
+      </div>`;
   } catch (e) { /* silently ignore */ }
 }
 
@@ -2213,12 +2286,7 @@ function renderClientNotesList(notes) {
       ${replies}
     </div>`;
   }
-  return `<div style="margin-top:10px;">
-    <p style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">
-      <i class="fa-solid fa-comments" style="margin-right:4px;"></i>Discussion (${notes.length} note${notes.length !== 1 ? 's' : ''})
-    </p>
-    ${notes.map(n => renderNote(n, false)).join('')}
-  </div>`;
+  return notes.map(n => renderNote(n, false)).join('');
 }
 </script>
 </body>
