@@ -1471,6 +1471,19 @@
 
 <script>
 const PID = {{ proj.id }};
+const CSRF_TOKEN = {{ csrf_token()|tojson }};
+
+// ── CSRF: attach the token to every same-origin API request from this page ──
+// The hierarchy APIs (element/group/area/work-package PATCH+DELETE, reset-setup)
+// enforce _validate_csrf_token() server-side; without this header they 403
+// ("Error deleting work package" etc.). Wrapping fetch fixes every call site.
+const _origFetch = window.fetch.bind(window);
+window.fetch = (url, opts = {}) => {
+  if (typeof url === 'string' && url.startsWith('/api/')) {
+    opts.headers = Object.assign({'X-CSRF-Token': CSRF_TOKEN}, opts.headers || {});
+  }
+  return _origFetch(url, opts);
+};
 
 // ── Tab switching (persists active tab across reloads) ───────────────────────
 function switchTab(name, btn) {
@@ -2236,7 +2249,7 @@ async function submitBulkAddArea() {
     try {
       const res = await fetch(`/api/elements/${eid}/areas`, {
         method:'POST',
-        headers:{'Content-Type':'application/json', 'X-CSRFToken': window.CSRF_TOKEN || ''},
+        headers:{'Content-Type':'application/json', 'X-CSRF-Token': CSRF_TOKEN},
         body: JSON.stringify({area_type, label, tests})
       });
       const body = await res.json();

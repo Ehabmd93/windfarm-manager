@@ -326,6 +326,26 @@ class WTG(db.Model):
         return next((lbl for key, lbl in ELEMENT_TYPES if key == self.element_type), self.element_type.replace('_', ' ').title())
 
     @property
+    def type_icon(self):
+        """FontAwesome icon for this element's type — wind icon only for WTGs."""
+        return {
+            'wtg':          'fa-wind',
+            'access_track': 'fa-road',
+            'hardstand':    'fa-square',
+            'crane_pad':    'fa-square',
+            'substation':   'fa-bolt',
+            'road_section': 'fa-road',
+            'drainage':     'fa-water',
+            'section':      'fa-road',
+            'lot':          'fa-vector-square',
+            'zone':         'fa-draw-polygon',
+            'structure':    'fa-building',
+            'bridge':       'fa-bridge',
+            'culvert':      'fa-water',
+            'element':      'fa-cube',
+        }.get(self.element_type, 'fa-cube')
+
+    @property
     def completion_pct(self):
         total = sum(len(a.required_tests) for a in self.areas)
         done  = sum(sum(1 for t in a.required_tests if t.is_complete) for a in self.areas)

@@ -220,6 +220,26 @@ if _db_url.startswith('postgres://'):          # Railway gives postgres://, SQLA
 if not _db_url:
     _db_url = f"sqlite:///{os.path.join(BASE_DIR, 'windfarm.db')}"
 app.config['SQLALCHEMY_DATABASE_URI'] = _db_url
+
+# ── Deployment sanity checks (Railway) ───────────────────────────────────────
+# Railway sets RAILWAY_ENVIRONMENT in every deployed container. If we're on
+# Railway but DATABASE_URL is missing, the app silently falls back to SQLite
+# inside the container filesystem — which is WIPED on every redeploy. That is
+# almost never what you want in production, so shout about it in the logs.
+if os.environ.get('RAILWAY_ENVIRONMENT'):
+    if _db_url.startswith('sqlite:'):
+        print('=' * 72)
+        print('[CRITICAL] DATABASE_URL is not set — running on SQLite inside the')
+        print('           container. ALL DATA (projects, hierarchy, ITPs, teams)')
+        print('           WILL BE LOST on every redeploy!')
+        print('           Fix: Railway dashboard → + New → Database → PostgreSQL,')
+        print('           then on this service: Variables → New Variable →')
+        print('           DATABASE_URL = ${{Postgres.DATABASE_URL}} (reference).')
+        print('=' * 72)
+    if not os.environ.get('SENDGRID_API_KEY', '').strip():
+        print('[WARNING] SENDGRID_API_KEY is not set — invitation/notification '
+              'emails will be skipped (logged only). Set SENDGRID_API_KEY and '
+              'MAIL_FROM (a verified sender) in Railway Variables.')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024 * 1024  # 2 GB — DB fallback limit (R2 path bypasses this entirely)
 
