@@ -575,6 +575,60 @@ class TestCadMapImport:
         assert "DXF" in d["error"]
 
 
+class TestElementDelete:
+    """Deleting an element must clean up NOT-NULL dependents (foundation
+    stages, draft ITP records) instead of 500ing — and must REFUSE to destroy
+    elements that carry real QA history (signatures/invites/notes)."""
+
+    def _setup(self, client, db):
+        from models import ProjectMember
+        user = _make_user(db)
+        proj = _make_project(db)
+        _make_owner(db, proj, user)
+        # element-delete permission uses the LEGACY ProjectMember table
+        db.session.add(ProjectMember(project_id=proj.id, user_id=user.id,
+                                     proj_role='owner'))
+        db.session.flush()
+        el = _make_element(db, proj.id)
+        db.session.commit()
+        _inject_session(client, user.id)
+        return user, proj, el
+
+    def test_delete_element_with_draft_itp_and_stages(self, client, db):
+        from models import ITPRecord, ITPItemStatus, FoundationStage, WTG
+        user, proj, el = self._setup(client, db)
+        rec = ITPRecord(wtg_id=el.id, itp_type='TEST_DEL', status='draft')
+        db.session.add(rec); db.session.flush()
+        db.session.add(ITPItemStatus(itp_record_id=rec.id, item_no='1',
+                                     criterion_index=0, lucas_complete=False))
+        db.session.add(FoundationStage(wtg_id=el.id, stage_key='04_excavation',
+                                       stage_label='Excavation'))
+        db.session.commit()
+
+        resp = client.delete(f"/api/elements/{el.id}",
+                             headers={'X-CSRF-Token': CSRF})
+        assert resp.status_code == 200, resp.get_json(silent=True)
+        assert db.session.get(WTG, el.id) is None
+        assert FoundationStage.query.filter_by(wtg_id=el.id).count() == 0
+        assert ITPRecord.query.filter_by(wtg_id=el.id).count() == 0
+
+    def test_delete_element_blocked_when_itp_signed(self, client, db):
+        from models import ITPRecord, ITPItemStatus, WTG
+        user, proj, el = self._setup(client, db)
+        rec = ITPRecord(wtg_id=el.id, itp_type='TEST_DEL2', status='in_progress')
+        db.session.add(rec); db.session.flush()
+        db.session.add(ITPItemStatus(itp_record_id=rec.id, item_no='1',
+                                     criterion_index=0, lucas_complete=True,
+                                     lucas_signed_at=datetime.now(timezone.utc)))
+        db.session.commit()
+
+        resp = client.delete(f"/api/elements/{el.id}",
+                             headers={'X-CSRF-Token': CSRF})
+        assert resp.status_code == 400
+        assert b"signatures" in resp.data
+        assert db.session.get(WTG, el.id) is not None   # element survived
+
+
 class TestFoundation3D:
 
     def test_foundation_3d_page_renders(self, client, db):

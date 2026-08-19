@@ -3849,7 +3849,28 @@ def api_element(eid):
     if not _user_can_manage_project(el.project_id):
         return jsonify({'error': 'Forbidden'}), 403
     if request.method == 'DELETE':
-        db.session.delete(el)
+        # FoundationStage and ITPRecord reference the element with NOT NULL
+        # FKs and no delete-cascade from WTG — a bare delete makes SQLAlchemy
+        # try to NULL those FKs and 500s with an IntegrityError. Clean up
+        # explicitly, and refuse to silently destroy real QA history.
+        records = ITPRecord.query.filter_by(wtg_id=el.id).all()
+        for r in records:
+            has_signed  = any(s.lucas_complete or s.client_reviewed
+                              for s in r.item_statuses)
+            if has_signed or r.client_invites or r.criterion_notes:
+                return jsonify({'error': (
+                    f'"{el.name}" has ITP records with signatures, client invites '
+                    'or discussion history. Archive or clear those ITPs before '
+                    'deleting this element.')}), 400
+        for r in records:
+            # Draft-only records: remove review cycles first (NOT NULL FK,
+            # no cascade), then the record — item statuses + notes cascade.
+            ITPReviewCycle.query.filter_by(record_id=r.id).delete()
+            db.session.delete(r)
+        # Foundation tracking rows (ORM delete so stage documents cascade)
+        for fs in FoundationStage.query.filter_by(wtg_id=el.id).all():
+            db.session.delete(fs)
+        db.session.delete(el)   # areas / tests / activities cascade from WTG
         db.session.commit()
         return jsonify({'ok': True})
     data = request.get_json() or {}
