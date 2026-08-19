@@ -199,9 +199,9 @@
       </div>
       {% endif %}
       <label for="kml-input" style="display:block;width:100%;padding:9px;background:#1e3a5f;color:#93c5fd;border:1px solid #2563eb;border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;text-align:center;">
-        <i class="fa-solid fa-upload" style="margin-right:5px;"></i>{% if map_file %}Replace File{% else %}Upload KML / KMZ{% endif %}
+        <i class="fa-solid fa-upload" style="margin-right:5px;"></i>{% if map_file %}Replace File{% else %}Upload KML / KMZ / DXF{% endif %}
       </label>
-      <input id="kml-input" type="file" accept=".kml,.kmz" style="display:none;" onchange="uploadKML(this)"/>
+      <input id="kml-input" type="file" accept=".kml,.kmz,.dxf,.dwg" style="display:none;" onchange="uploadKML(this)"/>
       <div id="upload-status" style="font-size:10px;color:#94a3b8;margin-top:5px;text-align:center;"></div>
     </div>
 
@@ -316,7 +316,7 @@
       </div>
       <h2 style="font-size:19px;font-weight:900;color:#0f172a;margin-bottom:8px;">Add your project map</h2>
       <p style="font-size:13px;color:#64748b;line-height:1.65;margin-bottom:4px;">
-        Upload a <strong>KML</strong> or <strong>KMZ</strong> file — all layers import automatically.
+        Upload a <strong>KML/KMZ</strong> layout or a <strong>CAD drawing (DXF)</strong> — all layers import automatically.
       </p>
       <div class="dropzone" id="drop-zone"
            onclick="document.getElementById('kml-input-main').click()"
@@ -325,9 +325,38 @@
            ondrop="handleDrop(event)">
         <i class="fa-solid fa-cloud-arrow-up" style="font-size:30px;color:#c7d2fe;display:block;margin-bottom:8px;"></i>
         <div style="font-size:13px;font-weight:700;color:#4f46e5;margin-bottom:3px;">Click to browse or drag here</div>
-        <div style="font-size:11px;color:#94a3b8;">Supports .kml and .kmz</div>
+        <div style="font-size:11px;color:#94a3b8;">Supports .kml, .kmz and .dxf (CAD)</div>
       </div>
-      <input id="kml-input-main" type="file" accept=".kml,.kmz" style="display:none;" onchange="uploadKML(this)"/>
+      <input id="kml-input-main" type="file" accept=".kml,.kmz,.dxf,.dwg" style="display:none;" onchange="uploadKML(this)"/>
+
+      <!-- CAD coordinate system — shown only when a .dxf is selected -->
+      <div id="cad-crs-row" style="display:none;margin-top:12px;text-align:left;background:#f8fafc;
+           border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;">
+        <label style="display:block;font-size:10px;font-weight:800;color:#64748b;
+               text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">
+          <i class="fa-solid fa-earth-oceania" style="margin-right:4px;color:#4f46e5;"></i>
+          CAD coordinate system (map grid of the drawing)
+        </label>
+        <select id="cad-epsg" style="width:100%;padding:8px 10px;border:1.5px solid #e2e8f0;
+                border-radius:9px;font-size:12.5px;color:#0f172a;background:white;">
+          <option value="7850" selected>GDA2020 / MGA zone 50 (WA)</option>
+          <option value="7851">GDA2020 / MGA zone 51</option>
+          <option value="7852">GDA2020 / MGA zone 52</option>
+          <option value="7853">GDA2020 / MGA zone 53</option>
+          <option value="7854">GDA2020 / MGA zone 54</option>
+          <option value="7855">GDA2020 / MGA zone 55 (VIC/NSW/TAS)</option>
+          <option value="7856">GDA2020 / MGA zone 56 (QLD/NSW coast)</option>
+          <option value="28350">GDA94 / MGA zone 50 (WA)</option>
+          <option value="28355">GDA94 / MGA zone 55</option>
+          <option value="28356">GDA94 / MGA zone 56</option>
+          <option value="32750">WGS84 / UTM zone 50S</option>
+          <option value="4326">Already longitude / latitude</option>
+        </select>
+        <div style="font-size:10.5px;color:#94a3b8;margin-top:6px;line-height:1.5;">
+          Site drawings use a projected grid (MGA in Australia). Pick the zone your surveyor
+          works in — it's on the drawing title block.
+        </div>
+      </div>
 
       <!-- Staged upload progress -->
       <div id="upload-progress" style="display:none;margin-top:16px;">
@@ -375,7 +404,10 @@
       <div style="margin-top:16px;padding-top:14px;border-top:1px solid #f1f5f9;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
         <span style="background:#ede9fe;color:#7c3aed;padding:3px 12px;border-radius:20px;font-size:11px;font-weight:700;">KML</span>
         <span style="background:#ede9fe;color:#7c3aed;padding:3px 12px;border-radius:20px;font-size:11px;font-weight:700;">KMZ</span>
-        <span style="background:#f1f5f9;color:#94a3b8;padding:3px 12px;border-radius:20px;font-size:11px;font-weight:700;">DWG — coming soon</span>
+        <span style="background:#dcfce7;color:#16a34a;padding:3px 12px;border-radius:20px;font-size:11px;font-weight:700;">DXF (CAD)</span>
+        <span style="background:#fef9c3;color:#854d0e;padding:3px 12px;border-radius:20px;font-size:11px;font-weight:700;"
+              title="DWG is a closed AutoCAD format — export as DXF (File → Save As → DXF) for direct import.">
+          DWG → save as DXF</span>
       </div>
     </div>
   </div>
@@ -1008,11 +1040,41 @@ function setUploadStage(stageIdx, pct, msg){
 
 function delay(ms){return new Promise(r=>setTimeout(r,ms));}
 
+let _pendingCadFile=null;   // .dxf waiting for CRS confirmation
+
 async function uploadKML(input){
   const file=input.files[0];if(!file)return;
   const ext=file.name.split('.').pop().toLowerCase();
-  if(!['kml','kmz'].includes(ext)){flash('Only KML and KMZ files are supported','#ef4444');return;}
+  if(ext==='dwg'){
+    flash('DWG is a closed AutoCAD format — export as DXF (File → Save As → AutoCAD DXF) and upload the .dxf. All layers, lines and labels will import.','#f59e0b');
+    input.value='';
+    return;
+  }
+  if(!['kml','kmz','dxf'].includes(ext)){flash('Supported formats: KML, KMZ and DXF (CAD)','#ef4444');return;}
 
+  // DXF: reveal the coordinate-system selector and confirm before uploading,
+  // so surveyor grid coordinates (MGA/UTM) land in the right spot on Earth.
+  const crsRow=document.getElementById('cad-crs-row');
+  if(ext==='dxf' && crsRow && !_pendingCadFile){
+    _pendingCadFile=file;
+    crsRow.style.display='block';
+    if(!document.getElementById('cad-crs-go')){
+      const btn=document.createElement('button');
+      btn.id='cad-crs-go';
+      btn.style.cssText='margin-top:10px;width:100%;padding:10px 0;border:none;border-radius:10px;'
+        +'background:linear-gradient(135deg,#4f46e5,#6366f1);color:white;font-size:13px;font-weight:800;cursor:pointer;';
+      btn.innerHTML='<i class="fa-solid fa-file-import" style="margin-right:6px;"></i>Import CAD drawing';
+      btn.onclick=()=>{const f=_pendingCadFile;_pendingCadFile=null;crsRow.style.display='none';_doUpload(f,'dxf');};
+      crsRow.appendChild(btn);
+    }
+    flash('CAD drawing selected — confirm the coordinate system below','#4f46e5');
+    return;
+  }
+  _pendingCadFile=null;
+  await _doUpload(file,ext);
+}
+
+async function _doUpload(file,ext){
   // Show progress panel
   const prog=document.getElementById('upload-progress');
   if(prog)prog.style.display='block';
@@ -1021,13 +1083,17 @@ async function uploadKML(input){
   setUploadStage(0,15,'Uploading your file…');
 
   const fd=new FormData();fd.append('file',file);
+  if(ext==='dxf'){
+    const sel=document.getElementById('cad-epsg');
+    fd.append('epsg', sel ? sel.value : '7850');
+  }
 
   // Animate stage 1→2 while upload is in-flight
   const stageTimer = setInterval(async()=>{
     const bar=document.getElementById('upload-bar');
     if(!bar)return;
     const cur=parseInt(bar.style.width)||0;
-    if(cur<44){ setUploadStage(cur<25?0:1, Math.min(cur+3,44), cur<25?'Uploading your file…':'Reading KML layers…'); }
+    if(cur<44){ setUploadStage(cur<25?0:1, Math.min(cur+3,44), cur<25?'Uploading your file…':'Reading drawing layers…'); }
   },200);
 
   try{

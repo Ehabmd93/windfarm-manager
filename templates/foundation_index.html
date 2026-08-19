@@ -58,6 +58,36 @@
 {% endblock %}
 
 {% block content %}
+<!-- 3D Footing Trainer banner -->
+<a href="{{ url_for('foundation_3d') }}"
+   style="display:flex;align-items:center;gap:16px;margin-bottom:20px;padding:16px 22px;
+          background:linear-gradient(130deg,#0f2942 0%,#1d4ed8 60%,#4f46e5 100%);
+          border-radius:18px;text-decoration:none;color:white;position:relative;overflow:hidden;
+          box-shadow:0 14px 36px -14px rgba(15,23,42,.4);">
+  <div style="position:absolute;inset:0;opacity:.4;
+              background-image:radial-gradient(rgba(255,255,255,.12) 1px, transparent 1.4px);
+              background-size:20px 20px;"></div>
+  <div style="position:relative;width:48px;height:48px;border-radius:14px;flex-shrink:0;
+              background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.2);
+              display:flex;align-items:center;justify-content:center;">
+    <i class="fa-solid fa-cubes" style="font-size:20px;"></i>
+  </div>
+  <div style="position:relative;flex:1;min-width:0;">
+    <p style="font-size:15px;font-weight:900;margin:0 0 2px;letter-spacing:-.01em;">
+      Foundation 3D — Interactive Footing Model
+    </p>
+    <p style="font-size:12px;color:#bfdbfe;margin:0;">
+      Watch every bar family assemble stage by stage, tap any bar to identify it,
+      then pour the concrete in three animated lifts.
+    </p>
+  </div>
+  <span style="position:relative;display:inline-flex;align-items:center;gap:7px;flex-shrink:0;
+               background:white;color:#1d4ed8;font-size:12px;font-weight:800;
+               padding:9px 18px;border-radius:11px;">
+    <i class="fa-solid fa-play"></i> Open 3D Model
+  </span>
+</a>
+
 <!-- Summary cards -->
 <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
   <div class="card flex items-center gap-4">

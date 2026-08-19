@@ -4837,12 +4837,30 @@ def project_map_upload(pid):
         return jsonify({'error': 'Empty file'}), 400
 
     ext = os.path.splitext(f.filename)[1].lower()
-    if ext not in ('.kml', '.kmz'):
-        return jsonify({'error': 'Only KML and KMZ files are supported'}), 400
+    if ext == '.dwg':
+        # DWG is a closed AutoCAD binary — no reliable open-source parser exists.
+        # Guide the user to the universal exchange format instead of a dead end.
+        return jsonify({'error': (
+            'DWG is a closed AutoCAD format. Please export the drawing as DXF '
+            '(in AutoCAD/Civil 3D: File → Save As → AutoCAD DXF) and '
+            'upload the .dxf — all layers, lines and labels will import.'
+        ), 'dwg_hint': True}), 400
+    if ext not in ('.kml', '.kmz', '.dxf'):
+        return jsonify({'error': 'Supported formats: KML, KMZ, and DXF (CAD).'}), 400
 
     try:
         file_bytes = f.read()
-        layers = kml_parser.parse_bytes(file_bytes, f.filename)
+        if ext == '.dxf':
+            import cad_parser
+            try:
+                epsg = int(request.form.get('epsg') or cad_parser.DEFAULT_EPSG)
+            except (TypeError, ValueError):
+                epsg = cad_parser.DEFAULT_EPSG
+            layers = cad_parser.parse_bytes(file_bytes, f.filename, epsg=epsg)
+        else:
+            layers = kml_parser.parse_bytes(file_bytes, f.filename)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
     except Exception as e:
         return jsonify({'error': f'Parse error: {str(e)}'}), 500
 
@@ -8291,6 +8309,18 @@ def foundation_index():
                            total_stages=total_stages, complete_stages=complete_stages,
                            in_progress_stages=in_progress_stages,
                            not_started_stages=not_started_stages)
+
+
+@app.route('/foundation/3d')
+@login_required
+def foundation_3d():
+    """Interactive 3D footing trainer — staged steel build + animated concrete pour.
+
+    Full-screen Three.js viewer (standalone page, no app shell). Shows every
+    bar family of the WTG footing assembling stage by stage, with per-mark
+    toggles, half-section, dimensions, and a three-lift concrete pour.
+    """
+    return render_template('foundation_3d.html')
 
 
 @app.route('/foundation/<int:wtg_id>')

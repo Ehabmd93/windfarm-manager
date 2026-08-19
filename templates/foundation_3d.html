@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Foundation 3D — SiteGrid</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root{--panel:#ffffff;--panel2:#f8fafc;--line:#e6ebf2;--txt:#0f172a;--dim:#64748b;
+        --g:#16a34a;--v:#7c3aed;--b:#2563eb;--o:#ea580c;--w:#dc2626}
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden;background:#eef2f7;
+    font-family:'Inter','Segoe UI',system-ui,sans-serif}
+  #scene{position:fixed;inset:0}
+
+  /* ── Top bar ── */
+  #topbar{position:fixed;top:0;left:0;right:0;height:52px;z-index:20;
+    background:linear-gradient(130deg,#0f2942 0%,#1d4ed8 70%,#4f46e5 100%);
+    display:flex;align-items:center;gap:12px;padding:0 16px;
+    box-shadow:0 4px 20px rgba(15,23,42,.25)}
+  #topbar a.back{display:inline-flex;align-items:center;gap:7px;color:#bfdbfe;
+    font-size:12px;font-weight:700;text-decoration:none;padding:6px 12px;border-radius:9px;
+    background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.16)}
+  #topbar a.back:hover{background:rgba(255,255,255,.18)}
+  #topbar .ttl{color:white;font-size:14px;font-weight:900;letter-spacing:-.01em}
+  #topbar .ttl span{color:#93c5fd;font-weight:700}
+  #topbar .sg{margin-left:auto;display:inline-flex;align-items:center;gap:6px;
+    color:rgba(255,255,255,.65);font-size:10.5px;font-weight:800;letter-spacing:.1em}
+
+  /* ── Left phase panel ── */
+  #panel{position:fixed;top:64px;left:12px;width:330px;max-width:calc(100vw - 24px);
+    background:var(--panel);color:var(--txt);border-radius:16px;overflow:hidden;z-index:10;
+    box-shadow:0 8px 32px rgba(15,23,42,.16);border:1px solid var(--line);
+    max-height:calc(100vh - 78px);display:flex;flex-direction:column}
+  #panel header{padding:12px 16px 9px;border-bottom:1px solid var(--line)}
+  #panel h1{font-size:12.5px;letter-spacing:.1em;text-transform:uppercase;font-weight:800}
+  #panel h1 span{color:var(--v)}
+  #panel .sub{font-size:10.5px;color:var(--dim);margin-top:3px}
+  .steps{display:flex;flex-direction:column;padding:8px 9px 4px;gap:4px;overflow-y:auto;flex:1}
+  .prow{border:1px solid var(--line);border-radius:10px;overflow:hidden;flex:0 0 auto;background:white}
+  .prow.on{border-color:var(--v)}
+  .phead{display:flex;align-items:center;gap:8px;background:transparent;width:100%;
+    color:var(--txt);padding:7px 9px;font-size:11.8px;text-align:left;cursor:pointer;
+    font-family:inherit;border:none}
+  .phead:hover{background:var(--panel2)}
+  .prow.on .phead{background:#f5f3ff}
+  .phead .tick{width:19px;height:19px;border-radius:6px;border:1.5px solid #cbd5e1;
+    display:grid;place-items:center;font-size:9.5px;flex:0 0 19px;color:var(--dim);font-weight:800}
+  .prow.on .tick{border-color:var(--v);color:var(--v)}
+  .phead small{display:block;color:var(--dim);font-size:9.5px;margin-top:1px;font-weight:400}
+  .phead .ex{margin-left:auto;color:var(--dim);font-size:11px;padding:2px 4px}
+  .marks{display:none;flex-wrap:wrap;gap:4px;padding:6px 8px 8px;background:#f8fafc;border-top:1px solid var(--line)}
+  .prow.open .marks{display:flex}
+  .chip{font-family:inherit;font-size:10px;font-weight:700;
+    border:1px solid var(--line);background:white;color:var(--txt);
+    border-radius:999px;padding:4px 9px;cursor:pointer}
+  .chip:hover{border-color:var(--v);color:var(--v)}
+  .chip.off{opacity:.32;text-decoration:line-through}
+  .row{display:flex;gap:6px;padding:8px 9px 10px;flex-wrap:wrap;border-top:1px solid var(--line);background:#fbfcfe}
+  .btn{flex:1 1 30%;background:linear-gradient(135deg,#6d28d9,#7c3aed);border:none;color:#fff;
+    font-family:inherit;font-weight:800;font-size:10.5px;letter-spacing:.05em;border-radius:9px;
+    padding:9px 0;cursor:pointer;min-width:84px;box-shadow:0 3px 10px rgba(124,58,237,.25)}
+  .btn.pour{background:linear-gradient(135deg,#57534e,#78716c);box-shadow:0 3px 10px rgba(87,83,78,.3)}
+  .btn.ghost{background:white;border:1px solid var(--line);color:var(--dim);font-weight:700;box-shadow:none}
+  .btn.onm{border-color:var(--v);color:var(--v)}
+
+  /* ── Info card ── */
+  #card{position:fixed;top:64px;right:12px;width:270px;background:white;color:var(--txt);
+    border-radius:14px;padding:14px 16px;font-size:12px;line-height:1.55;z-index:11;display:none;
+    box-shadow:0 12px 40px rgba(15,23,42,.22);border:1.5px solid var(--v)}
+  #card h3{font-size:14px;color:var(--v);margin-bottom:4px;font-weight:900}
+  #card .meta{color:var(--dim);font-size:10.5px;margin-bottom:7px;font-weight:600}
+  #card .refs{margin-top:7px;padding-top:7px;border-top:1px solid var(--line);font-size:10.5px;color:var(--dim)}
+  #card .cbtns{display:flex;gap:7px;margin-top:10px}
+  #card button{flex:1;font-family:inherit;font-size:10.5px;font-weight:700;border-radius:8px;
+    padding:7px 0;cursor:pointer;border:1px solid var(--line);background:white;color:var(--txt)}
+  #card button.hd{background:var(--w);border:none;color:#fff}
+
+  /* ── Pour progress ── */
+  #pourbar{position:fixed;bottom:44px;left:50%;transform:translateX(-50%);z-index:12;
+    width:min(420px,calc(100vw - 32px));background:white;border:1px solid var(--line);
+    border-radius:14px;padding:12px 16px;box-shadow:0 12px 36px rgba(15,23,42,.2);display:none}
+  #pourbar .plabel{display:flex;justify-content:space-between;font-size:11px;font-weight:800;margin-bottom:6px}
+  #pourbar .plabel .lift{color:#57534e}
+  #pourbar .plabel .pct{color:var(--v)}
+  #pourbar .ptrack{height:9px;background:#eef2f7;border-radius:99px;overflow:hidden}
+  #pourbar .pfill{height:100%;width:0%;border-radius:99px;
+    background:linear-gradient(90deg,#78716c,#a8a29e);transition:width .1s linear}
+
+  #hint{position:fixed;bottom:11px;left:50%;transform:translateX(-50%);
+    background:rgba(15,23,42,.85);color:#cbd5e1;font-size:10.5px;
+    padding:6px 14px;border-radius:999px;z-index:10;white-space:nowrap}
+  @media (max-width:640px){ #hint{display:none} #card{width:calc(100vw - 24px)} }
+</style>
+</head>
+<body>
+<div id="scene"></div>
+
+<div id="topbar">
+  <a class="back" href="{{ url_for('foundation_index') }}"><i class="fa-solid fa-arrow-left"></i> Foundation Tracker</a>
+  <span class="ttl">Foundation 3D <span>· WTG Footing Trainer</span></span>
+  <span class="sg"><i class="fa-solid fa-shield-halved"></i> SITEGRID</span>
+</div>
+
+<div id="panel">
+  <header>
+    <h1>FOOTING BUILD <span>· FULL MODEL</span></h1>
+    <div class="sub">Every bar family · ▾ opens per-mark toggles · tap a bar to identify it</div>
+  </header>
+  <div class="steps" id="steps"></div>
+  <div class="row">
+    <button class="btn" id="play"><i class="fa-solid fa-play" style="margin-right:4px;"></i>BUILD IT</button>
+    <button class="btn pour" id="pour"><i class="fa-solid fa-fill-drip" style="margin-right:4px;"></i>POUR CONCRETE</button>
+    <button class="btn ghost" id="half">HALF SECTION</button>
+    <button class="btn ghost" id="env">ENVELOPE</button>
+    <button class="btn ghost" id="dims">DIMS</button>
+    <button class="btn ghost" id="spin">SPIN</button>
+    <button class="btn ghost" id="showall">SHOW ALL</button>
+  </div>
+</div>
+
+<div id="card">
+  <h3 id="cMark"></h3><div class="meta" id="cMeta"></div>
+  <div id="cBody"></div><div class="refs" id="cRefs"></div>
+  <div class="cbtns"><button class="hd" id="cHide">HIDE MARK</button><button id="cClose">CLOSE</button></div>
+</div>
+
+<div id="pourbar">
+  <div class="plabel"><span class="lift" id="pour-lift">Lift 1 — base slab</span><span class="pct" id="pour-pct">0%</span></div>
+  <div class="ptrack"><div class="pfill" id="pour-fill"></div></div>
+</div>
+
+<div id="hint">drag orbit · scroll zoom · click bar = mark card · phase ▾ = per-mark toggles</div>
+
+<script>
+/* WTG Footing — complete bar trainer, SiteGrid edition.
+   Steel geometry per KRWF-S-3000..3006 Rev A · Vestas A019-5319 · Bestbar 12658.
+   Metres, Y up. Stage levels & upper-ring radii representative — flagged on cards.
+   New in this edition: animated three-lift concrete pour. */
+const MM=v=>v/1000;
+const AF=20600,HALF=10300,HS=4266,VERT=14566;
+const chord=o=>{o=Math.abs(o);return o<=HS?AF:2*(VERT-o);};
+const octd=(x,z)=>Math.max(Math.abs(x),Math.abs(z),(Math.abs(x)+Math.abs(z))/1.41421);
+const ysurf=d=>Math.min(2900,800+(10300-d)/3.37);
+const STEP_D=310,STEP_RF=3200,STEP_RT=3510;
+const PL_ID=4290,PL_OD=5610,PL_T=130,TP_ID=4345,TP_OD=5555,TP_T=25,TP_Y=3600;
+const BCD1=4742,BCD2=5158,NB=112,BOLT_L=3995;
+const R1=56,R2=86,L1C=R1+16,L2C=R2+16;
+const ABAR_R=2900,THK_R=3461,IB_R=2047,SP=200,COVER=60;
+
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0xeef2f7);
+scene.fog=new THREE.Fog(0xeef2f7,28,85);
+const cam=new THREE.PerspectiveCamera(45,innerWidth/innerHeight,.05,240);
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth,innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.localClippingEnabled=true;
+document.getElementById('scene').appendChild(renderer.domElement);
+scene.add(new THREE.HemisphereLight(0xfffbf2,0x9a9078,.95));
+const sun=new THREE.DirectionalLight(0xfff4e0,.85);sun.position.set(14,20,9);scene.add(sun);
+const fl=new THREE.DirectionalLight(0xdde4ff,.3);fl.position.set(-11,9,-12);scene.add(fl);
+
+let th=.85,ph=1.0,rad=24,spin=false;
+const tgt=new THREE.Vector3(0,1.2,0);
+function camUpd(){cam.position.set(tgt.x+rad*Math.sin(ph)*Math.cos(th),
+  tgt.y+rad*Math.cos(ph),tgt.z+rad*Math.sin(ph)*Math.sin(th));cam.lookAt(tgt);}
+camUpd();
+let drag=false,moved=0,px=0,py=0;
+const el=renderer.domElement;
+el.addEventListener('pointerdown',e=>{drag=true;moved=0;px=e.clientX;py=e.clientY});
+addEventListener('pointerup',()=>drag=false);
+addEventListener('pointermove',e=>{if(!drag)return;
+  moved+=Math.abs(e.clientX-px)+Math.abs(e.clientY-py);
+  th+=(e.clientX-px)*.0055;ph-=(e.clientY-py)*.0045;
+  ph=Math.max(.12,Math.min(1.47,ph));px=e.clientX;py=e.clientY;camUpd();});
+el.addEventListener('wheel',e=>{e.preventDefault();
+  rad=Math.max(4,Math.min(75,rad*(1+Math.sign(e.deltaY)*.09)));camUpd();},{passive:false});
+let pin0=0;
+el.addEventListener('touchmove',e=>{if(e.touches.length===2){
+  const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,
+    e.touches[0].clientY-e.touches[1].clientY);
+  if(pin0)rad=Math.max(4,Math.min(75,rad*pin0/d));pin0=d;camUpd();}},{passive:true});
+el.addEventListener('touchend',()=>pin0=0);
+
+const clip=new THREE.Plane(new THREE.Vector3(0,0,-1),0);
+const mats=[];
+function M(color,o={}){const m=new THREE.MeshStandardMaterial(
+  Object.assign({color,roughness:.8,metalness:.06},o));mats.push(m);return m;}
+let half=false;
+function setClip(on){mats.forEach(m=>{m.clippingPlanes=on?[clip]:null;m.needsUpdate=true;});
+  syncConcClip();}
+
+const INFO={};
+function reg(mesh,key,title,meta,body,refs){
+  mesh.userData.k=key;
+  if(!INFO[key])INFO[key]={title,meta,body,refs,meshes:[]};
+  INFO[key].meshes.push(mesh);
+}
+const UP=new THREE.Vector3(0,1,0);
+class Bars{
+  constructor(rmm){this.r=MM(rmm)/2;this.s=[];}
+  add(a,b,c,d,e,f){this.s.push([a,b,c,d,e,f]);}
+  build(group,color,key,title,meta,body,refs){
+    if(!this.s.length)return null;
+    const g=new THREE.CylinderGeometry(this.r,this.r,1,7);
+    const mesh=new THREE.InstancedMesh(g,M(color,{roughness:.55}),this.s.length);
+    const m4=new THREE.Matrix4(),q=new THREE.Quaternion(),
+      p=new THREE.Vector3(),d=new THREE.Vector3(),s=new THREE.Vector3();
+    this.s.forEach((sg,i)=>{
+      d.set(sg[3]-sg[0],sg[4]-sg[1],sg[5]-sg[2]);
+      const len=Math.max(d.length(),.02);d.normalize();
+      q.setFromUnitVectors(UP,d);
+      p.set((sg[0]+sg[3])/2,(sg[1]+sg[4])/2,(sg[2]+sg[5])/2);
+      s.set(1,len,1);m4.compose(p,q,s);mesh.setMatrixAt(i,m4);});
+    group.add(mesh);reg(mesh,key,title,meta,body,refs);return mesh;
+  }
+}
+function torusRing(group,rmm,y,rbmm,color,key){
+  const t=new THREE.Mesh(new THREE.TorusGeometry(MM(rmm),MM(rbmm)/2,7,120),
+    M(color,{roughness:.55}));
+  t.rotation.x=Math.PI/2;t.position.y=y;group.add(t);
+  t.userData.k=key;
+  if(INFO[key])INFO[key].meshes.push(t);
+  return t;
+}
+function regRing(key,title,meta,body,refs){
+  if(!INFO[key])INFO[key]={title,meta,body,refs,meshes:[]};
+}
+
+const GK=['ground','cage','jig','lay1','lay2','band','edge','hurd','s2','s3','s4','s5','top','conc'];
+const G={};GK.forEach(k=>{G[k]=new THREE.Group();scene.add(G[k]);});
+G.conc.visible=false;
+
+/* ---------- ground ---------- */
+(function(){
+  const pts=[new THREE.Vector2(0,-MM(STEP_D)),new THREE.Vector2(MM(STEP_RF),-MM(STEP_D)),
+    new THREE.Vector2(MM(STEP_RT),0),new THREE.Vector2(MM(12300),0)];
+  const blind=new THREE.Mesh(new THREE.LatheGeometry(pts,96),
+    M(0xd8d6ce,{side:THREE.DoubleSide,roughness:.95}));
+  G.ground.add(blind);
+  reg(blind,'blind','Blinding & core step','3002-001 / -002',
+    'Core step: 45° batter, 310 deep — the plate sits below the soffit. HP01 releases this surface.','');
+  const soil=new THREE.Mesh(new THREE.RingGeometry(MM(12300),MM(20000),96),
+    M(0xc2a278,{side:THREE.DoubleSide,roughness:1}));
+  soil.rotation.x=-Math.PI/2;soil.position.y=-.015;G.ground.add(soil);
+  const oct=new Bars(90);
+  const vs=[];for(let i=0;i<8;i++){const a=Math.PI/8+i*Math.PI/4;
+    vs.push([MM(11149)*Math.cos(a),.012,MM(11149)*Math.sin(a)]);}
+  for(let i=0;i<8;i++){const b=vs[i],c=vs[(i+1)%8];oct.add(b[0],b[1],b[2],c[0],c[1],c[2]);}
+  oct.build(G.ground,0x8a887f,'oct','Footing set-out — octagon','3001-001',
+    '20 600 across flats · side 8532 · vertices on |x|+|y|=14 566 — every mat chord is cut to this line.','');
+})();
+/* ---------- cage ---------- */
+function ringGeo(idmm,odmm,tmm){
+  const s=new THREE.Shape();s.absarc(0,0,MM(odmm)/2,0,Math.PI*2,false);
+  const h=new THREE.Path();h.absarc(0,0,MM(idmm)/2,0,Math.PI*2,true);s.holes.push(h);
+  const g=new THREE.ExtrudeGeometry(s,{depth:MM(tmm),bevelEnabled:false,curveSegments:96});
+  g.rotateX(-Math.PI/2);return g;
+}
+(function(){
+  const plate=new THREE.Mesh(ringGeo(PL_ID,PL_OD,PL_T),M(0x55606e,{metalness:.35,roughness:.55}));
+  plate.position.y=-MM(PL_T);G.cage.add(plate);
+  reg(plate,'plate','Anchor base flange','Vestas A019-5319 · S355J0',
+    'Ø5610/Ø4290 × 130. Top inline with bottom of footing.','Foot: Vestas 75947550');
+  const temp=new THREE.Mesh(ringGeo(TP_ID,TP_OD,TP_T),M(0x6d7885,{metalness:.3,roughness:.6}));
+  temp.position.y=MM(TP_Y);G.cage.add(temp);
+  reg(temp,'temp','Template flange','Vestas A019-5319','Ø5555/Ø4345 × 25 — holds the bolt pattern at the top.','');
+  const bg=new THREE.CylinderGeometry(MM(42)/2,MM(42)/2,MM(BOLT_L),9);
+  const bolts=new THREE.InstancedMesh(bg,M(0x8a93a0,{metalness:.45,roughness:.45}),NB*2);
+  const m4=new THREE.Matrix4();let i=0;
+  [BCD1/2,BCD2/2].forEach(r=>{for(let k=0;k<NB;k++){
+    const a=k/NB*Math.PI*2+(r===BCD2/2?Math.PI/NB:0);
+    m4.makeTranslation(MM(r)*Math.cos(a),-MM(PL_T)+MM(BOLT_L)/2,MM(r)*Math.sin(a));
+    bolts.setMatrixAt(i++,m4);}});
+  G.cage.add(bolts);
+  reg(bolts,'bolts','224 × M42 Gr10.9 bolts','Vestas A019-5319',
+    '2 rows of 112 · BCD 4742 & 5158 · prestress 561→495 kN. Every 56/112/224 near the core derives from this count.','HP03 bolt alignment');
+  const feet=new THREE.InstancedMesh(new THREE.CylinderGeometry(.06,.06,MM(STEP_D-PL_T),10),
+    M(0x474f5a,{metalness:.3}),34);
+  for(let k=0;k<34;k++){const a=k/34*Math.PI*2+.05,r=MM((PL_ID+PL_OD)/4);
+    m4.makeTranslation(r*Math.cos(a),-MM(PL_T)-MM(STEP_D-PL_T)/2,r*Math.sin(a));
+    feet.setMatrixAt(k,m4);}
+  G.cage.add(feet);
+  reg(feet,'feet','34 × M36 adjustment feet','Vestas A019-5319','Plumb the cage before any bar — it cannot be adjusted later.','');
+})();
+/* ---------- jig ---------- */
+function buildRail(alongX,topmm,color,blk,blkCol,key,title,body){
+  const yF=MM(topmm-8),yS=-MM(STEP_D)+MM(topmm-8);
+  const bars=new Bars(16),blocks=[];
+  for(let k=-52;k<=52;k++){
+    const off=k*SP+SP/2,c=chord(off)/2-COVER;if(c<400)continue;
+    const put=(a,b,y)=>{bars.add(alongX?MM(a):MM(off),y,alongX?MM(off):MM(a),
+      alongX?MM(b):MM(off),y,alongX?MM(off):MM(b));
+      for(let x=a+500;x<b-300;x+=1400)blocks.push([alongX?x:off,alongX?off:x,y]);};
+    if(Math.abs(off)<STEP_RT-60){
+      const cut=Math.sqrt(STEP_RT*STEP_RT-off*off)+80;
+      put(cut,c,yF);put(-c,-cut,yF);
+      if(Math.abs(off)<THK_R-140){
+        const c2=Math.sqrt(THK_R*THK_R-off*off)-60;
+        bars.add(alongX?MM(-c2):MM(off),yS,alongX?MM(off):MM(-c2),
+          alongX?MM(c2):MM(off),yS,alongX?MM(off):MM(c2));
+        for(let x=-c2+400;x<c2-300;x+=1400)blocks.push([alongX?x:off,alongX?off:x,yS]);}
+    } else put(-c,c,yF);
+  }
+  bars.build(G.jig,color,key,title,'DB + THK-1..17 · sch 12658/0001',body,
+    '3003-001 · 3004-002 Support Bar Detail');
+  const bm=new THREE.InstancedMesh(new THREE.BoxGeometry(MM(blk[0]),MM(blk[1]),MM(blk[2])),
+    M(blkCol,{roughness:.95}),blocks.length);
+  const m4=new THREE.Matrix4();
+  blocks.forEach((b,i)=>{const base=b[2]<0?-MM(STEP_D):0;
+    m4.makeTranslation(MM(b[0]),base+MM(blk[1])/2,MM(b[1]));bm.setMatrixAt(i,m4);});
+  G.jig.add(bm);
+  reg(bm,key+'b','Aspro '+blk[1]+' blocks','Sundries 12658/0008 · 500 off',
+    'Block height IS the cover system — '+blk[1]+' high, tie wire cast in.','');
+}
+buildRail(true,R1,0x2a8f6b,[50,40,50],0x9a9890,'r1','Rail 1 — N16 on 40 Aspro',
+  'Top 56 — carries Lay 1st. Flat field = DB 6 m dummies. THK-1..17 = the SUNKEN patch: chords of R3461 laid down IN the step on their own Aspro, ends bearing on the batter — as drawn on 3003-001 (N16-200 E.W extent runs to the centreline).');
+buildRail(false,R2,0x7f77dd,[60,70,60],0x62615b,'r2','Rail 2 — N16 on 70 Aspro',
+  'Top 86 — independent shelf holding Lay 2nd level while Lay 1st changes N32→N24→N20.');
+/* ---------- bottom mat ---------- */
+const MB={
+ A:{d:32,c:0x1d9e75,t:'Mark A — N32-200, 450 cog',m:'A1–A14 · 112 off',
+   b:'STRAIGHT flat bars passing OVER the step mouth. They stop at R2900 — 90 clear of the plate face — with the 450 cog turned UP. The mat has a hole in the middle: core bottom steel is the I band + plate.',r:'3004-001 · sch /0002'},
+ B:{d:32,c:0x14805c,t:'Mark B — N32 × 12 000 central',m:'B1 · 84 off',b:'Stock centre bars; F completes the run.',r:'sch B1'},
+ F:{d:24,c:0x3fae8a,t:'Mark F — N24 laps B',m:'F1–F15 · 168 off',b:'"LAP WITH B" — the 1650 lap printed on the plan.',r:'sch F1–F15'},
+ C:{d:24,c:0x2f9975,t:'Mark C — N24 × 12 000 staggered',m:'C1 · 24 off',b:'Centre bars of the C/G zone.',r:'sch C1'},
+ Gm:{d:20,c:0x59b895,t:'Mark G — N20-400 laps C',m:'G1–G3 · 24 off',b:'400 crs — the moment has died out here.',r:'sch G1–G3'},
+ D:{d:24,c:0x258a68,t:'Mark D — N24-200',m:'D1–D4 + D1a · 20 off',b:'D1a exists only to lap D1 past stock length.',r:'sch D1–D4'},
+ E:{d:20,c:0x4cae8c,t:'Mark E — N20-200',m:'E1–E6 · 24 off',b:'Outermost zone, shortest chords.',r:'sch E1–E6'}};
+function zone(o){o=Math.abs(o);return o<=2700?'A':o<=6700?'BF':o<=7700?'CG':o<=8300?'D':'E';}
+function buildLayer(group,alongX,cmm,suf){
+  const sets={};Object.keys(MB).forEach(k=>sets[k]=new Bars(MB[k].d));
+  const P=(x,o)=>alongX?[x,o]:[o,x];
+  const yF=MM(cmm),yS=-MM(STEP_D)+MM(cmm);
+  for(let k=-46;k<=46;k++){
+    const off=k*SP+SP/2,c=chord(off)/2-COVER;if(c<400)continue;
+    const zn=zone(off);
+    if(zn==='A'){
+      const inn=Math.sqrt(Math.max(ABAR_R*ABAR_R-off*off,0));
+      [1,-1].forEach(s=>{
+        const a=P(s*c,off),e2=P(s*inn,off);
+        sets.A.add(MM(a[0]),yF,MM(a[1]),MM(e2[0]),yF,MM(e2[1]));
+        sets.A.add(MM(e2[0]),yF,MM(e2[1]),MM(e2[0]),yF+MM(450),MM(e2[1]));});
+    }else if(zn==='BF'){
+      const a=P(-6000,off),b=P(6000,off);
+      sets.B.add(MM(a[0]),yF,MM(a[1]),MM(b[0]),yF,MM(b[1]));
+      [[6000-1650,c],[-(6000-1650),-c]].forEach(pair=>{
+        const u=P(pair[0],off),v=P(pair[1],off);
+        sets.F.add(MM(u[0]),yF+.012,MM(u[1]),MM(v[0]),yF+.012,MM(v[1]));});
+    }else if(zn==='CG'){
+      const a=P(-6000,off),b=P(6000,off);
+      sets.C.add(MM(a[0]),yF,MM(a[1]),MM(b[0]),yF,MM(b[1]));
+      [[6000-1400,c],[-(6000-1400),-c]].forEach(pair=>{
+        const u=P(pair[0],off),v=P(pair[1],off);
+        sets.Gm.add(MM(u[0]),yF+.01,MM(u[1]),MM(v[0]),yF+.01,MM(v[1]));});
+    }else if(zn==='D'){
+      if(2*c>12000){
+        const a=P(-c,off),b=P(-c+12000,off),u=P(-c+12000-1400,off),v=P(c,off);
+        sets.D.add(MM(a[0]),yF,MM(a[1]),MM(b[0]),yF,MM(b[1]));
+        sets.D.add(MM(u[0]),yF+.01,MM(u[1]),MM(v[0]),yF+.01,MM(v[1]));
+      }else{const a=P(-c,off),b=P(c,off);
+        sets.D.add(MM(a[0]),yF,MM(a[1]),MM(b[0]),yF,MM(b[1]));}
+    }else{const a=P(-c,off),b=P(c,off);
+      sets.E.add(MM(a[0]),yF,MM(a[1]),MM(b[0]),yF,MM(b[1]));}
+  }
+  Object.keys(sets).forEach(k=>{const I=MB[k];
+    sets[k].build(group,I.c,k+suf,I.t+' · '+(alongX?'Lay 1st':'Lay 2nd'),I.m,I.b,I.r);});
+}
+buildLayer(G.lay1,true,L1C,'1');
+buildLayer(G.lay2,false,L2C,'2');
+/* ---------- I band + L bars ---------- */
+(function(){
+  const yS=MM(45);
+  const ib=new Bars(36);
+  for(const ax of [true,false])for(let k=-11;k<11;k++){
+    const off=k*190+95,h=Math.sqrt(Math.max(IB_R*IB_R-off*off,0));if(h<200)continue;
+    const P=(x,o)=>ax?[x,o]:[o,x];
+    const a=P(-h,off),b=P(h,off);
+    ib.add(MM(a[0]),yS,MM(a[1]),MM(b[0]),yS,MM(b[1]));
+    ib.add(MM(a[0]),yS,MM(a[1]),MM(a[0]),yS+MM(440),MM(a[1]));
+    ib.add(MM(b[0]),yS,MM(b[1]),MM(b[0]),yS+MM(440),MM(b[1]));}
+  ib.build(G.band,0xe8942e,'I','Mark I — 22-N36 U band','I1–I11 · 44 off · 1486 kg',
+    'THE BOTTOM PLINTH MAT. 22 EW @190 filling R2047 inside the plate bore, 440 legs up — seated on the PM-A chairs + N16 top dummy rails, just above the soffit. Note 2/3004-002 counts three plinth mats: this is mat 1.',
+    '3004-001 · 3003-001 · sch /0002');
+  const foot=-MM(STEP_D)+MM(60);
+  function lbars(cfgs,color,key,title,meta,body){
+    const lb=new Bars(24);
+    cfgs.forEach(cfg=>{const n=cfg[0],rr=cfg[1],a0=cfg[2];
+      for(let k=0;k<n;k++){const a=k/n*Math.PI*2+a0,r=MM(rr);
+        const x=r*Math.cos(a),z=r*Math.sin(a);
+        lb.add(x,foot,z,x,foot+MM(3765),z);
+        lb.add(x,foot,z,x+MM(500)*Math.cos(a),foot,z+MM(500)*Math.sin(a));}});
+    lb.build(G.band,color,key,title,meta,body,'3006-001 · sch /0001');}
+  lbars([[NB/2,2280,0],[NB/2,2280,Math.PI/56]],0x2fa3a0,'L1',
+    'CIR-1 — 2 rows of 56-N24 L bars','112 off · 4265 cut · 1773 kg',
+    'The two inner rows at the bolt circle. 3765 shaft + 500 foot at the step floor; tops at template level.');
+  lbars([[NB,2660,Math.PI/112]],0x1f8a87,'L2',
+    'CIR-2 — 112-N24 L bars','112 off · 4250 cut · 1767 kg',
+    'The third row, outer radius. Same shape, 15 shorter. 56+56+112 = 224 = one per bolt.');
+})();
+/* ---------- edge ---------- */
+(function(){
+  const sb=new Bars(20);
+  [.15,.35,.55].forEach(y=>{for(let i=0;i<8;i++){
+    const a1=Math.PI/8+i*Math.PI/4,a2=Math.PI/8+(i+1)*Math.PI/4,r=MM(11149-90);
+    const v1=[r*Math.cos(a1),r*Math.sin(a1)],v2=[r*Math.cos(a2),r*Math.sin(a2)];
+    const fx=v2[0]-v1[0],fz=v2[1]-v1[1],fl=Math.hypot(fx,fz),u=[fx/fl,fz/fl];
+    const s0=[v1[0]+u[0]*MM(41),v1[1]+u[1]*MM(41)];
+    const s1=[s0[0]+u[0]*MM(8450),s0[1]+u[1]*MM(8450)];
+    sb.add(s0[0],y,s0[1],s1[0],y,s1[1]);
+    const a3=Math.PI/8+(i+1.5)*Math.PI/4;
+    const w=[Math.cos(a3-Math.PI/2),Math.sin(a3-Math.PI/2)];
+    sb.add(s1[0],y,s1[1],s1[0]+w[0]*MM(827),y,s1[1]+w[1]*MM(827));}});
+  sb.build(G.edge,0xc9a13b,'SB','SB-1 — side face bars','24 off N20 × 9600',
+    'Sch shape V: 8450 straight + 827 leg bent 45° in plan — the bend wraps the octagon corner and laps the next face. 3 levels × 8 faces.','Det B/3003-001 · sch SB-1');
+  const j=new Bars(20),ja=new Bars(20);
+  [[1,0],[0,1],[-1,0],[0,-1]].forEach(nrm=>{
+    const nx=nrm[0],nz=nrm[1];
+    for(let s=-4000;s<=4000;s+=200){
+      const tx=-nz,tz=nx,ex=nx*MM(HALF-80)+tx*MM(s),ez=nz*MM(HALF-80)+tz*MM(s);
+      const set=((s/200)%2===0)?j:ja,mid=set===j?MM(435):MM(370);
+      set.add(ex,MM(60),ez,ex,MM(960),ez);
+      const m1x=ex-nx*mid,m1z=ez-nz*mid;
+      set.add(ex,MM(75),ez,m1x,MM(75),m1z);
+      const dx=875*Math.cos(72*Math.PI/180),dy=875*Math.sin(72*Math.PI/180);
+      set.add(m1x,MM(75),m1z,m1x-nx*MM(dx),MM(75)+MM(dy),m1z-nz*MM(dx));}});
+  j.build(G.edge,0x1d9e75,'J','Mark J — edge closer','176 off · middle 435 · cut 2235',
+    'Sch shape VH: 900 post at the face · flat middle 435 · 875 leg climbing at 72°. The sloped leg laps the bottom sequence. Alternates with Ja every 200, main faces.','3004-001 · Det B');
+  ja.build(G.edge,0x7f77dd,'Ja','Mark Ja — edge closer','176 off · middle 370 · cut 2170',
+    'Sch shape VH: identical 900 post and 875 @72° leg — only the middle differs (370 vs 435). The 65 shift re-aims the lap to tie top mat to bottom. Check tags, not eyes.','sch Ja');
+})();
+/* ---------- hurdles ---------- */
+(function(){
+  const rows=[[3800,21,2470],[4400,25,2315],[5000,28,2155],[5600,31,1990],
+    [6200,34,1825],[6800,38,1650],[7400,41,1470],[8000,44,1290],
+    [8600,47,1100],[9200,51,910],[9800,54,715],[10400,16,515]];
+  const FOOT=MM(56);
+  const hb=new Bars(20);
+  rows.forEach((row,ri)=>{
+    const rr=row[0],n=row[1],H=row[2];
+    for(let k=0;k<n;k++){
+      const a=(k+(ri%2?0.5:0))/n*Math.PI*2;
+      const ux=Math.cos(a),uz=Math.sin(a),tx=-uz,tz=ux;
+      const p=(r2,y)=>[MM(r2)*ux,y,MM(r2)*uz];
+      const yt=FOOT+MM(H);
+      const i1=p(rr-287,FOOT),i2=p(rr-287,yt),o1=p(rr+287,FOOT),o2=p(rr+287,yt);
+      hb.add(i1[0],i1[1],i1[2],i2[0],i2[1],i2[2]);
+      hb.add(o1[0],o1[1],o1[2],o2[0],o2[1],o2[2]);
+      hb.add(i2[0],i2[1],i2[2],o2[0],o2[1],o2[2]);
+      hb.add(i1[0],i1[1],i1[2],i1[0]+tx*MM(450),i1[1],i1[2]+tz*MM(450));
+      hb.add(o1[0],o1[1],o1[2],o1[0]-tx*MM(450),o1[1],o1[2]-tz*MM(450));
+      hb.add(i2[0],i2[1],i2[2],i2[0],i2[1]-MM(800),i2[2]);
+      hb.add(o2[0],o2[1],o2[2],o2[0],o2[1]-MM(800),o2[2]);}});
+  hb.build(G.hurd,0x8f8d5a,'PM','PM1–PM12 — 430 shear hurdles','sch legs 2470→515 · + PM-U ×430 · PM-SH ×860',
+    'Fabricated legs per schedule, feet on the 56 datum, 450 cogs turned TANGENTIALLY (opposite ways), PM-U closer legs 800 shown at the top. NOTE: scheduler folded the aspro+dummy height into the legs, so installed tops sit ~50 above the drawing table heights — known site adjustment.',
+    '3004-002 table + Note 1 · sch 12658/0003');
+})();
+/* ---------- stage 2 ---------- */
+(function(){
+  const y=MM(60),r1=new Bars(32);
+  for(let k=0;k<NB;k++){const a=k/NB*Math.PI*2+Math.PI/224;
+    const ux=Math.cos(a),uz=Math.sin(a);
+    r1.add(MM(1600)*ux,y,MM(1600)*uz,MM(9200)*ux,y,MM(9200)*uz);
+    r1.add(MM(1600)*ux,y,MM(1600)*uz,MM(1600)*ux,y+MM(170),MM(1600)*uz);
+    r1.add(MM(1600)*ux,y+MM(170),MM(1600)*uz,MM(2050)*ux,y+MM(170),MM(2050)*uz);}
+  r1.build(G.s2,0xc4553d,'RAD1','RAD-1 — 112 N32 radials · Stage 2','8146 cut · 6019 kg',
+    'Sch shape H: 7600 + 180° hook. Per the 3004-002 Support Bar Detail the Stage 2 radials sit BELOW Layer 1 — the lowest steel in the haunch (max radial lever arm). Mat layers ride over them. Exact seating at crossings: confirm with fixers. Inner R1600, outer R9200.',
+    '3003-002 Det 2 · 3006-001 · sch /0001');
+  regRing('CIR5','CIR-5 — inner N28 ring column','15 rings × 3 pcs · outer R2100 (sch)',
+    '15 rings stacked vertically through stages 2–3. Laps staggered around the ring and between rings.','3003-002 Det 1 · sch CIR-5');
+  regRing('CIR4','CIR-4 — middle N28 ring column','15+2 rings × 3 pcs · outer R2900 (sch)',
+    '15 stacked rings plus the 2 rings below the Stage 2 radials. 770 B/B to the inner column.','3003-002 Det 1 · sch CIR-4');
+  regRing('CIR6','CIR-6 — outer N28 ring column','15 rings × 4 pcs · outer R3405 (sch)',
+    '15 stacked rings, 4 pieces each (bigger circumference). 533 B/B to the middle column.','3003-002 Det 1 · sch CIR-6');
+  regRing('RAD1A','RAD-1A — 1N28 ring','3 pcs','Single ring below the Stage 2 radials.','sch RAD-1A');
+  for(let i=0;i<15;i++){
+    torusRing(G.s2,2086,MM(280+i*140),28,0xb0563f,'CIR5');
+    torusRing(G.s2,2886,MM(280+i*140),28,0xa34e39,'CIR4');
+    torusRing(G.s2,3391,MM(280+i*140),28,0x964733,'CIR6');}
+  torusRing(G.s2,2886,MM(30),28,0xa34e39,'CIR4');
+  torusRing(G.s2,2886,MM(-10),28,0xa34e39,'CIR4');
+  torusRing(G.s2,3391,MM(25),28,0x8a4030,'RAD1A');
+})();
+/* ---------- stage 3 ---------- */
+(function(){
+  const y=MM(125),r2=new Bars(36);
+  for(let k=0;k<NB;k++){const a=k/NB*Math.PI*2;
+    const ux=Math.cos(a),uz=Math.sin(a);
+    r2.add(MM(1500)*ux,y,MM(1500)*uz,MM(8100)*ux,y,MM(8100)*uz);
+    r2.add(MM(1500)*ux,y,MM(1500)*uz,MM(1500)*ux,y+MM(450),MM(1500)*uz);}
+  r2.build(G.s3,0x9b3b7a,'RAD2','RAD-2 — 112 N36 radials · Stage 3','7050 cut · 6593 kg',
+    'The heaviest steel on the job — 59 kg a bar. Cogged inner end R1500, outer R8100.',
+    '3003-002 · 3006-001 Det 3 · sch /0004 RAD-2');
+  regRing('RAD2ABC','RAD-2A/2B/2C — 3 N24 rings','3 pcs each',
+    'Three N24 rings at schedule radii R1580/2980/3050 — drawn LOW at the cage base on 3003-001 (leaders run to the plate region), packaged with Stage 3 by Bestbar. Elevation representative.','3006-001 · sch /0004');
+  torusRing(G.s3,1580,MM(95),24,0x7d5aa8,'RAD2ABC');
+  torusRing(G.s3,2980,MM(95),24,0x7d5aa8,'RAD2ABC');
+  torusRing(G.s3,3050,MM(160),24,0x7d5aa8,'RAD2ABC');
+})();
+/* ---------- stage 4 ---------- */
+(function(){
+  const r34=new Bars(28);
+  const s16=Math.sin(16*Math.PI/180),c16=Math.cos(16*Math.PI/180);
+  for(let k=0;k<56;k++){
+    const a=(k*2+1)/NB*Math.PI*2;
+    const ux=Math.cos(a),uz=Math.sin(a);
+    {const rIn=900,yIn=1.42+2050*s16/1000;
+     const p1=[MM(rIn)*ux,yIn,MM(rIn)*uz];
+     const p2=[MM(rIn+2050*c16)*ux,1.42,MM(rIn+2050*c16)*uz];
+     const p3=[MM(rIn+2050*c16+3150)*ux,1.42,MM(rIn+2050*c16+3150)*uz];
+     r34.add(p1[0],p1[1]+MM(592),p1[2],p1[0],p1[1],p1[2]);
+     r34.add(p1[0],p1[1],p1[2],p2[0],p2[1],p2[2]);
+     r34.add(p2[0],p2[1],p2[2],p3[0],p3[1],p3[2]);}
+    {const rIn=900,y0=1.36,yIn=y0+2600*s16/1000;
+     const p1=[MM(rIn)*ux,yIn,MM(rIn)*uz];
+     const p2=[MM(rIn+2600*c16)*ux,y0,MM(rIn+2600*c16)*uz];
+     const p3=[MM(rIn+2600*c16+1590)*ux,y0,MM(rIn+2600*c16+1590)*uz];
+     r34.add(p1[0],p1[1]+MM(724),p1[2],p1[0],p1[1],p1[2]);
+     r34.add(p1[0],p1[1],p1[2],p2[0],p2[1],p2[2]);
+     r34.add(p2[0],p2[1],p2[2],p3[0],p3[1],p3[2]);
+     r34.add(p3[0],p3[1],p3[2],p3[0],p3[1]-MM(400),p3[2]);}
+  }
+  r34.build(G.s4,0xb8860b,'RAD34','RAD-3/4 — 56+56 N28 bundled pairs · Stage 4','5200 + 4590 · 2769 kg',
+    'Sch shapes V/VH: inner cog up (592/724), mid leg sloping at 16° — the haunch angle — then flat outer (3150/1590), RAD-4 ends 400 cog down. Bundled vertically in pairs at every second bolt gap. RFI: contact vs separated.',
+    '3006-002 Det 4 · sch /0005 RAD-3, RAD-4');
+  const c3=new Bars(20);
+  for(let k=0;k<NB;k++){const a=k/NB*Math.PI*2;
+    const ux=Math.cos(a),uz=Math.sin(a);
+    const yb=0.78;
+    c3.add(MM(2800)*ux,yb,MM(2800)*uz,MM(3405)*ux,yb,MM(3405)*uz);
+    c3.add(MM(2800)*ux,yb,MM(2800)*uz,MM(2800)*ux,yb+MM(1100),MM(2800)*uz);
+    c3.add(MM(3405)*ux,yb,MM(3405)*uz,MM(3405)*ux,yb+MM(2030),MM(3405)*uz);}
+  c3.build(G.s4,0x4d8fc4,'CIR3','CIR-3 — 112 N20 U bars','1050 inner / 1980 outer leg · 1078 kg',
+    'Standing U bars straddling the plinth face — SHORT 1050 leg on the inner radius, LONG 1980 leg outside rising to just under the haunch surface. Base level representative.',
+    '3006-002 "112N20 U BARS" · sch /0001 CIR-3');
+  regRing('CIR78','CIR-7/8 — upper N20 rings','CIR-7 outer R2900 · CIR-8 outer R2100 (sch)',
+    '3 rings each at the schedule radii — continuing the R2100/R2900 columns upward through stages 4–5. Heights representative; match delivery tags.',
+    '3006-002 · sch /0006');
+  for(let i=0;i<3;i++)torusRing(G.s4,2886,2.02+i*.13,20,0x5b7fae,'CIR78');
+  for(let i=0;i<3;i++)torusRing(G.s4,2090,2.02+i*.13,20,0x5b7fae,'CIR78');
+})();
+/* ---------- stage 5 ---------- */
+(function(){
+  const r5=new Bars(20),r6=new Bars(20);
+  for(let k=0;k<56;k++){
+    const a=k/56*Math.PI*2, ux=Math.cos(a),uz=Math.sin(a);
+    const y=2.55;
+    r5.add(MM(1000)*ux,y,MM(1000)*uz,MM(3400)*ux,y,MM(3400)*uz);
+    r5.add(MM(1000)*ux,y,MM(1000)*uz,MM(1000)*ux,y+MM(300),MM(1000)*uz);
+    const a2=a+Math.PI/56, vx=Math.cos(a2),vz=Math.sin(a2), y2=2.63;
+    r6.add(MM(1400)*vx,y2,MM(1400)*vz,MM(1400)*vx,y2+MM(300),MM(1400)*vz);
+    r6.add(MM(1400)*vx,y2,MM(1400)*vz,MM(3400)*vx,y2,MM(3400)*vz);
+    r6.add(MM(3400)*vx,y2,MM(3400)*vz,MM(3400)*vx,y2-MM(300),MM(3400)*vz);}
+  r5.build(G.s5,0x2e86ab,'RAD5','RAD-5 — 56 N20 radials · Stage 5','2700 cut · 390 kg',
+    'Sch shape L: 2400 + 300 cog at the inner end, turned up. Outer end R3400 — inside the first hurdle row; the haunch has run out.',
+    '3003-002 · sch /0006 RAD-5');
+  r6.build(G.s5,0x1f6e8c,'RAD6','RAD-6 — 56 N20 radials · Stage 5','2600 cut · 375 kg',
+    'Z-shape: 300 up + 2000 + 300 down, staggered between RAD-5 so 112 bars do not collide at the centre.',
+    '3003-002 · sch /0006 RAD-6');
+})();
+/* ---------- top mat + closers + plinth ---------- */
+const MT={
+ TA:{c:0x1d9e75,t:'Top mat A — N20-150, 300 cog',m:'A1–A20 · 156 off',
+   b:'Central 5700 band. Stops at the plinth circle, 300 cog. Follows the sloped top surface on the hurdle heights.',r:'3005-001 · sch /0005'},
+ TBD:{c:0x14805c,t:'Top mat B + D — N20',m:'B ×140 · D ×140',
+   b:'B = 12 000 staggered @150; D = N20-300 completing the zone. Modelled together.',r:'3005-001 · sch /0005'},
+ TC:{c:0x59b895,t:'Top mat C — N20-150',m:'C1–C12 + C1a · 60 off',
+   b:'Edge zone 1950 wide. Schedule count 60 vs drawing 56 — open query.',r:'3005-001 · sch /0005'}};
+function topLayer(group,alongX,dy,suf){
+  const sets={TA:new Bars(20),TBD:new Bars(20),TC:new Bars(20)};
+  const P=(x,o)=>alongX?[x,o]:[o,x];
+  function polyline(set,off,x0,x1){
+    const stepS=800;let prev=null;
+    for(let x=x0;x<=x1+1;x+=stepS){
+      const xx=Math.min(x,x1);
+      const pt=P(xx,off);
+      const d=octd(pt[0],pt[1]);
+      const y=MM(ysurf(d))-MM(dy);
+      if(prev)set.add(MM(prev[0]),prev[2],MM(prev[1]),MM(pt[0]),y,MM(pt[1]));
+      prev=[pt[0],pt[1],y];
+      if(xx>=x1)break;
+    }
+    return prev;
+  }
+  for(let k=-65;k<=65;k++){
+    const off=k*150+75,c=chord(off)/2-COVER;if(c<400)continue;
+    const ao=Math.abs(off);
+    if(ao<=2850){
+      const inn=Math.sqrt(Math.max(2980*2980-off*off,0));
+      [[inn,c],[-c,-inn]].forEach(rg=>{
+        polyline(sets.TA,off,Math.min(rg[0],rg[1]),Math.max(rg[0],rg[1]));
+      });
+      [1,-1].forEach(s=>{
+        const pt=P(s*inn,off),d=octd(pt[0],pt[1]),y=MM(ysurf(d))-MM(dy);
+        sets.TA.add(MM(pt[0]),y,MM(pt[1]),MM(pt[0]),y-MM(300),MM(pt[1]));});
+    } else if(ao<=7950){polyline(sets.TBD,off,-c,c);}
+    else {polyline(sets.TC,off,-c,c);}
+  }
+  Object.keys(sets).forEach(k=>{const I=MT[k];
+    sets[k].build(group,I.c,k+suf,I.t+' · '+(alongX?'Lay 3rd':'Lay 4th'),I.m,I.b,I.r);});
+}
+topLayer(G.top,true,140,'3');
+topLayer(G.top,false,100,'4');
+(function(){
+  function coreMat(y,key,title,meta,body,refs){
+    const tb=new Bars(20);
+    for(const ax of [true,false])for(let k=-11;k<11;k++){
+      const off=k*200+100,h=Math.sqrt(Math.max(2072*2072-off*off,0));if(h<300)continue;
+      const P=(x,o)=>ax?[x,o]:[o,x];
+      const a=P(-h,off),b=P(h,off);
+      tb.add(MM(a[0]),y,MM(a[1]),MM(b[0]),y,MM(b[1]));
+      tb.add(MM(a[0]),y,MM(a[1]),MM(a[0]),y-MM(300),MM(a[1]));
+      tb.add(MM(b[0]),y,MM(b[1]),MM(b[0]),y-MM(300),MM(b[1]));}
+    tb.build(G.top,0xd0723c,key,title,meta,body,refs);}
+  coreMat(2.56,'TAB','T-A — MID plinth mat','T-A1..11 · 44 off · N20-200 EW, 300 legs',
+    'Mat 2 of three: N20-200 each way, chords of ~R2072, 300 cogs down. Carried by the PM-B hurdles off the bottom mat.',
+    '3003-001 "N20-200 BARS E.W 300 COGGED ENDS" · sch /0005');
+  coreMat(3.42,'TBB','T-B — TOP plinth mat','T-B1..11 · 44 off · N20-200 EW, 300 legs',
+    'Mat 3 of three: identical series to T-A — same marks, upper level. Carried by the PM-C hurdles.',
+    '3003-001 upper "N20-200 BARS E.W" · sch /0006');
+  regRing('CIR910','CIR-9/10 — plinth N20 rings','CIR-9 R3405 ×4 · CIR-10A/B/C R3220/3070/2950 (sch)',
+    'Radii per schedule outer-R dims: CIR-9 continues the R3405 column; CIR-10A/B/C step in toward the plinth face. Heights representative.','sch /0006');
+  for(let i=0;i<4;i++)torusRing(G.top,3395,2.30+i*.14,20,0x5b7fae,'CIR910');
+  torusRing(G.top,3210,3.05,20,0x4d6f9e,'CIR910');
+  torusRing(G.top,3060,3.25,20,0x4d6f9e,'CIR910');
+  torusRing(G.top,2940,3.45,20,0x4d6f9e,'CIR910');
+  const pmCfg=[
+    ['PMB',14,2470,575,450,24,1700,0.10,0xb8923a,'PM-B — 14 N24 hurdles (2470)','between BOTTOM and MID plinth mats',
+     'Hurdle-shaped (= PM1 dims in N24): stands off the bottom steel, top ~2.57 carrying the T-A mid mat. Note 2 says 8 — schedule supplies 14: open query.'],
+    ['PMC',14,815,400,400,24,1800,2.60,0xa88439,'PM-C — 14 N24 hurdles (815)','between MID and TOP plinth mats',
+     'Hurdle-shaped: 815 legs off the T-A level, top ~3.42 carrying the T-B top mat. Note 2 says 8 vs 14: open query.'],
+    ['PMA',15,275,400,400,16,1400,-0.254,0xc9a13b,'PM-A — 15 N16 chairs (275)','THE I-BAND SUPPORT · USE N16 TOP DUMMY',
+     'Mini-hurdles standing on the sunken jig (-254): top lands at soffit level, an N16 dummy rail runs across their tops, and the 44 N36 I bars seat on that rail. The scheduled answer to what holds the I band.']];
+  pmCfg.forEach(cfg=>{
+    const key=cfg[0],n=cfg[1],leg=cfg[2],top=cfg[3],cog=cfg[4],dia=cfg[5],rr=cfg[6],y0=cfg[7],
+      col=cfg[8],title=cfg[9],meta=cfg[10],body=cfg[11];
+    const bs=new Bars(dia);
+    for(let k=0;k<n;k++){
+      const a=k/n*Math.PI*2+.11,ux=Math.cos(a),uz=Math.sin(a),tx=-uz,tz=ux;
+      const hw=MM(top)/2,yb=y0,yt=y0+MM(leg);
+      const i1=[MM(rr)*ux-ux*hw,yb,MM(rr)*uz-uz*hw],o1=[MM(rr)*ux+ux*hw,yb,MM(rr)*uz+uz*hw];
+      bs.add(i1[0],yb,i1[2],i1[0],yt,i1[2]);
+      bs.add(o1[0],yb,o1[2],o1[0],yt,o1[2]);
+      bs.add(i1[0],yt,i1[2],o1[0],yt,o1[2]);
+      bs.add(i1[0],yb,i1[2],i1[0]+tx*MM(cog),yb,i1[2]+tz*MM(cog));
+      bs.add(o1[0],yb,o1[2],o1[0]-tx*MM(cog),yb,o1[2]-tz*MM(cog));}
+    bs.build(G.top,col,key,title,meta,body,'3004-002 Note 2 · 3003-001 plinth zone');});
+})();
+
+/* ---------- CONCRETE POUR — three lifts rising through the steel ---------- */
+const pourPlane=new THREE.Plane(new THREE.Vector3(0,-1,0),0);  // shows y <= constant
+const concMats=[];
+function CM(color,opacity){
+  const m=new THREE.MeshStandardMaterial({color,roughness:.92,metalness:.02,
+    transparent:true,opacity,clippingPlanes:[pourPlane],side:THREE.DoubleSide});
+  concMats.push(m);return m;
+}
+function syncConcClip(){
+  concMats.forEach(m=>{m.clippingPlanes=half?[pourPlane,clip]:[pourPlane];m.needsUpdate=true;});
+}
+(function(){
+  // Lift 1 — base slab: octagonal prism 0 → 0.8
+  const base=new THREE.Mesh(new THREE.CylinderGeometry(MM(11149),MM(11149),MM(800),8,1,false),
+    CM(0xb6b1a4,.94));
+  base.rotation.y=Math.PI/8;base.position.y=MM(400);G.conc.add(base);
+  reg(base,'conc1','Concrete — Lift 1 · base slab','0 → 800 · ~ the mat zone',
+    'First lift fills the octagon over the bottom mats and I band. Vibrate around the 430 hurdles; keep the cage plumb.','HP04 pre-pour release');
+  // Lift 2 — haunch cone 0.8 → 2.9
+  const haunch=new THREE.Mesh(new THREE.CylinderGeometry(MM(3800),MM(11149),MM(2100),8,1,false),
+    CM(0xaba69a,.94));
+  haunch.rotation.y=Math.PI/8;haunch.position.y=MM(800)+MM(1050);G.conc.add(haunch);
+  reg(haunch,'conc2','Concrete — Lift 2 · haunch','800 → 2900 · 16° top surface',
+    'The sloped haunch encasing the radial stages. Screed to the hurdle tops — the top mat rides on them.','');
+  // Lift 3 — plinth cylinder 2.9 → 3.9
+  const plinth=new THREE.Mesh(new THREE.CylinderGeometry(MM(2950),MM(2950),MM(1000),64),
+    CM(0x9e998c,.96));
+  plinth.position.y=MM(2900)+MM(500);G.conc.add(plinth);
+  reg(plinth,'conc3','Concrete — Lift 3 · plinth','2900 → 3900 · Ø5900',
+    'Final lift to the tower interface. Anchor bolts project through — protect the threads; level to the template flange.','HP05 plinth pour');
+})();
+const POUR_TOP=3.95;
+pourPlane.constant=0;   // nothing poured yet
+let pouring=false;
+function pourConcrete(){
+  if(pouring)return;
+  pouring=true;
+  G.conc.visible=true;
+  const bar=document.getElementById('pourbar'),fill=document.getElementById('pour-fill'),
+    pct=document.getElementById('pour-pct'),lift=document.getElementById('pour-lift');
+  bar.style.display='block';
+  const t0=performance.now(),DUR=6000;
+  (function step(){
+    const t=Math.min((performance.now()-t0)/DUR,1);
+    const e=t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;        // easeInOutQuad
+    pourPlane.constant=e*POUR_TOP;
+    const y=e*POUR_TOP;
+    fill.style.width=(e*100).toFixed(0)+'%';
+    pct.textContent=(e*100).toFixed(0)+'%';
+    lift.textContent=y<0.8?'Lift 1 — base slab':(y<2.9?'Lift 2 — haunch':'Lift 3 — plinth');
+    if(t<1){requestAnimationFrame(step);}
+    else{pouring=false;lift.textContent='Pour complete — cure & release';
+      setTimeout(()=>{bar.style.display='none';},2600);}
+  })();
+}
+document.getElementById('pour').onclick=pourConcrete;
+
+/* ---------- envelope + dims ---------- */
+const envG=new THREE.Group();scene.add(envG);envG.visible=false;
+(function(){
+  const em=M(0x16a34a,{transparent:true,opacity:.10,depthWrite:false});
+  const base=new THREE.Mesh(new THREE.CylinderGeometry(MM(11149),MM(11149),MM(800),8,1,false),em);
+  base.rotation.y=Math.PI/8;base.position.y=MM(400);envG.add(base);
+  const haunch=new THREE.Mesh(new THREE.CylinderGeometry(MM(3800),MM(11149),MM(2100),8),em);
+  haunch.rotation.y=Math.PI/8;haunch.position.y=MM(800)+MM(1050);envG.add(haunch);
+  const plinth=new THREE.Mesh(new THREE.CylinderGeometry(MM(2950),MM(2950),MM(1000),48),em);
+  plinth.position.y=MM(2900)+MM(500);envG.add(plinth);
+})();
+const dimG=new THREE.Group();scene.add(dimG);dimG.visible=false;
+function label(txt,x,y,z,w){
+  const cv=document.createElement('canvas');cv.width=560;cv.height=120;
+  const cx=cv.getContext('2d');cx.font='700 48px Inter, sans-serif';
+  cx.fillStyle='rgba(15,23,42,.92)';
+  const tw=cx.measureText(txt).width;
+  cx.fillRect(280-tw/2-22,14,tw+44,86);
+  cx.fillStyle='#eef2f7';cx.textAlign='center';cx.textBaseline='middle';
+  cx.fillText(txt,280,60);
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cv),depthTest:false}));
+  sp.scale.set(w,w*120/560,1);sp.position.set(x,y,z);dimG.add(sp);
+}
+label('20 600 across flats',0,.5,MM(11900),4.6);
+label('R2900 — A bars stop',MM(2100),.7,MM(2100),3.9);
+label('step 310 · 45°',MM(4300),-.05,0,2.9);
+label('rails 56 / 86',MM(7400),.5,MM(-7400),3.1);
+label('Ø5555 cage · 224 M42',0,MM(4300),0,4.2);
+label('radials 9200-8100-6000-3400',MM(6800),1.6,MM(5200),5.2);
+label('hurdles: 2474 → 516',MM(-6500),1.9,MM(6500),4.2);
+label('top mat on the hurdle heights',MM(-5200),2.7,MM(-5200),4.8);
+
+/* ---------- UI ---------- */
+const PH=[
+ {g:['ground'],t:'0 · Ground & set-out',s:'blinding · 45° step · octagon',
+  mk:[['blind','step'],['oct','octagon']]},
+ {g:['cage'],t:'0b · Anchor cage',s:'224 M42 · BCD 4742/5158',
+  mk:[['plate','plate'],['bolts','bolts ×224'],['temp','template'],['feet','feet ×34']]},
+ {g:['jig'],t:'1 · Setup jig',s:'rails 56 & 86 · DB + THK',
+  mk:[['r1','rail 1 (40)'],['r1b','40 blocks'],['r2','rail 2 (70)'],['r2b','70 blocks']]},
+ {g:['lay1'],t:'2 · Bottom mat — Lay 1st',s:'A B F C G D E on rail 1',
+  mk:[['A1','A'],['B1','B'],['F1','F'],['C1','C'],['Gm1','G'],['D1','D'],['E1','E']]},
+ {g:['lay2'],t:'3 · Bottom mat — Lay 2nd',s:'same marks · 90° · rail 2',
+  mk:[['A2','A'],['B2','B'],['F2','F'],['C2','C'],['Gm2','G'],['D2','D'],['E2','E']]},
+ {g:['band'],t:'4a · I band + L bars',s:'44 N36 · 224 N24 standing',
+  mk:[['I','I band'],['L1','CIR-1 2×56'],['L2','CIR-2 ×112']]},
+ {g:['edge'],t:'4b · Edge closure',s:'SB-1 · J · Ja',
+  mk:[['SB','SB-1'],['J','J'],['Ja','Ja']]},
+ {g:['hurd'],t:'5 · Hurdles',s:'430 · 12 rows · R3800→10400',
+  mk:[['PM','PM1–12']]},
+ {g:['s2'],t:'6 · Stage 2',s:'N32 radials + N28 ring stack',
+  mk:[['RAD1','RAD-1 ×112'],['RAD1A','RAD-1A'],['CIR5','CIR-5 inner'],['CIR4','CIR-4 mid'],['CIR6','CIR-6 outer']]},
+ {g:['s3'],t:'7 · Stage 3',s:'N36 radials — biggest bar',
+  mk:[['RAD2','RAD-2 ×112'],['RAD2ABC','RAD-2A/B/C']]},
+ {g:['s4'],t:'8 · Stage 4',s:'N28 bundled pairs + U bars',
+  mk:[['RAD34','RAD-3/4 ×112'],['CIR3','CIR-3 U ×112'],['CIR78','CIR-7/8 rings']]},
+ {g:['s5'],t:'9 · Stage 5',s:'N20 radials — haunch runs out',
+  mk:[['RAD5','RAD-5 ×56'],['RAD6','RAD-6 ×56']]},
+ {g:['top'],t:'10 · Top mat & plinth',s:'A B/D C · T-A/T-B · PM-A/B/C',
+  mk:[['TA3','A · 3rd'],['TBD3','B/D · 3rd'],['TC3','C · 3rd'],
+      ['TA4','A · 4th'],['TBD4','B/D · 4th'],['TC4','C · 4th'],
+      ['TAB','T-A mid mat'],['TBB','T-B top mat'],['CIR910','CIR-9/10'],['PMA','PM-A'],['PMB','PM-B'],['PMC','PM-C']]},
+ {g:['conc'],t:'11 · Concrete pour',s:'3 lifts · base → haunch → plinth',
+  mk:[['conc1','Lift 1 base'],['conc2','Lift 2 haunch'],['conc3','Lift 3 plinth']]}
+];
+const stepsEl=document.getElementById('steps');
+PH.forEach((s,i)=>{
+  const row=document.createElement('div');row.className='prow'+(s.g[0]==='conc'?'':' on');
+  const head=document.createElement('button');head.className='phead';
+  head.innerHTML='<span class="tick">'+i+'</span><span><b>'+s.t+'</b><small>'+s.s+'</small></span><span class="ex">▾</span>';
+  const marks=document.createElement('div');marks.className='marks';
+  s.mk.forEach(mk=>{
+    const key=mk[0],lab=mk[1];
+    const ch=document.createElement('button');ch.className='chip';ch.textContent=lab;
+    ch.onclick=ev=>{ev.stopPropagation();
+      if(!INFO[key])return;
+      const vis=!INFO[key].meshes[0].visible;
+      INFO[key].meshes.forEach(m=>m.visible=vis);
+      ch.classList.toggle('off',!vis);};
+    marks.appendChild(ch);});
+  head.onclick=ev=>{
+    if(ev.target.classList.contains('ex')){row.classList.toggle('open');return;}
+    const on=!s.g.every(k=>G[k].visible);
+    if(s.g[0]==='conc'&&on&&pourPlane.constant<=0){pourConcrete();row.classList.add('on');return;}
+    s.g.forEach(k=>G[k].visible=on);row.classList.toggle('on',on);};
+  row.appendChild(head);row.appendChild(marks);stepsEl.appendChild(row);
+});
+document.getElementById('play').onclick=()=>{
+  GK.forEach(k=>G[k].visible=false);
+  pourPlane.constant=0;
+  document.querySelectorAll('.prow').forEach(r=>r.classList.remove('on'));
+  PH.forEach((s,i)=>setTimeout(()=>{
+    if(s.g[0]==='conc'){pourConcrete();}
+    else{s.g.forEach(k=>G[k].visible=true);}
+    document.querySelectorAll('.prow')[i].classList.add('on');},400+i*1000));
+};
+const halfBtn=document.getElementById('half');
+halfBtn.onclick=()=>{half=!half;setClip(half);halfBtn.classList.toggle('onm',half);};
+const envBtn=document.getElementById('env');
+envBtn.onclick=()=>{envG.visible=!envG.visible;envBtn.classList.toggle('onm',envG.visible);};
+const dimBtn=document.getElementById('dims');
+dimBtn.onclick=()=>{dimG.visible=!dimG.visible;dimBtn.classList.toggle('onm',dimG.visible);};
+const spinBtn=document.getElementById('spin');
+spinBtn.onclick=()=>{spinBtn.classList.toggle('onm');spin=spinBtn.classList.contains('onm');};
+document.getElementById('showall').onclick=()=>{
+  GK.forEach(k=>G[k].visible=true);
+  if(pourPlane.constant<=0)pourPlane.constant=POUR_TOP;
+  Object.values(INFO).forEach(inf=>inf.meshes.forEach(m=>m.visible=true));
+  document.querySelectorAll('.prow').forEach(r=>r.classList.add('on'));
+  document.querySelectorAll('.chip').forEach(c=>c.classList.remove('off'));
+};
+/* ---------- picking ---------- */
+const ray=new THREE.Raycaster(),ptr=new THREE.Vector2();
+let sel=null;
+const card=document.getElementById('card');
+function select(key){
+  if(sel&&INFO[sel])INFO[sel].meshes.forEach(m=>m.material.emissive.setHex(0));
+  sel=key;const I=INFO[key];if(!I)return;
+  I.meshes.forEach(m=>m.material.emissive.setHex(0x333300));
+  document.getElementById('cMark').textContent=I.title;
+  document.getElementById('cMeta').textContent=I.meta;
+  document.getElementById('cBody').textContent=I.body;
+  document.getElementById('cRefs').textContent=I.refs;
+  card.style.display='block';
+}
+document.getElementById('cClose').onclick=()=>{
+  if(sel&&INFO[sel])INFO[sel].meshes.forEach(m=>m.material.emissive.setHex(0));
+  sel=null;card.style.display='none';};
+document.getElementById('cHide').onclick=()=>{
+  if(!sel||!INFO[sel])return;
+  INFO[sel].meshes.forEach(m=>{m.material.emissive.setHex(0);m.visible=false;});
+  sel=null;card.style.display='none';};
+el.addEventListener('click',e=>{
+  if(moved>6)return;
+  ptr.x=(e.clientX/innerWidth)*2-1;ptr.y=-(e.clientY/innerHeight)*2+1;
+  ray.setFromCamera(ptr,cam);
+  const hits=ray.intersectObjects(scene.children,true)
+    .filter(h=>h.object.userData.k&&h.object.visible&&h.object.parent.visible);
+  if(hits.length)select(hits[0].object.userData.k);
+});
+addEventListener('resize',()=>{cam.aspect=innerWidth/innerHeight;
+  cam.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+(function loop(){requestAnimationFrame(loop);
+  if(spin){th+=.003;camUpd();}renderer.render(scene,cam);})();
+</script>
+</body>
+</html>

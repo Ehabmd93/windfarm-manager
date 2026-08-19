@@ -498,3 +498,101 @@ class TestClientSignPageRender:
         resp2 = client.get(f"/projects/{proj.id}/itp/{t.id}")
         assert resp2.status_code == 200
         assert b"fa-cube" in resp2.data or b"fa-road" in resp2.data or b"fa-wind" in resp2.data
+
+
+# ─── 5. CAD (DXF) map import + Foundation 3D viewer ─────────────────────────
+
+def _make_dxf_bytes():
+    """Build a small in-memory DXF with MGA zone 50 coordinates (Kondinin WA)."""
+    import io as _io
+    import ezdxf
+    doc = ezdxf.new("R2010")
+    doc.layers.add("ROADS", color=1)
+    doc.layers.add("LABELS", color=5)
+    msp = doc.modelspace()
+    msp.add_line((760000, 6380000), (760500, 6380500), dxfattribs={"layer": "ROADS"})
+    msp.add_circle((760250, 6380250), 100, dxfattribs={"layer": "ROADS"})
+    msp.add_text("WTG01", dxfattribs={"layer": "LABELS", "insert": (760100, 6380100)})
+    buf = _io.StringIO()
+    doc.write(buf)
+    return buf.getvalue().encode()
+
+
+class TestCadMapImport:
+
+    def test_dxf_parser_transforms_mga_to_wgs84(self):
+        """DXF entities parse per-layer and MGA zone 50 coords land in WA."""
+        import cad_parser
+        layers = cad_parser.parse_bytes(_make_dxf_bytes(), "site.dxf", epsg=7850)
+        assert set(layers.keys()) == {"ROADS", "LABELS"}
+        # Text label becomes a named Point feature
+        lbl = layers["LABELS"]["features"][0]
+        assert lbl["properties"]["name"] == "WTG01"
+        lon, lat = lbl["geometry"]["coordinates"]
+        assert 118 < lon < 121 and -34 < lat < -31, f"Expected Kondinin WA, got {lon},{lat}"
+        # Circle became a closed polygon
+        kinds = {f["geometry"]["type"] for f in layers["ROADS"]["features"]}
+        assert "Polygon" in kinds and "LineString" in kinds
+
+    def test_map_upload_accepts_dxf(self, client, db):
+        import io as _io
+        from models import ProjectMapFile
+        user = _make_user(db)
+        proj = _make_project(db)
+        _make_owner(db, proj, user)
+        db.session.commit()
+        _inject_session(client, user.id)
+
+        resp = client.post(
+            f"/projects/{proj.id}/map/upload",
+            data={"file": (_io.BytesIO(_make_dxf_bytes()), "site.dxf"),
+                  "epsg": "7850"},
+            content_type="multipart/form-data",
+        )
+        assert resp.status_code == 200, resp.get_json(silent=True)
+        d = resp.get_json()
+        assert d["ok"] is True
+        assert "ROADS" in d["layers"]
+        mf = ProjectMapFile.query.filter_by(project_id=proj.id).first()
+        assert mf is not None and "ROADS" in (mf.layer_names or "")
+
+    def test_map_upload_dwg_gets_guidance(self, client, db):
+        import io as _io
+        user = _make_user(db)
+        proj = _make_project(db)
+        _make_owner(db, proj, user)
+        db.session.commit()
+        _inject_session(client, user.id)
+
+        resp = client.post(
+            f"/projects/{proj.id}/map/upload",
+            data={"file": (_io.BytesIO(b"AC1032 binary junk"), "site.dwg")},
+            content_type="multipart/form-data",
+        )
+        assert resp.status_code == 400
+        d = resp.get_json()
+        assert d.get("dwg_hint") is True
+        assert "DXF" in d["error"]
+
+
+class TestFoundation3D:
+
+    def test_foundation_3d_page_renders(self, client, db):
+        user = _make_user(db)
+        db.session.commit()
+        _inject_session(client, user.id)
+        resp = client.get("/foundation/3d")
+        assert resp.status_code == 200
+        assert b"POUR CONCRETE" in resp.data
+        assert b"BUILD IT" in resp.data
+        assert b"Foundation 3D" in resp.data
+
+    def test_foundation_index_links_to_3d(self, client, db):
+        user = _make_user(db)
+        db.session.commit()
+        _inject_session(client, user.id)
+        resp = client.get("/foundation")
+        # foundation_index may redirect without an active project; only assert
+        # the banner when the page renders
+        if resp.status_code == 200:
+            assert b"/foundation/3d" in resp.data
